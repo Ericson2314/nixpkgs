@@ -19,20 +19,30 @@ self: super: {
   inherit (self.ghc.bootPkgs)
     jailbreak-cabal hscolour alex happy genprimopcode gtk2hs-buildtools rehoo hoogle;
 
-  mkDerivation = drv: super.mkDerivation (drv
+  mkDerivation = drv: super.mkDerivation (builtins.removeAttrs drv [ "isWiredIn" ]
     // { doHaddock = false; } # Disable haddock everywhere
     // pkgs.lib.optionalAttrs (drv.isExecutable or false) {
       # Linker needs ghcjs-prim
       executableHaskellDepends = drv.executableHaskellDepends ++ [ self.ghcjs-prim ];
+    }
+    // pkgs.lib.optionalAttrs (drv.isWiredIn or false) {
+      # package-key needs to equal the package name
+      postInstall = (drv.postInstall or "") + ''
+      ghcjs-pkg --package-db=$packageConfDir describe ${drv.pname} \
+        | sed 's_^key: .*$_key: ${drv.pname}_' \
+        | ghcjs-pkg --package-db=$packageConfDir update -
+      '';
     });
 
   # Libraries from ghc repo
   rts = null;
   base = overrideCabal (self.callPackage (dynamicCabal2nix "${self.ghc.ghcFork}/libraries/base") {}) (drv: {
+    isWiredIn = true;
     extraSetupCompileFlags = [ "-Dghcjs_HOST_OS" ];
     configureFlags = [ "-v3" "--extra-include-dirs=${self.ghc.ghcFork}/data/include/" ];
   });
   ghc-prim = overrideCabal (self.callPackage (dynamicCabal2nix "${self.ghc.ghcFork}/libraries/ghc-prim") {}) (drv: {
+    isWiredIn = true;
     buildTools = (drv.buildTools or []) ++ (with self.ghc.bootPkgs; [ genprimopcode ]);
     preConfigure = ''
       cpp -P -I${self.ghc.ghcFork}/data/js/ ${self.ghc.ghcFork}/data/primops.txt.pp primops.txt
@@ -47,9 +57,21 @@ self: super: {
         | ghcjs-pkg --package-db=$packageConfDir update -
     '';
   });
-  integer-gmp = self.callPackage (dynamicCabal2nix "${self.ghc.ghcFork}/libraries/integer-gmp") {};
-  integer-simple = self.callPackage (dynamicCabal2nix "${self.ghc.ghcFork}/libraries/integer-simple") {};
-  template-haskell = self.callPackage (dynamicCabal2nix "${self.ghc.ghcFork}/libraries/template-haskell") {};
+  integer-gmp = overrideCabal
+    (self.callPackage (dynamicCabal2nix "${self.ghc.ghcFork}/libraries/integer-gmp") {})
+    (drv: {
+      isWiredIn = true;
+  });
+  integer-simple = overrideCabal
+    (self.callPackage (dynamicCabal2nix "${self.ghc.ghcFork}/libraries/integer-simple") {})
+    (drv: {
+      isWiredIn = true;
+  });
+  template-haskell = overrideCabal
+    (self.callPackage (dynamicCabal2nix "${self.ghc.ghcFork}/libraries/template-haskell") {})
+    (drv: {
+      isWiredIn = true;
+  });
 
   # These other packages are core libraries in GHC 7.10.x
   array = self.array_0_5_1_0;

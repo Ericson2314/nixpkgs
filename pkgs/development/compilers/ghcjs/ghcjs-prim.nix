@@ -18,4 +18,6 @@ in mkDerivation {
   ]);
   homepage = "http://github.com/ghcjs";
   license = stdenv.lib.licenses.mit;
+} // lib.optionalAttrs isGhcjs {
+  isWiredIn = true;
 }
