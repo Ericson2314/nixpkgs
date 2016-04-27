@@ -12,6 +12,8 @@
   # null, the default standard environment is used.
   bootStdenv ? null
 
+, allowCustomOverrides ? (bootStdenv == null)
+
 , # Non-GNU/Linux OSes are currently "impure" platforms, with their libc
   # outside of the store.  Thus, GCC, GFortran, & co. must always look for
   # files in standard system directories (/usr/include, etc.)
@@ -117,7 +119,7 @@ let
           (super.stdenv.overrides super);
 
       customOverrides = self: super:
-        lib.optionalAttrs (bootStdenv == null) (overrider self super);
+        lib.optionalAttrs allowCustomOverrides (overrider self super);
     in
       lib.fix' (
         lib.extends customOverrides (
