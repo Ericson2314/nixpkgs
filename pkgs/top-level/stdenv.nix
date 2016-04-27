@@ -1,4 +1,4 @@
-{ system, bootStdenv, crossSystem, config, platform, lib, mkPackages, pkgs }:
+{ system, bootStdenv, crossSystem, config, platform, lib, mkPackages }:
 
 let
   vanillaStdenv = import ../stdenv {

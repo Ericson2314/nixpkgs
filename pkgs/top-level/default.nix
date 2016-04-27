@@ -94,7 +94,7 @@ let
         });
 
       stdenvDefault = _self: _super: import ./stdenv.nix {
-        inherit system bootStdenv crossSystem config platform lib pkgs mkPackages;
+        inherit system bootStdenv crossSystem config platform lib mkPackages;
       };
 
       allPackagesArgs = {
