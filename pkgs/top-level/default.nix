@@ -65,7 +65,7 @@ let
   #
   # It's OK that `args` doesn't include the defaults: they'll be
   # deterministically inferred the same way.
-  mkPackages = newArgs: import ../.. (args // newArgs);
+  mkPackages = newArgs: import ./. (args // newArgs);
 
   # Allow packages to be overridden globally via the `packageOverrides'
   # configuration option, which must be a function that takes `pkgs'
