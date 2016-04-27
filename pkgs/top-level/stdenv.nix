@@ -12,16 +12,7 @@ in rec {
   defaultStdenv = vanillaStdenv // { inherit platform; };
 
   stdenv =
-    if bootStdenv != null then
-      (bootStdenv // { inherit platform; })
-    else if crossSystem == null && changer != null then
-      changer {
-        # We import again all-packages to avoid recursivities.
-        pkgs = mkPackages {
-          # We remove packageOverrides to avoid recursivities
-          config = removeAttrs config [ "replaceStdenv" ];
-        };
-      }
-    else
-       defaultStdenv;
+    if bootStdenv != null
+    then (bootStdenv // { inherit platform; })
+    else defaultStdenv;
 }
