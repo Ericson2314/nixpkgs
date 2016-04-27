@@ -1,7 +1,5 @@
 { system, bootStdenv, crossSystem, config, platform, lib, pkgs, mkPackages }:
 
-with pkgs;
-
 let
   vanillaStdenv = import ../stdenv {
     inherit system platform config lib;
@@ -13,7 +11,7 @@ in rec {
   stdenv =
     if bootStdenv != null then (bootStdenv // {inherit platform;}) else
       if crossSystem != null then
-        stdenvCross
+        pkgs.stdenvCross
       else
         let
             changer = config.replaceStdenv or null;
