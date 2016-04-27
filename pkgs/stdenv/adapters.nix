@@ -147,10 +147,10 @@ rec {
      when you want to fork to update some packages without disturbing other
      developers.
 
-     e.g.:  in all-packages.nix:
+     e.g.:  in pkgs/top-level/stdenv.nix:
 
      # remove all maintainers.
-     defaultStdenv = replaceMaintainersField allStdenvs.stdenv pkgs [];
+     defaultStdenv = replaceMaintainersField vanillaStdenv pkgs [];
   */
   replaceMaintainersField = stdenv: pkgs: maintainers: stdenv //
     { mkDerivation = args:

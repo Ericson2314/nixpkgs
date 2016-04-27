@@ -2,13 +2,13 @@
 
 with pkgs;
 
-rec {
-  allStdenvs = import ../stdenv {
+let
+  vanillaStdenv = import ../stdenv {
     inherit system platform config lib;
     allPackages = args: import ../.. ({ inherit config system; } // args);
   };
-
-  defaultStdenv = allStdenvs.stdenv // { inherit platform; };
+in rec {
+  defaultStdenv = vanillaStdenv // { inherit platform; };
 
   stdenv =
     if bootStdenv != null then (bootStdenv // {inherit platform;}) else
