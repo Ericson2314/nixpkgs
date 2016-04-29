@@ -75,18 +75,6 @@ in let
   # deterministically inferred the same way.
   mkPackages = newArgs: import ./. (args // newArgs);
 
-  stdenvAdapters = self: super:
-    let res = import ../stdenv/adapters.nix self; in res // {
-      stdenvAdapters = res;
-    };
-
-  trivialBuilders = self: super:
-    (import ../build-support/trivial-builders.nix {
-      inherit lib; inherit (self) stdenv; inherit (self.xorg) lndir;
-    });
-
-  aliases = self: super: import ./aliases.nix super;
-
   /* This composes a single bootstrapping phase of the Nix Packages
     collection. That is, it imports the functions that build the various
     packages, and calls them with appropriate arguments. The result is a set of
@@ -104,47 +92,54 @@ in let
       # ... pkgs.foo ...").
       configOverrider = self: config.packageOverrides or (super: {});
 
-      # Return the complete set of packages, after applying the overrides
-      # returned by the `overrider' function (see above).  Warning: this
-      # function is very expensive!
-      pkgsWithOverrides = overrider:
-        let
-          stdenvDefault = let
-              stdenv_ = stdenv;
-              changer = config.replaceStdenv or null;
-            in { stdenv = stdenv_ // { inherit platform; }; };
+      customOverrides = self: super:
+        lib.optionalAttrs allowCustomOverrides (configOverrider self super);
 
-          allPackagesArgs = {
-            inherit system config crossSystem platform lib mkPackages;
-          };
-          allPackages = self: super:
-            let res = import ./all-packages.nix allPackagesArgs res self;
-            in res;
+      aliases = self: super: import ./aliases.nix super;
 
-          # stdenvOverrides is used to avoid circular dependencies for building
-          # the standard build environment. This mechanism uses the override
-          # mechanism to implement some staged compilation of the stdenv.
-          #
-          # We don't want stdenv overrides in the case of cross-building, or
-          # otherwise the basic overridden packages will not be built with the
-          # crossStdenv adapter.
-          stdenvOverrides = self: super:
-            lib.optionalAttrs (crossSystem == null && super.stdenv ? overrides)
-              (super.stdenv.overrides super);
+      allPackagesArgs = {
+        inherit system config crossSystem platform lib mkPackages;
+      };
 
-          customOverrides = self: super:
-            lib.optionalAttrs allowCustomOverrides (overrider self super);
-        in
-          lib.fix' (
-            lib.extends customOverrides (
-              lib.extends stdenvOverrides (
-                lib.extends aliases (
-                  lib.extends allPackages (
-                    lib.extends trivialBuilders (
-                      lib.extends stdenvAdapters (
-                        self: stdenvDefault)))))));
+      allPackages = self: super:
+        let res = import ./all-packages.nix allPackagesArgs res self;
+        in res;
+
+      trivialBuilders = self: super:
+        (import ../build-support/trivial-builders.nix {
+          inherit lib; inherit (self) stdenv; inherit (self.xorg) lndir;
+        });
+
+      stdenvAdapters = self: super:
+        let res = import ../stdenv/adapters.nix self; in res // {
+          stdenvAdapters = res;
+        };
+
+      stdenvDefault = let
+          stdenv_ = stdenv;
+        in { stdenv = stdenv_ // { inherit platform; }; };
+
+      # stdenvOverrides is used to avoid circular dependencies for building
+      # the standard build environment. This mechanism uses the override
+      # mechanism to implement some staged compilation of the stdenv.
+      #
+      # We don't want stdenv overrides in the case of cross-building, or
+      # otherwise the basic overridden packages will not be built with the
+      # crossStdenv adapter.
+      stdenvOverrides = self: super:
+        lib.optionalAttrs (crossSystem == null && super.stdenv ? overrides)
+          (super.stdenv.overrides super);
     in
-      pkgsWithOverrides configOverrider;
+      # Return the complete set of packages, after applying the overrides
+      # But more overrides can be added later with __unfix__
+      lib.fix' (
+        lib.extends customOverrides (
+          lib.extends stdenvOverrides (
+            lib.extends aliases (
+              lib.extends allPackages (
+                lib.extends trivialBuilders (
+                  lib.extends stdenvAdapters (
+                    self: stdenvDefault)))))));
 
   # Partially apply some args for building phase pkgs sets
   allPackages = args: allPackagesFun ({
