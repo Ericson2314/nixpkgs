@@ -137,7 +137,7 @@ rec {
   stdenvBoot2 = makeStdenv {
     inherit cc fetchurl;
     extraPath = [ stdenvBoot1Pkgs.xz ];
-    overrides = pkgs: { inherit (stdenvBoot1Pkgs) xz; };
+    overrides = pkgs: { inherit (stdenvBoot1Pkgs) xz; noSysDirs = false; };
   };
 
 

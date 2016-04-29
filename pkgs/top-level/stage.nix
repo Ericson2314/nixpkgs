@@ -18,13 +18,6 @@
 , # Disabled only for bootstrapping
   allowCustomOverrides ? true
 
-, # Non-GNU/Linux OSes are currently "impure" platforms, with their libc
-  # outside of the store.  Thus, GCC, GFortran, & co. must always look for
-  # files in standard system directories (/usr/include, etc.)
-  noSysDirs ? (system != "x86_64-freebsd" && system != "i686-freebsd"
-               && system != "x86_64-solaris"
-               && system != "x86_64-kfreebsd-gnu")
-
 , # Allow a configuration attribute set to be passed in as an
   # argument.
   config
@@ -66,7 +59,7 @@ let
         in { stdenv = stdenv_ // { inherit platform; }; };
 
       allPackagesArgs = {
-        inherit system noSysDirs config crossSystem platform lib
+        inherit system config crossSystem platform lib
           pkgsWithOverrides mkPackages;
       };
       allPackages = self: super:

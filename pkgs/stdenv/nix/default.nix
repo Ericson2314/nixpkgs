@@ -4,7 +4,6 @@ rec {
   pkgs = allPackages {
     allowCustomOverrides = false;
     stdenv = stdenvNative;
-    noSysDirs = false;
   };
 
   stdenvNix = import ../generic rec {
@@ -37,6 +36,7 @@ rec {
     fetchurlBoot = stdenv.fetchurlBoot;
 
     overrides = pkgs_: {
+      noSysDirs = false;
       inherit cc;
       inherit (cc) binutils;
       inherit (pkgs)
