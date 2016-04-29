@@ -5,9 +5,7 @@
  * to merges. Please use the full-text search of your editor. ;)
  * Hint: ### starts category names.
  */
-{ system, config, crossSystem, platform, lib
-, pkgsWithOverrides, mkPackages
-}:
+{ system, config, crossSystem, platform, lib, mkPackages }:
 self: pkgs:
 
 with pkgs;
@@ -46,7 +44,7 @@ in
   #
   # The result is `pkgs' where all the derivations depending on `foo'
   # will use the new version.
-  overridePackages = f: pkgsWithOverrides f;
+  overridePackages = f: lib.fix' (lib.extends f pkgs.__unfix__);
 
   # Override system. This is useful to build i686 packages on x86_64-linux.
   forceSystem = system: kernel: mkPackages {
