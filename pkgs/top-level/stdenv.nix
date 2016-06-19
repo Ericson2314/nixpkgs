@@ -1,7 +1,6 @@
-{ system, bootStdenv, crossSystem, config, platform, lib, ... }:
-self: super:
+{ system, bootStdenv, crossSystem, config, platform, lib, pkgs, mkPackages }:
 
-with super;
+with pkgs;
 
 rec {
   allStdenvs = import ../stdenv {
@@ -21,7 +20,7 @@ rec {
         in if changer != null then
           changer {
             # We import again all-packages to avoid recursivities.
-            pkgs = import ../.. {
+            pkgs = mkPackages {
               # We remove packageOverrides to avoid recursivities
               config = removeAttrs config [ "replaceStdenv" ];
             };
