@@ -75,25 +75,25 @@ in let
   # deterministically inferred the same way.
   mkPackages = newArgs: import ./. (args // newArgs);
 
-  # Partially apply some args for building phase pkgs sets
-  allPackages = args: top-level ({
-    inherit system config platform crossSystem;
-  } // args);
-
-  stdenv =
-    (if stdenv_ != null then stdenv_ else import ../stdenv) {
-      inherit system allPackages platform config crossSystem lib;
+  stdenvAdapters = self: super:
+    let res = import ../stdenv/adapters.nix self; in res // {
+      stdenvAdapters = res;
     };
 
+  trivialBuilders = self: super:
+    (import ../build-support/trivial-builders.nix {
+      inherit lib; inherit (self) stdenv; inherit (self.xorg) lndir;
+    });
+
+  aliases = self: super: import ./aliases.nix super;
+
   /* This composes a single bootstrapping phase of the Nix Packages
-     collection. That is, it imports the functions that build the various
-     packages, and calls them with appropriate arguments. The result is a set of
-     all the packages in the Nix Packages collection for some particular platform
-     for some particular phase.
-   */
-
-
-  top-level = { system, stdenv, allowCustomOverrides ? true, config, crossSystem, platform}:
+    collection. That is, it imports the functions that build the various
+    packages, and calls them with appropriate arguments. The result is a set of
+    all the packages in the Nix Packages collection for some particular platform
+    for some particular phase.
+  */
+  allPackagesFun = { system, stdenv, allowCustomOverrides ? true, config, crossSystem, platform}:
     let
       # Allow packages to be overridden globally via the `packageOverrides'
       # configuration option, which must be a function that takes `pkgs'
@@ -109,16 +109,6 @@ in let
       # function is very expensive!
       pkgsWithOverrides = overrider:
         let
-          stdenvAdapters = self: super:
-            let res = import ../stdenv/adapters.nix self; in res // {
-              stdenvAdapters = res;
-            };
-
-          trivialBuilders = self: super:
-            (import ../build-support/trivial-builders.nix {
-              inherit lib; inherit (self) stdenv; inherit (self.xorg) lndir;
-            });
-
           stdenvDefault = let
               stdenv_ = stdenv;
               changer = config.replaceStdenv or null;
@@ -131,8 +121,6 @@ in let
           allPackages = self: super:
             let res = import ./all-packages.nix allPackagesArgs res self;
             in res;
-
-          aliases = self: super: import ./aliases.nix super;
 
           # stdenvOverrides is used to avoid circular dependencies for building
           # the standard build environment. This mechanism uses the override
@@ -159,7 +147,17 @@ in let
     in
       pkgsWithOverrides configOverrider;
 
-  pkgs = allPackages { inherit system stdenv config crossSystem platform; };
+  # Partially apply some args for building phase pkgs sets
+  allPackages = args: allPackagesFun ({
+    inherit system config platform crossSystem;
+  } // args);
+
+  stdenv =
+    (if stdenv_ != null then stdenv_ else import ../stdenv) {
+      inherit system allPackages platform config crossSystem lib;
+    };
+
+  pkgs = allPackagesFun { inherit system stdenv config crossSystem platform; };
 
 in
   pkgs
