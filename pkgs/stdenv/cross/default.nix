@@ -1,4 +1,4 @@
-{ system, allPackages, platform, crossSystem, config, ... } @ args:
+{ allPackages, crossSystem, config, ... } @ args:
 
 rec {
   argClobber = {
@@ -20,7 +20,6 @@ rec {
     # It's OK to change the built-time dependencies
     allowCustomOverrides = true;
     stdenv = vanillaStdenv;
-    inherit system platform crossSystem config;
   };
 
   stdenvCross = buildPackages.makeStdenvCross

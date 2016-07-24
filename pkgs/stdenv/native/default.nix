@@ -1,4 +1,4 @@
-{ system, allPackages ? import ../../.., config }:
+{ system, allPackages, config, ... }:
 
 rec {
 
@@ -126,7 +126,6 @@ rec {
   } // {inherit fetchurl;};
 
   stdenvBoot1Pkgs = allPackages {
-    inherit system;
     allowCustomOverrides = false;
     stdenv = stdenvBoot1;
   };
