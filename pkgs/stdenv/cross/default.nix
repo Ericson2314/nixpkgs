@@ -19,7 +19,7 @@ rec {
   buildPackages = allPackages {
     # It's OK to change the built-time dependencies
     allowCustomOverrides = true;
-    bootStdenv = vanillaStdenv;
+    stdenv = vanillaStdenv;
     inherit system platform crossSystem config;
   };
 

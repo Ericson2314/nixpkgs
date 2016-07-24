@@ -1,21 +1,24 @@
-/* This file composes the Nix Packages collection.  That is, it
-   imports the functions that build the various packages, and calls
-   them with appropriate arguments.  The result is a set of all the
-   packages in the Nix Packages collection for some particular
-   platform. */
+/* This file composes a single bootstrapping phase of the Nix Packages
+   collection. That is, it imports the functions that build the various
+   packages, and calls them with appropriate arguments. The result is a set of
+   all the packages in the Nix Packages collection for some particular platform
+   for some particular phase.
+
+   Default arguments are only provided for bootstrapping
+   arguments. Normal users should not import this directly but instead
+   import `pkgs/default.nix` or `default.nix`. */
 
 
 { # The system (e.g., `i686-linux') for which to build the packages.
   system
 
-, # The standard environment to use.  Only used for bootstrapping.  If
-  # null, the default standard environment is used.
-  bootStdenv ? null
+, # The standard environment to use.
+  stdenv
 
 , # This is used because stdenv replacement and the stdenvCross do benefit from
   # the overridden configuration provided by the user, as opposed to the normal
   # bootstrapping stdenvs.
-  allowCustomOverrides ? (bootStdenv == null)
+  allowCustomOverrides ? true
 
 , # Non-GNU/Linux OSes are currently "impure" platforms, with their libc
   # outside of the store.  Thus, GCC, GFortran, & co. must always look for
@@ -45,10 +48,9 @@ let
       inherit lib; inherit (self) stdenv stdenvNoCC; inherit (self.xorg) lndir;
     };
 
-  stdenvDefault = self: super:
-    import ./stdenv.nix {
-      inherit system bootStdenv crossSystem config platform lib nixpkgsFun;
-    };
+  stdenvDefault = let
+      stdenv_ = stdenv;
+    in { stdenv = stdenv_ // { inherit platform; }; };
 
   allPackages = self: super:
     let res = import ./all-packages.nix
@@ -81,10 +83,9 @@ let
       ((config.packageOverrides or (super: {})) super);
 
   # The complete chain of package set builders, applied from top to bottom
-  toFix = lib.foldl' (lib.flip lib.extends) (self: {}) [
+  toFix = lib.foldl' (lib.flip lib.extends) (self: stdenvDefault) [
     stdenvAdapters
     trivialBuilders
-    stdenvDefault
     allPackages
     aliases
     stdenvOverrides
