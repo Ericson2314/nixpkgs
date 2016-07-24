@@ -1,8 +1,10 @@
-{ system, allPackages, platform, crossSystem, config, ... } @ args:
+{ allPackages, crossSystem, config, ... } @ args:
 
 rec {
   vanillaStdenv = import ../. (args // {
     crossSystem = null;
+    # boot packages are not cross: build = host
+    allPackages = args: allPackages ({ crossSystem = null; } // args);
     # No custom stdenvs when cross-compiling.
     # Not sure this is necessary, but this is how it worked before.
     config = builtins.removeAttrs config [ "replaceStdenv" ];
@@ -14,7 +16,6 @@ rec {
     # It's OK to change the built-time dependencies
     allowCustomOverrides = true;
     stdenv = vanillaStdenv;
-    inherit system platform crossSystem config;
   };
 
   stdenvCross = with buildPackages;

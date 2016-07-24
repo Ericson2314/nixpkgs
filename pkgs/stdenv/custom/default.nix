@@ -1,4 +1,4 @@
-{ system, allPackages, platform, crossSystem, config, ... } @ args:
+{ allPackages, config, ... } @ args:
 
 rec {
   vanillaStdenv = import ../. (args // {
@@ -10,7 +10,6 @@ rec {
     # It's OK to change the built-time dependencies
     allowCustomOverrides = true;
     stdenv = vanillaStdenv;
-    inherit system platform crossSystem config;
   };
 
   stdenvCustom = changer { pkgs = buildPackages; };
