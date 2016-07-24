@@ -77,9 +77,7 @@ in let
 
   # Partially apply some args for building phase pkgs sets
   allPackages = args: top-level ({
-    inherit
-      system config platform
-      lib mkPackages crossSystem;
+    inherit system config platform crossSystem;
   } // args);
 
   stdenv =
@@ -87,36 +85,15 @@ in let
       inherit system allPackages platform config crossSystem lib;
     };
 
-/* This file composes a single bootstrapping phase of the Nix Packages
+/* This composes a single bootstrapping phase of the Nix Packages
    collection. That is, it imports the functions that build the various
    packages, and calls them with appropriate arguments. The result is a set of
    all the packages in the Nix Packages collection for some particular platform
    for some particular phase.
-
-   Default arguments are only provided for bootstrapping
-   arguments. Normal users should not import this directly but instead
-   import `pkgs/default.nix` or `default.nix`. */
+ */
 
 
-top-level = { # The system (e.g., `i686-linux') for which to build the packages.
-  system
-
-, # The standard environment to use.
-  stdenv
-
-, # Disabled only for bootstrapping
-  allowCustomOverrides ? true
-
-, # Allow a configuration attribute set to be passed in as an
-  # argument.
-  config
-
-, crossSystem
-, platform
-, lib
-, mkPackages
-}:
-
+top-level = { system, stdenv, allowCustomOverrides ? true, config, crossSystem, platform}:
 let
   # Allow packages to be overridden globally via the `packageOverrides'
   # configuration option, which must be a function that takes `pkgs'
