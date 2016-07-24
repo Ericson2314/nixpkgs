@@ -1,8 +1,21 @@
-/* This file composes the Nix Packages collection.  That is, it
-   imports the functions that build the various packages, and calls
-   them with appropriate arguments.  The result is a set of all the
-   packages in the Nix Packages collection for some particular
-   platform. */
+/* This file composes a the Nix Packages collection. It:
+
+     1. Applies the final phase to the given `config` if it is a function
+
+     2. Infers an appropriate `platform` based on the `system` if none is
+        provided
+
+     3. Infers an appropriate `stdenv` based on the `system` if none is
+        provided
+
+     4. Defaults to no non-standard config and no cross-compilation target
+
+     5. Builds the final phase --- a fully booted package set with the chosen
+        `stdenv`
+
+   Use `impure.nix` to also infer the `system` based on the one on which
+   evaluation is taking place, and the configuration from environment variables
+   or dot-files. */
 
 { # The system (e.g., `i686-linux') for which to build the packages.
   system
@@ -12,7 +25,6 @@
 
 , crossSystem ? null
 , platform ? null
-, ...
 } @ args:
 
 let # Rename the function arguments
@@ -58,9 +70,15 @@ in let
   mkPackages = newArgs: import ./. (args // newArgs);
 
   # Partially apply some args for building phase pkgs sets
-  pkgs = import ./stage.nix ({
-    inherit lib mkPackages config platform;
+  allPackages = args: import ./stage.nix ({
+    inherit lib mkPackages config;
   } // args);
+
+  stdenv = import ../stdenv {
+    inherit system allPackages platform config crossSystem lib;
+  };
+
+  pkgs = allPackages { inherit system stdenv config crossSystem platform; };
 
 in
   pkgs
