@@ -1,18 +1,22 @@
-/* This file composes the Nix Packages collection.  That is, it
-   imports the functions that build the various packages, and calls
-   them with appropriate arguments.  The result is a set of all the
-   packages in the Nix Packages collection for some particular
-   platform. */
+/* This file composes a single bootstrapping phase of the Nix Packages
+   collection. That is, it imports the functions that build the various
+   packages, and calls them with appropriate arguments. The result is a set of
+   all the packages in the Nix Packages collection for some particular platform
+   for some particular phase.
+
+   Default arguments are only provided for bootstrapping
+   arguments. Normal users should not import this directly but instead
+   import `pkgs/default.nix` or `default.nix`. */
 
 
 { # The system (e.g., `i686-linux') for which to build the packages.
   system
 
-, # The standard environment to use.  Only used for bootstrapping.  If
-  # null, the default standard environment is used.
-  bootStdenv ? null
+, # The standard environment to use.
+  stdenv
 
-, allowCustomOverrides ? (bootStdenv == null)
+, # Disabled only for bootstrapping
+  allowCustomOverrides ? true
 
 , # Non-GNU/Linux OSes are currently "impure" platforms, with their libc
   # outside of the store.  Thus, GCC, GFortran, & co. must always look for
@@ -56,9 +60,10 @@ let
           inherit lib; inherit (self) stdenv; inherit (self.xorg) lndir;
         });
 
-      stdenvDefault = _self: _super: import ./stdenv.nix {
-        inherit system bootStdenv crossSystem config platform lib mkPackages;
-      };
+      stdenvDefault = let
+          stdenv_ = stdenv;
+          changer = config.replaceStdenv or null;
+        in { stdenv = stdenv_ // { inherit platform; }; };
 
       allPackagesArgs = {
         inherit system noSysDirs config crossSystem platform lib
@@ -89,9 +94,8 @@ let
           lib.extends stdenvOverrides (
             lib.extends aliases (
               lib.extends allPackages (
-                lib.extends stdenvDefault (
-                  lib.extends trivialBuilders (
-                    lib.extends stdenvAdapters (
-                      self: {}))))))));
+                lib.extends trivialBuilders (
+                  lib.extends stdenvAdapters (
+                    self: stdenvDefault)))))));
 in
   pkgsWithOverrides configOverrider
