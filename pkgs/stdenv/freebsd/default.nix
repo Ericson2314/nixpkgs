@@ -1,12 +1,6 @@
-{ system      ? builtins.currentSystem
-, allPackages ? import ../../..
-, platform    ? null
-, config      ? {}
-}:
+{ system, platform, config, ... }:
 
 rec {
-  allPackages = import ../../..;
-
   bootstrapTools = derivation {
     inherit system;
 

@@ -29,7 +29,7 @@
   # argument.
   config
 
-, crossSystem ? null
+, crossSystem
 , platform
 , lib
 , mkPackages

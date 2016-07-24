@@ -1,7 +1,8 @@
-{ system         ? builtins.currentSystem
-, allPackages    ? import ../../..
-, platform       ? null
-, config         ? {}
+# Use stdenv parameter of `pkgs/default.nix` for easy testing.
+{ system
+, allPackages
+, platform
+, config
 
 # Allow passing in bootstrap files directly so we can test the stdenv bootstrap process when changing the bootstrap tools
 , bootstrapFiles ? let
@@ -15,6 +16,7 @@
     cpio    = fetch { file = "cpio";  sha256 = "0ms5i9m1vdksj575sf1djwgm7zhnvfrrb44dxnfh9avr793rc2w4"; };
     tarball = fetch { file = "bootstrap-tools.cpio.bz2"; sha256 = "1lz1b0grl4642h6n635xvi6imf0yyy1zyzdr9ing5aphzz0z5iic"; executable = false; };
   }
+, ...
 }:
 
 let
@@ -22,8 +24,6 @@ let
     (import "${./standard-sandbox.sb}")
   '';
 in rec {
-  allPackages = import ../../..;
-
   commonPreHook = ''
     export NIX_ENFORCE_PURITY="''${NIX_ENFORCE_PURITY-1}"
     export NIX_ENFORCE_NO_NATIVE="''${NIX_ENFORCE_NO_NATIVE-1}"
@@ -100,7 +100,6 @@ in rec {
       };
 
       thisPkgs = allPackages {
-        inherit system platform;
         allowCustomOverrides = false;
         stdenv = thisStdenv;
       };

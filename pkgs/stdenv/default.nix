@@ -5,7 +5,7 @@
 # Posix utilities, the GNU C compiler, and so on.  On other systems,
 # we use the native C library.
 
-{ system, allPackages ? import ../top-level, platform, config, crossSystem, lib }:
+{ system, allPackages, platform, config, crossSystem, lib } @ args:
 
 
 let
@@ -15,32 +15,21 @@ let
   # i.e., the stuff in /bin, /usr/bin, etc.  This environment should
   # be used with care, since many Nix packages will not build properly
   # with it (e.g., because they require GNU Make).
-  inherit (import ./native { inherit system allPackages config; }) stdenvNative;
-
-  stdenvNativePkgs = allPackages {
-    allowCustomOverrides = false;
-    stdenv = stdenvNative;
-    noSysDirs = false;
-  };
-
+  inherit (import ./native args) stdenvNative;
 
   # The Nix build environment.
-  stdenvNix = import ./nix {
-    inherit config lib;
-    stdenv = stdenvNative;
-    pkgs = stdenvNativePkgs;
-  };
+  inherit (import ./nix { inherit allPackages stdenvNative config lib; }) stdenvNix;
 
-  inherit (import ./freebsd { inherit system allPackages platform config; }) stdenvFreeBSD;
+  inherit (import ./freebsd args) stdenvFreeBSD;
 
   # Linux standard environment.
-  inherit (import ./linux { inherit system allPackages platform config lib; }) stdenvLinux;
+  inherit (import ./linux args) stdenvLinux;
 
-  inherit (import ./darwin { inherit system allPackages platform config; }) stdenvDarwin;
+  inherit (import ./darwin args) stdenvDarwin;
 
-  inherit (import ./cross { inherit system allPackages platform crossSystem config lib; }) stdenvCross;
+  inherit (import ./cross args) stdenvCross;
 
-  inherit (import ./custom { inherit system allPackages platform crossSystem config lib; }) stdenvCustom;
+  inherit (import ./custom args) stdenvCustom;
 
   changer = config.replaceStdenv or null;
 

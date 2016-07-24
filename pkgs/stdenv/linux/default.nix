@@ -4,10 +4,12 @@
 # compiler and linker that do not search in default locations,
 # ensuring purity of components produced by it.
 
-# The function defaults are for easy testing.
-{ system ? builtins.currentSystem
-, allPackages ? import ../../..
-, platform ? null, config ? {}, lib ? (import ../../../lib)
+# Use stdenv parameter of `pkgs/default.nix` for easy testing.
+{ system
+, allPackages
+, platform
+, config
+, lib
 , bootstrapFiles ?
     if system == "i686-linux" then import ./bootstrap/i686.nix
     else if system == "x86_64-linux" then import ./bootstrap/x86_64.nix
@@ -16,6 +18,7 @@
     else if system == "armv7l-linux" then import ./bootstrap/armv7l.nix
     else if system == "mips64el-linux" then import ./bootstrap/loongson2f.nix
     else abort "unsupported platform for the pure Linux stdenv"
+, ...
 }:
 
 rec {
@@ -106,7 +109,6 @@ rec {
       };
 
       thisPkgs = allPackages {
-        inherit system platform;
         allowCustomOverrides = false;
         stdenv = thisStdenv;
       };

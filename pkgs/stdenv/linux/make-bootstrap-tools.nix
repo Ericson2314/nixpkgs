@@ -174,6 +174,10 @@ rec {
   };
 
   bootstrapTools = (import ./default.nix {
+    allPackages = builtins.throw "`allPackages` should not be used";
+    platform    = builtins.throw "`platform` should not be used";
+    config      = builtins.throw "`config` should not be used";
+    lib         = builtins.throw "`lib` should not be used";
     inherit system bootstrapFiles;
   }).bootstrapTools;
 
