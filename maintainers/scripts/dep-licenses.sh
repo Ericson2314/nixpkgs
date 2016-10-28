@@ -38,7 +38,7 @@ if test $(wc -l "$tmp/filter.sed" | sed 's/ .*//') == 0; then
   echo 1>&2 "
 No derivation mentionned in the stack trace.  Either your derivation does
 not use stdenv.mkDerivation or you forgot to use the stdenv adapter named
-traceDrvLicenses.
+traceDrvLicenses. In pkgs/top-level/stdenv.nix:
 
 -  defaultStdenv = allStdenvs.stdenv;
 +  defaultStdenv = traceDrvLicenses allStdenvs.stdenv;
