@@ -1,11 +1,11 @@
 { system, bootStdenv, crossSystem, config, platform, lib, nixpkgsFun }:
 
-rec {
+let
   allStdenvs = import ../stdenv {
     inherit system platform config crossSystem lib;
     allPackages = nixpkgsFun;
   };
-
+in rec {
   defaultStdenv = allStdenvs.stdenv // { inherit platform; };
 
   stdenv =
