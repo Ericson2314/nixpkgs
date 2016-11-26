@@ -1,8 +1,9 @@
-{ system      ? builtins.currentSystem
-, allPackages ? import ../../..
-, platform    ? null
-, config      ? {}
-}:
+{ _defaults    ? import ../debug.nix
+, argsResolved ? _defaults.extend (_: _: args)
+, allPackages  ? argsResolved.allPackages
+, platform     ? argsResolved.platform
+, config       ? argsResolved.config
+} @ args:
 
 rec {
   inherit allPackages;

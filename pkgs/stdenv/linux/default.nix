@@ -5,9 +5,13 @@
 # ensuring purity of components produced by it.
 
 # The function defaults are for easy testing.
-{ system ? builtins.currentSystem
-, allPackages ? import ../../..
-, platform ? null, config ? {}, lib ? (import ../../../lib)
+{ _defaults    ? import ../debug.nix
+, argsResolved ? _defaults.extend (_: _: args)
+, lib          ? argsResolved.lib
+, allPackages  ? argsResolved.allPackages
+, system       ? argsResolved.system
+, platform     ? argsResolved.platform
+, config       ? argsResolved.config
 , bootstrapFiles ?
     if system == "i686-linux" then import ./bootstrap/i686.nix
     else if system == "x86_64-linux" then import ./bootstrap/x86_64.nix
@@ -16,7 +20,7 @@
     else if system == "armv7l-linux" then import ./bootstrap/armv7l.nix
     else if system == "mips64el-linux" then import ./bootstrap/loongson2f.nix
     else abort "unsupported platform for the pure Linux stdenv"
-}:
+} @ args:
 
 rec {
 

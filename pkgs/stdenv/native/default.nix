@@ -1,4 +1,9 @@
-{ system, allPackages ? import ../../.., config }:
+{ _defaults    ? import ../debug.nix
+, argsResolved ? _defaults.extend (_: _: args)
+, allPackages  ? argsResolved.allPackages
+, system       ? argsResolved.system
+, config       ? argsResolved.config
+} @ args:
 
 rec {
 

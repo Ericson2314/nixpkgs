@@ -1,4 +1,11 @@
-{ pkgspath ? ../../.., test-pkgspath ? pkgspath, system ? builtins.currentSystem }:
+{ pkgspath      ? ../../..
+
+, _defaults     ? import ../debug.nix
+, argsResolved  ? _defaults.extend (_: _: { test-pkgspath = pkgspath; } // args)
+, test-pkgspath ? argsResolved.test-pkgspath
+, allPackages   ? argsResolved.allPackages
+, system        ? argsResolved.system
+} @ args:
 
 with import pkgspath { inherit system; };
 
@@ -333,9 +340,10 @@ in rec {
 
   # The ultimate test: bootstrap a whole stdenv from the tools specified above and get a package set out of it
   test-pkgs = let
-    stdenv = import (test-pkgspath + "/pkgs/stdenv/darwin") { inherit system bootstrapFiles; };
-  in import test-pkgspath {
-    inherit system;
-    bootStdenv = stdenv.stdenvDarwin;
+    stdenvs = import (test-pkgspath + "/pkgs/stdenv/darwin") { inherit system bootstrapFiles; };
+  in allPackages {
+    inherit (argsResolved) lib system platform config;
+    nixpkgsFun = _: builtins.abort "only used on packages that don't work on darwin";
+    stdenv = stdenvs.stdenvDarwin;
   };
 }
