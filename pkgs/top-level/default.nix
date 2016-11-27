@@ -68,9 +68,10 @@ in let
   # deterministically inferred the same way.
   nixpkgsFun = newArgs: import ./. (args // newArgs);
 
-  # Partially apply some args for building bootstraping stage pkgs sets
+  # Partially apply some arguments for building bootstraping stage pkgs
+  # sets. Only apply arguments which no stdenv would want to override.
   allPackages = args: import ./stage.nix ({
-    inherit lib nixpkgsFun config;
+    inherit lib nixpkgsFun;
   } // args);
 
   inherit (import ../stdenv {
