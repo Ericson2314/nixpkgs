@@ -336,6 +336,6 @@ in rec {
     stdenv = import (test-pkgspath + "/pkgs/stdenv/darwin") { inherit system bootstrapFiles; };
   in import test-pkgspath {
     inherit system;
-    bootStdenv = stdenv.stdenvDarwin;
+    stdenv = stdenv.stdenvDarwin;
   };
 }

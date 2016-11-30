@@ -23,6 +23,10 @@
 , # Allow a configuration attribute set to be passed in as an argument.
   config ? {}
 
+, # The standard environment for building packages, or rather a function
+  # providing it. See below for the arguments given to that function.
+  stdenv ? assert false; null
+
 , crossSystem ? null
 , platform ? assert false; null
 } @ args:
@@ -72,9 +76,9 @@ in let
     inherit lib nixpkgsFun;
   } // newArgs);
 
-  inherit (import ../stdenv {
+  stdenv = (args.stdenv or (args: (import ../stdenv args).stdenv)) {
     inherit lib allPackages system platform crossSystem config;
-  }) stdenv;
+  };
 
   pkgs = allPackages { inherit system stdenv config crossSystem platform; };
 
