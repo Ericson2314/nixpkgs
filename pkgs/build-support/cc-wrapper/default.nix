@@ -279,11 +279,11 @@ stdenv.mkDerivation {
     else "";
 
   crossAttrs = {
-    shell = shell.crossDrv + shell.crossDrv.shellPath;
-    libc = stdenv.ccCross.libc;
-    coreutils = coreutils.crossDrv;
-    binutils = binutils.crossDrv;
-    cc = cc.crossDrv;
+    #shell = shell.crossDrv + shell.crossDrv.shellPath;
+    #libc = stdenv.ccCross.libc;
+    #coreutils = coreutils.crossDrv;
+    #binutils = binutils.crossDrv;
+    #cc = cc.crossDrv;
     #
     # This is not the best way to do this. I think the reference should be
     # the style in the gcc-cross-wrapper, but to keep a stable stdenv now I
