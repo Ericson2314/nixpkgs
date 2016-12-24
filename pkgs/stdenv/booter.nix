@@ -55,7 +55,18 @@ stageFuns: let
 
   # Adds the stdenv to the arguments, and sticks in it the previous stage for
   # debugging purposes.
-  folder = stageFun: finalSoFar: let
+  folder = stageFun: finalSoFar_: let
+    # Build wrappers are always added to the previous stage, and always
+    # always added to build packages. That means we need to also extend the
+    # current stage if it is used as its own build packages. Note that the
+    # *returned* current stage is never so extended, regardless of what
+    # build packages are used.
+    buildWrappers = import ../top-level/build-wrappers.nix self;
+    finalSoFar =
+      if finalSoFar_ ? overridePackages
+      then finalSoFar_.overridePackages buildWrappers
+      else finalSoFar_;
+
     args = stageFun finalSoFar;
     args' = args // {
       stdenv = args.stdenv // {
@@ -67,7 +78,10 @@ stageFuns: let
       if args.__raw or false
       then args'
       else allPackages ((builtins.removeAttrs args' ["selfBuild"]) // {
-        buildPackages = if args.selfBuild or true then self else finalSoFar;
+        buildPackages =
+          if args.selfBuild or true
+          then self.overridePackages buildWrappers
+          else finalSoFar;
       });
   in self;
 
