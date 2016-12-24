@@ -80,7 +80,8 @@ in let
   boot = import ../stdenv/booter.nix { inherit lib allPackages; };
 
   stages = stdenvStages {
-    inherit lib system platform crossSystem config;
+    localSystem = { inherit system platform; };
+    inherit lib crossSystem config;
   };
 
   pkgs = boot stages;
