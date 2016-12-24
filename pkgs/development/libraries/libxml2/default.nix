@@ -1,5 +1,5 @@
-{ stdenv, lib, fetchurl, zlib, xz, python2, findXMLCatalogs, libiconv, fetchpatch
-, pythonSupport ? (! stdenv ? cross) }:
+{ stdenv, crossSystem, lib, fetchurl, zlib, xz, python2, findXMLCatalogs, libiconv, fetchpatch
+, pythonSupport ? crossSystem == null }:
 
 let
   python = python2;

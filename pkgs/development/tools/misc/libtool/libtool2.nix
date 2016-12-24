@@ -1,4 +1,4 @@
-{ stdenv, fetchurl, m4, perl, help2man }:
+{ stdenv, crossSystem, fetchurl, m4, perl, help2man }:
 
 stdenv.mkDerivation rec {
   name = "libtool-2.4.6";
@@ -23,7 +23,7 @@ stdenv.mkDerivation rec {
 
   # Don't run the native `strip' when cross-compiling.  This breaks at least
   # with `.a' files for MinGW.
-  dontStrip = stdenv ? cross;
+  dontStrip = crossSystem != null;
 
   meta = {
     description = "GNU Libtool, a generic library support script";

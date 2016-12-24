@@ -1,4 +1,4 @@
-{ fetchurl, stdenv, dejagnu, doCheck ? false }:
+{ fetchurl, stdenv, crossSystem, dejagnu, doCheck ? false }:
 
 stdenv.mkDerivation rec {
   name = "libffi-3.2.1";
@@ -21,7 +21,8 @@ stdenv.mkDerivation rec {
 
   inherit doCheck;
 
-  dontStrip = stdenv ? cross; # Don't run the native `strip' when cross-compiling.
+  # Don't run the native `strip' when cross-compiling.
+  dontStrip = crossSystem != null;
 
   # Install headers and libs in the right places.
   postFixup = ''
