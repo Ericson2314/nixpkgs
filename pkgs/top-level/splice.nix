@@ -63,8 +63,6 @@ let
 in
 
 {
-  inherit splicedPackages;
-
   # We use `callPackage' to be able to omit function arguments that can be
   # obtained `pkgs` or `buildPackages` and their `xorg` package sets. Use
   # `newScope' for sets of packages in `pkgs' (see e.g. `gnome' below).
