@@ -1,25 +1,13 @@
-{ stdenv, fetchgit, bootPkgs, perl, gmp, ncurses, libiconv, binutils, coreutils
-, autoconf, automake, happy, alex, python3, crossSystem, selfPkgs, cross ? null
+{ stdenv, fetchgit, bootPkgs, perl, gmp, ncurses, libiconv, cc, binutils, coreutils
+, autoconf, automake, happy, alex, python3
 }:
 
 let
   inherit (bootPkgs) ghc;
 
-  commonBuildInputs = [ ghc perl autoconf automake happy alex python3 ];
-
   version = "8.1.20170106";
   rev = "b4f2afe70ddbd0576b4eba3f82ba1ddc52e9b3bd";
 
-  commonPreConfigure =  ''
-    echo ${version} >VERSION
-    echo ${rev} >GIT_COMMIT_ID
-    ./boot
-    sed -i -e 's|-isysroot /Developer/SDKs/MacOSX10.5.sdk||' configure
-  '' + stdenv.lib.optionalString (!stdenv.isDarwin) ''
-    export NIX_LDFLAGS="$NIX_LDFLAGS -rpath $out/lib/ghc-${version}"
-  '' + stdenv.lib.optionalString stdenv.isDarwin ''
-    export NIX_LDFLAGS+=" -no_dtrace_dof"
-  '';
 in stdenv.mkDerivation (rec {
   inherit version rev;
   name = "ghc-${version}";
@@ -32,9 +20,22 @@ in stdenv.mkDerivation (rec {
 
   postPatch = "patchShebangs .";
 
-  preConfigure = commonPreConfigure;
+  preConfigure = ''
+    echo ${version} >VERSION
+    echo ${rev} >GIT_COMMIT_ID
+    ./boot
+    sed -i -e 's|-isysroot /Developer/SDKs/MacOSX10.5.sdk||' configure
+  '' + stdenv.lib.optionalString (!stdenv.isDarwin) ''
+    export NIX_LDFLAGS="$NIX_LDFLAGS -rpath $out/lib/ghc-${version}"
+  '' + stdenv.lib.optionalString stdenv.isDarwin ''
+    export NIX_LDFLAGS+=" -no_dtrace_dof"
+  '' + stdenv.lib.optionalString (stdenv ? cross) ''
+    sed 's|#BuildFlavour  = quick-cross|BuildFlavour  = perf-cross|' mk/build.mk.sample > mk/build.mk
+  '';;
 
-  buildInputs = commonBuildInputs;
+  buildInputs = [ ghc perl autoconf automake happy alex python3 ]
+    # TODO awkward, need wrapped CC. Can we wrap GHC instead?
+    ++ optionals (stdenv ? cross) [ cc binutils ];
 
   enableParallelBuilding = true;
 
@@ -44,6 +45,14 @@ in stdenv.mkDerivation (rec {
     "--with-curses-includes=${ncurses.dev}/include" "--with-curses-libraries=${ncurses.out}/lib"
   ] ++ stdenv.lib.optional stdenv.isDarwin [
     "--with-iconv-includes=${libiconv}/include" "--with-iconv-libraries=${libiconv}/lib"
+  ] ++ stdenv.lib.optional (stdenv ? cross) [
+    "CC=${stdenv.ccCross}/bin/${cross.config}-cc"
+    "LD=${stdenv.binutilsCross}/bin/${cross.config}-ld"
+    "AR=${stdenv.binutilsCross}/bin/${cross.config}-ar"
+    "NM=${stdenv.binutilsCross}/bin/${cross.config}-nm"
+    "RANLIB=${stdenv.binutilsCross}/bin/${cross.config}-ranlib"
+    "--target=${cross.config}"
+    "--enable-bootstrap-with-devel-snapshot"
   ];
 
   # required, because otherwise all symbols from HSffi.o are stripped, and
@@ -68,11 +77,6 @@ in stdenv.mkDerivation (rec {
 
   passthru = {
     inherit bootPkgs;
-  } // stdenv.lib.optionalAttrs (crossSystem != null) {
-    crossCompiler = selfPkgs.ghc.override {
-      cross = crossSystem;
-      bootPkgs = selfPkgs;
-    };
   };
 
   meta = {
@@ -82,32 +86,16 @@ in stdenv.mkDerivation (rec {
     inherit (ghc.meta) license platforms;
   };
 
-} // stdenv.lib.optionalAttrs (cross != null) {
+} // stdenv.lib.optionalAttrs (stdenv ? cross) {
   name = "${cross.config}-ghc-${version}";
-
-  preConfigure = commonPreConfigure + ''
-    sed 's|#BuildFlavour  = quick-cross|BuildFlavour  = perf-cross|' mk/build.mk.sample > mk/build.mk
-  '';
-
-  configureFlags = [
-    "CC=${stdenv.ccCross}/bin/${cross.config}-cc"
-    "LD=${stdenv.binutilsCross}/bin/${cross.config}-ld"
-    "AR=${stdenv.binutilsCross}/bin/${cross.config}-ar"
-    "NM=${stdenv.binutilsCross}/bin/${cross.config}-nm"
-    "RANLIB=${stdenv.binutilsCross}/bin/${cross.config}-ranlib"
-    "--target=${cross.config}"
-    "--enable-bootstrap-with-devel-snapshot"
-  ];
-
-  buildInputs = commonBuildInputs ++ [ stdenv.ccCross stdenv.binutilsCross ];
 
   dontSetConfigureCross = true;
 
   passthru = {
-    inherit bootPkgs cross;
+    inherit bootPkgs;
 
-    cc = "${stdenv.ccCross}/bin/${cross.config}-cc";
+    cc = "${cc}/bin/${cross.config}-cc";
 
-    ld = "${stdenv.binutilsCross}/bin/${cross.config}-ld";
+    ld = "${binutils}/bin/${cross.config}-ld";
   };
 })

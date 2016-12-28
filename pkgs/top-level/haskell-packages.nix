@@ -1,4 +1,4 @@
-{ pkgs, callPackage, stdenv, crossSystem }:
+{ pkgs, buildPackages, callPackage, stdenv }:
 
 rec {
 
@@ -53,10 +53,8 @@ rec {
       sphinx = pkgs.python27Packages.sphinx;
     };
     ghcHEAD = callPackage ../development/compilers/ghc/head.nix rec {
-      bootPkgs = packages.ghc7103;
+      bootPkgs = if stdenv ? cross then packages.ghcHEAD else packages.ghc7103;
       inherit (bootPkgs) alex happy;
-      inherit crossSystem;
-      selfPkgs = packages.ghcHEAD;
     };
     ghcjs = packages.ghc7103.callPackage ../development/compilers/ghcjs {
       bootPkgs = packages.ghc7103;
@@ -76,7 +74,8 @@ rec {
 
   };
 
-  packages = {
+  # Always get compilers from `buildPackages`
+  packages = let inherit (buildPackages.haskell) compiler; in {
 
     # Support for this compiler is broken, because it can't deal with directory-based package databases.
     # ghc6104 = callPackage ../development/haskell-modules { ghc = compiler.ghc6104; };
@@ -126,11 +125,6 @@ rec {
     };
     ghcHEAD = callPackage ../development/haskell-modules {
       ghc = compiler.ghcHEAD;
-      compilerConfig = callPackage ../development/haskell-modules/configuration-ghc-head.nix { };
-    };
-    # TODO Support for multiple variants here
-    ghcCross = callPackage ../development/haskell-modules {
-      ghc = compiler.ghcHEAD.crossCompiler;
       compilerConfig = callPackage ../development/haskell-modules/configuration-ghc-head.nix { };
     };
     ghcjs = callPackage ../development/haskell-modules {
