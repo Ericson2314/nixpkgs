@@ -1,4 +1,6 @@
-{ stdenv, lib, hostPlatform, fetchurl, libiconv, xz }:
+{ stdenv, lib, fetchurl, libiconv, xz
+, hostPlatform
+}:
 
 stdenv.mkDerivation rec {
   name = "gettext-${version}";
@@ -15,11 +17,11 @@ stdenv.mkDerivation rec {
   # FIXME stackprotector needs gcc 4.9 in bootstrap tools
   hardeningDisable = [ "format" "stackprotector" ];
 
-  LDFLAGS = if stdenv.isSunOS then "-lm -lmd -lmp -luutil -lnvpair -lnsl -lidmap -lavl -lsec" else "";
+  LDFLAGS = if hostPlatform.isSunOS then "-lm -lmd -lmp -luutil -lnvpair -lnsl -lidmap -lavl -lsec" else "";
 
   configureFlags = [ "--disable-csharp" "--with-xz" ]
      # avoid retaining reference to CF during stdenv bootstrap
-     ++ lib.optionals stdenv.isDarwin [
+     ++ lib.optionals hostPlatform.isDarwin [
             "gt_cv_func_CFPreferencesCopyAppValue=no"
             "gt_cv_func_CFLocaleCopyCurrent=no"
         ];
@@ -45,7 +47,7 @@ stdenv.mkDerivation rec {
     fi
   '';
 
-  nativeBuildInputs = [ xz xz.bin ] ++ stdenv.lib.optional (!stdenv.isLinux && !hostPlatform.isCygwin) libiconv; # HACK, see #10874 (and 14664)
+  nativeBuildInputs = [ xz xz.bin ] ++ stdenv.lib.optional (!hostPlatform.isLinux && !hostPlatform.isCygwin) libiconv; # HACK, see #10874 (and 14664)
 
   enableParallelBuilding = true;
 
@@ -78,6 +80,6 @@ stdenv.mkDerivation rec {
   };
 }
 
-// stdenv.lib.optionalAttrs stdenv.isDarwin {
+// stdenv.lib.optionalAttrs hostPlatform.isDarwin {
   makeFlags = "CFLAGS=-D_FORTIFY_SOURCE=0";
 }
