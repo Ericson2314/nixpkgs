@@ -33,7 +33,7 @@ stdenv.mkDerivation ({
   # The host/target system.
   crossConfig = if cross != null then cross.config else null;
 
-  inherit (stdenv) is64bit;
+  inherit (hostPlatform) is64bit;
 
   enableParallelBuilding = true;
 
@@ -65,7 +65,7 @@ stdenv.mkDerivation ({
       ./CVE-2017-1000366-rtld-LD_PRELOAD.patch
       ./CVE-2017-1000366-rtld-LD_AUDIT.patch
     ]
-    ++ lib.optionals stdenv.isi686 [
+    ++ lib.optionals hostPlatform.isi686 [
       ./fix-i686-memchr.patch
       ./i686-fix-vectorized-strcspn.patch
     ];
@@ -119,7 +119,7 @@ stdenv.mkDerivation ({
           && cross.platform.kernelMajor == "2.6") [
       "--enable-kernel=2.6.0"
       "--with-__thread"
-    ] ++ lib.optionals (cross == null && stdenv.isArm) [
+    ] ++ lib.optionals (cross == null && hostPlatform.isArm32) [
       "--host=arm-linux-gnueabi"
       "--build=arm-linux-gnueabi"
 
