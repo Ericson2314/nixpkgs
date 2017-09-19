@@ -88,7 +88,7 @@ stdenv.mkDerivation {
   preferLocalBuild = true;
 
   inherit cc libc_bin libc_dev libc_lib binutils_bin coreutils_bin;
-  shell = getBin shell + shell.shellPath or "";
+  shell = stdenv.lib.getShellPath shell;
   gnugrep_bin = if nativeTools then "" else gnugrep;
 
   binPrefix = prefix;

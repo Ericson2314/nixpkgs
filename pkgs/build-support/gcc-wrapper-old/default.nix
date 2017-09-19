@@ -56,7 +56,7 @@ stdenv.mkDerivation {
   langAda = if nativeTools then false else gcc ? langAda && gcc.langAda;
   langVhdl = if nativeTools then false else gcc ? langVhdl && gcc.langVhdl;
   zlib = if gcc != null && gcc ? langVhdl then zlib else null;
-  shell = shell + shell.shellPath or "";
+  shell = stdenv.lib.getShellPath shell;
 
   crossAttrs = {
     #
