@@ -53,7 +53,7 @@
     in
       writeScriptBin "setup-systemd-units"
         ''
-          #!${stdenv.lib.getShellPath bash} -e
+          #!${lib.getShellPath bash} -e
           export PATH=${coreutils}/bin:${systemd}/bin
 
           unitDir=/etc/systemd/system

@@ -321,7 +321,7 @@ in rec {
     extraSandboxProfile  = binShClosure + libSystemProfile;
 
     initialPath = import ../common-path.nix { inherit pkgs; };
-    shell       = "${stdenv.lib.getShellPath pkgs.bash}";
+    shell       = "${lib.getShellPath pkgs.bash}";
 
     cc = lib.callPackageWith {} ../../build-support/cc-wrapper {
       inherit (pkgs) stdenvNoCC;
