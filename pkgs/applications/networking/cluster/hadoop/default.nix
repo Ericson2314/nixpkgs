@@ -13,7 +13,7 @@ stdenv.mkDerivation rec {
 
   buildPhase = ''
     for n in "bin/"* "sbin/"*; do
-      sed -i $n -e "s|#!/usr/bin/env bash|#! ${bash}/bin/bash|"
+      sed -i $n -e "s|#!/usr/bin/env bash|#! ${stdenv.lib.getShellPath bash}|"
     done
   '' + stdenv.lib.optionalString (!stdenv.isDarwin) ''
     patchelf --set-interpreter "$(cat $NIX_CC/nix-support/dynamic-linker)" bin/container-executor;

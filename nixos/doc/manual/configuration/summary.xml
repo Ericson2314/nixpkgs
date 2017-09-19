@@ -32,7 +32,7 @@ manual</link> for the rest.</para>
         <entry>A string</entry>
       </row>
       <row>
-        <entry><literal>"${pkgs.bash}/bin/sh"</literal></entry>
+        <entry><literal>"${lib.getShellPath pkgs.bash}"</literal></entry>
         <entry>A string containing an expression (expands to <literal>"/nix/store/<replaceable>hash</replaceable>-bash-<replaceable>version</replaceable>/bin/sh"</literal>)</entry>
       </row>
       <row>

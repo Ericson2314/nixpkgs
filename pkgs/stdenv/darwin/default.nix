@@ -223,7 +223,7 @@ in rec {
       };
     };
   in with prevStage; stageFun 3 prevStage {
-    shell = "${pkgs.bash}/bin/bash";
+    shell = "${stdenv.lib.getShellPath pkgs.bash}";
 
     # We have a valid shell here (this one has no bootstrap-tools runtime deps) so stageFun
     # enables patchShebangs above. Unfortunately, patchShebangs ignores our $SHELL setting
@@ -263,7 +263,7 @@ in rec {
       };
     };
   in with prevStage; stageFun 4 prevStage {
-    shell = "${pkgs.bash}/bin/bash";
+    shell = "${stdenv.lib.getShellPath pkgs.bash}";
     extraNativeBuildInputs = with pkgs; [ xz pkgs.bash ];
     extraBuildInputs = with pkgs; [ darwin.CF libcxx ];
     extraPreHook = ''
@@ -321,7 +321,7 @@ in rec {
     extraSandboxProfile  = binShClosure + libSystemProfile;
 
     initialPath = import ../common-path.nix { inherit pkgs; };
-    shell       = "${pkgs.bash}/bin/bash";
+    shell       = "${stdenv.lib.getShellPath pkgs.bash}";
 
     cc = lib.callPackageWith {} ../../build-support/cc-wrapper {
       inherit (pkgs) stdenvNoCC;

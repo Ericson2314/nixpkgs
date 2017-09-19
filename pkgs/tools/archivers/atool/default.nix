@@ -8,7 +8,7 @@ stdenv.mkDerivation rec {
   };
 
   buildInputs = [ perl ];
-  configureScript = "${bash}/bin/bash configure";
+  configureScript = "${stdenv.lib.getShellPath bash} configure";
 
   meta = {
     homepage = http://www.nongnu.org/atool;

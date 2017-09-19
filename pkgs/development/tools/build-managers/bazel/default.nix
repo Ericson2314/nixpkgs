@@ -25,7 +25,7 @@ stdenv.mkDerivation rec {
 
   customBash = writeScriptBin "bash" ''
     #!${stdenv.shell}
-    PATH="$PATH:${lib.makeBinPath [ coreutils ]}" exec ${bash}/bin/bash "$@"
+    PATH="$PATH:${lib.makeBinPath [ coreutils ]}" exec ${stdenv.lib.getShellPath bash} "$@"
   '';
 
   postPatch = ''

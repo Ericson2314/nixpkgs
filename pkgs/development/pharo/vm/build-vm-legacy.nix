@@ -33,7 +33,7 @@ stdenv.mkDerivation rec {
 
     chmod u+w $prefix/bin
     cat > $prefix/bin/pharo-cog <<EOF
-    #!${bash}/bin/bash
+    #!${stdenv.lib.getShellPath bash}
     # disable parameter expansion to forward all arguments unprocessed to the VM
     set -f
     exec $prefix/lib/$name/pharo-vm "\$@"

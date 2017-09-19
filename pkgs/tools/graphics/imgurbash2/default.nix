@@ -14,7 +14,7 @@ stdenv.mkDerivation rec {
   installPhase = ''
     mkdir -p $out/bin
     cat <<EOF >$out/bin/imgurbash2
-    #!${bash}/bin/bash
+    #!${stdenv.lib.getShellPath bash}
     PATH=${stdenv.lib.makeBinPath [curl xsel]}:\$PATH
     EOF
     cat imgurbash2 >> $out/bin/imgurbash2

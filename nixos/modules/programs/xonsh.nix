@@ -53,7 +53,7 @@ in
     environment.shells =
       [ "/run/current-system/sw/bin/xonsh"
         "/var/run/current-system/sw/bin/xonsh"
-        "${pkgs.xonsh}/bin/xonsh"
+        "${lib.getShellPath pkgs.xonsh}"
       ];
 
   };

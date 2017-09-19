@@ -95,7 +95,7 @@ rec {
 
           deps = import (pkgs.runCommand "lhs2tex-includes"
             { src = key; }
-            "${pkgs.stdenv.bash}/bin/bash ${./find-lhs2tex-includes.sh}");
+            "${stdenv.lib.getShellPath pkgs.stdenv.bash} ${./find-lhs2tex-includes.sh}");
 
         in pkgs.lib.concatMap (x: if builtins.pathExists x then [{key = x;}] else [])
                               (map (x: dirOf key + ("/" + x)) deps);

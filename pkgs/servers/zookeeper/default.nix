@@ -25,7 +25,7 @@ stdenv.mkDerivation rec {
     done
     substituteInPlace $out/bin/zkServer.sh \
         --replace /bin/echo ${coreutils}/bin/echo \
-        --replace "/usr/bin/env bash" ${bash}/bin/bash
+        --replace "/usr/bin/env bash" ${stdenv.lib.getShellPath bash}
     chmod -x $out/bin/zkEnv.sh
 
     mkdir -p $out/share/zooinspector

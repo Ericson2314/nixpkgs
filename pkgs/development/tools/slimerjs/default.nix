@@ -34,7 +34,7 @@ stdenv.mkDerivation {
     mkdir -p "$out"/{bin,share/doc/slimerjs,lib/slimerjs}
     cp LICENSE README* "$out/share/doc/slimerjs"
     cp -r * "$out/lib/slimerjs"
-    echo '#!${bash}/bin/bash' >>  "$out/bin/slimerjs"
+    echo '#!${stdenv.lib.getShellPath bash}' >>  "$out/bin/slimerjs"
     echo 'export SLIMERJSLAUNCHER=${firefox}/bin/firefox' >>  "$out/bin/slimerjs"
     echo "'$out/lib/slimerjs/slimerjs' \"\$@\"" >> "$out/bin/slimerjs"
     chmod a+x "$out/bin/slimerjs"

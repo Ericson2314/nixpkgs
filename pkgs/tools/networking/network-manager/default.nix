@@ -58,7 +58,7 @@ stdenv.mkDerivation rec {
     # Upstream prefers dhclient, so don't add dhcpcd to the closure
     "--with-dhcpcd=no"
     "--with-pppd=${ppp}/bin/pppd"
-    "--with-iptables=${iptables}/bin/iptables"
+    "--with-iptables=${stdenv.lib.getShellPath iptables}"
     #"--with-udev-dir=$(out)/lib/udev"
     "--with-resolvconf=${openresolv}/sbin/resolvconf"
     "--sysconfdir=/etc" "--localstatedir=/var"

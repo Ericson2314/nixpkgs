@@ -37,7 +37,7 @@ stdenv.mkDerivation rec {
   # TODO: this correctly catches errors early, but also some things that are just weird and don't seem to be real
   # errors
   #configurePhase = ''
-  #  makeFlagsArray=( SHELL="${bash}/bin/bash -o pipefail" )
+  #  makeFlagsArray=( SHELL="${stdenv.lib.getShellPath bash} -o pipefail" )
   #'';
 
   installPhase = ''

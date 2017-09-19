@@ -14,7 +14,7 @@ buildPythonPackage rec {
 
   postPatch = ''
     substituteInPlace tests/test.t \
-      --replace "/bin/bash" "${bash}/bin/bash"
+      --replace "/bin/bash" "${stdenv.lib.getShellPath bash}"
   '';
 
   # This testing is copied from Makefile. Simply using `make test` doesn't work

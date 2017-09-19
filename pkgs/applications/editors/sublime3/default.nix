@@ -68,7 +68,7 @@ in let
 
       # We can't just call /usr/bin/env bash because a relocation error occurs
       # when trying to run a build from within Sublime Text
-      ln -s ${bash}/bin/bash $out/sublime_bash
+      ln -s ${stdenv.lib.getShellPath bash} $out/sublime_bash
       wrapProgram $out/sublime_bash \
         --set LD_PRELOAD "${stdenv.cc.cc.lib}/lib${stdenv.lib.optionalString stdenv.is64bit "64"}/libgcc_s.so.1"
 

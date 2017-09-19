@@ -403,7 +403,7 @@ in {
       home = "${libDir}";
       createHome = true;
       description = "Bacula Daemons user";
-      shell = "${pkgs.bash}/bin/bash";
+      shell = "${lib.getShellPath pkgs.bash}";
     };
 
     users.extraGroups.bacula.gid = config.ids.gids.bacula;

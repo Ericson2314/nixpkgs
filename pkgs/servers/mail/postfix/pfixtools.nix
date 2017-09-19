@@ -37,7 +37,7 @@ stdenv.mkDerivation {
 
   postPatch = ''
     substituteInPlace postlicyd/policy_tokens.sh \
-                      --replace /bin/bash ${bash}/bin/bash;
+                      --replace /bin/bash ${stdenv.lib.getShellPath bash};
   '';
 
   NIX_CFLAGS_COMPILE = "-Wno-error=unused-result -Wno-error=nonnull-compare";

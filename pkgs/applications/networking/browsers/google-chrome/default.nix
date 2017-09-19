@@ -120,7 +120,7 @@ in stdenv.mkDerivation rec {
     done
 
     cat > $exe << EOF
-    #!${bash}/bin/sh
+    #!${stdenv.lib.getShellPath bash}
     export LD_LIBRARY_PATH=$rpath\''${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}
     export PATH=$binpath\''${PATH:+:\$PATH}
     export XDG_DATA_DIRS=$XDG_ICON_DIRS:$GSETTINGS_SCHEMAS_PATH\''${XDG_DATA_DIRS:+:}\$XDG_DATA_DIRS

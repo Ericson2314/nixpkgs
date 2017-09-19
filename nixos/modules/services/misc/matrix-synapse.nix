@@ -595,7 +595,7 @@ in {
         group = "matrix-synapse";
         home = "/var/lib/matrix-synapse";
         createHome = true;
-        shell = "${pkgs.bash}/bin/bash";
+        shell = "${lib.getShellPath pkgs.bash}";
         uid = config.ids.uids.matrix-synapse;
       } ];
 

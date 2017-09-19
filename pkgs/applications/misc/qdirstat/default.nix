@@ -39,11 +39,11 @@ in stdenv.mkDerivation rec {
     for i in src/Cleanup.cpp src/cleanup-config-page.ui
     do
       substituteInPlace $i \
-        --replace /bin/bash ${bash}/bin/bash \
-        --replace /bin/sh ${bash}/bin/sh
+        --replace /bin/bash ${stdenv.lib.getShellPath bash} \
+        --replace /bin/sh ${stdenv.lib.getShellPath bash}
     done
     substituteInPlace src/StdCleanup.cpp \
-      --replace /bin/bash ${bash}/bin/bash
+      --replace /bin/bash ${stdenv.lib.getShellPath bash}
   '';
 
   postInstall = ''

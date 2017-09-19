@@ -27,7 +27,7 @@ stdenv.mkDerivation rec {
     mkdir -p $out/bin $out/share/java
     cp -v $src $out/share/java/gpsprune.jar
     cat > $out/bin/gpsprune <<EOF
-    #!${bash}/bin/bash
+    #!${stdenv.lib.getShellPath bash}
     exec ${jre8}/bin/java -jar $out/share/java/gpsprune.jar "\$@"
     EOF
     chmod 755 $out/bin/gpsprune

@@ -114,7 +114,7 @@ in
     destination = "/bin/${pname}";
     executable = true;
     text = ''
-      #!${bash}/bin/bash
+      #!${stdenv.lib.getShellPath bash}
       ${fhsEnv}/bin/${pname}-fhs-env ${androidStudio}/bin/studio.sh
     '';
   } // { inherit meta; }

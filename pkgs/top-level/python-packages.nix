@@ -5732,7 +5732,7 @@ in {
 
     buildInputs = [ pkgs.ncurses ];
     patchPhase = ''
-      substituteInPlace setup.py --replace "/bin/bash" "${pkgs.bash}/bin/bash"
+      substituteInPlace setup.py --replace "/bin/bash" "${stdenv.lib.getShellPath pkgs.bash}"
     '';
   };
 

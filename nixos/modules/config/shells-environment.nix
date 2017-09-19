@@ -121,7 +121,7 @@ in
       default = "${config.system.build.binsh}/bin/sh";
       defaultText = "\${config.system.build.binsh}/bin/sh";
       example = literalExample ''
-        "''${pkgs.dash}/bin/dash"
+        "''${lib.getShellPath pkgs.dash}"
       '';
       type = types.path;
       visible = false;

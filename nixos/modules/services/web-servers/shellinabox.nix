@@ -22,7 +22,7 @@ let
   cmd = "${pkgs.shellinabox}/bin/shellinaboxd ${concatStringsSep " " args}";
 
   # Command to start shellinaboxd if certFile is specified
-  wrappedCmd = "${pkgs.bash}/bin/bash -c 'exec ${createFd} && ${cmd}'";
+  wrappedCmd = "${lib.getShellPath pkgs.bash} -c 'exec ${createFd} && ${cmd}'";
 
 in
 

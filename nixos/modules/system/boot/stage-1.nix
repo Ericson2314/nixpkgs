@@ -167,7 +167,7 @@ let
             --replace /sbin/blkid ${extraUtils}/bin/blkid \
             --replace ${pkgs.lvm2}/sbin ${extraUtils}/bin \
             --replace /sbin/mdadm ${extraUtils}/bin/mdadm \
-            --replace ${pkgs.bash}/bin/sh ${extraUtils}/bin/sh \
+            --replace ${lib.getShellPath pkgs.bash} ${extraUtils}/bin/sh \
             --replace /usr/bin/readlink ${extraUtils}/bin/readlink \
             --replace /usr/bin/basename ${extraUtils}/bin/basename \
             --replace ${udev}/bin/udevadm ${extraUtils}/bin/udevadm
@@ -257,7 +257,7 @@ let
   initialRamdiskSecretAppender =
     pkgs.writeScriptBin "append-initrd-secrets"
       ''
-        #!${pkgs.bash}/bin/bash -e
+        #!${lib.getShellPath pkgs.bash} -e
         function usage {
           echo "USAGE: $0 INITRD_FILE" >&2
           echo "Appends this configuration's secrets to INITRD_FILE" >&2

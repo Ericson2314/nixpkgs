@@ -21,7 +21,7 @@ stdenv.mkDerivation rec {
 
   buildPhase = ''
     # manually patch the interpreter
-    sed -i -e "1s|.*|#!${zsh}/bin/zsh|g" tomb
+    sed -i -e "1s|.*|#!${stdenv.lib.getShellPath zsh}|g" tomb
   '';
 
   installPhase = ''

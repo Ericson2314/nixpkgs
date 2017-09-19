@@ -14,7 +14,7 @@ stdenv.mkDerivation rec {
   };
 
   configureFlags = [
-    "--with-bash-path=${pkgs.bash}/bin/bash"
+    "--with-bash-path=${stdenv.lib.getShellPath pkgs.bash}"
   ];
 
   preConfigure = ''

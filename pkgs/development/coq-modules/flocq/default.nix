@@ -14,8 +14,8 @@ stdenv.mkDerivation rec {
   propagatedBuildInputs = [ coq ];
 
   buildPhase = ''
-    ${bash}/bin/bash autogen.sh
-    ${bash}/bin/bash configure --libdir=$out/lib/coq/${coq.coq-version}/user-contrib/Flocq
+    ${stdenv.lib.getShellPath bash} autogen.sh
+    ${stdenv.lib.getShellPath bash} configure --libdir=$out/lib/coq/${coq.coq-version}/user-contrib/Flocq
     ./remake
   '';
 

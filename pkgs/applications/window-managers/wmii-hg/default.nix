@@ -19,13 +19,13 @@ stdenv.mkDerivation rec {
 
   configurePhase = ''
     for file in $(grep -lr '#!.*sh'); do
-      sed -i 's|#!.*sh|#!${dash}/bin/dash|' $file
+      sed -i 's|#!.*sh|#!${stdenv.lib.getShellPath dash}|' $file
     done
 
     cat <<EOF >> config.mk
     PREFIX = $out
     LIBIXP = ${libixp_hg}/lib/libixp.a
-    BINSH = ${dash}/bin/dash
+    BINSH = ${stdenv.lib.getShellPath dash}
     EOF
   '';
 

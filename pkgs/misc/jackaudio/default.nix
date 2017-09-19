@@ -39,7 +39,7 @@ stdenv.mkDerivation rec {
   ];
 
   patchPhase = ''
-    substituteInPlace svnversion_regenerate.sh --replace /bin/bash ${bash}/bin/bash
+    substituteInPlace svnversion_regenerate.sh --replace /bin/bash ${stdenv.lib.getShellPath bash}
   '';
 
   configurePhase = ''

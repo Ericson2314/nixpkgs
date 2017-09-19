@@ -139,7 +139,7 @@ in
     systemd.services.sa-update = {
       script = ''
         set +e 
-        ${pkgs.su}/bin/su -s "${pkgs.bash}/bin/bash" -c "${pkgs.spamassassin}/bin/sa-update --gpghomedir=/var/lib/spamassassin/sa-update-keys/ --siteconfigpath=${spamdEnv}/" spamd
+        ${pkgs.su}/bin/su -s "${lib.getShellPath pkgs.bash}" -c "${pkgs.spamassassin}/bin/sa-update --gpghomedir=/var/lib/spamassassin/sa-update-keys/ --siteconfigpath=${spamdEnv}/" spamd
 
         v=$?
         set -e
@@ -186,7 +186,7 @@ in
         mkdir -p /var/lib/spamassassin
         chown spamd:spamd /var/lib/spamassassin -R
         set +e 
-        ${pkgs.su}/bin/su -s "${pkgs.bash}/bin/bash" -c "${pkgs.spamassassin}/bin/sa-update --gpghomedir=/var/lib/spamassassin/sa-update-keys/ --siteconfigpath=${spamdEnv}/" spamd
+        ${pkgs.su}/bin/su -s "${lib.getShellPath pkgs.bash}" -c "${pkgs.spamassassin}/bin/sa-update --gpghomedir=/var/lib/spamassassin/sa-update-keys/ --siteconfigpath=${spamdEnv}/" spamd
         v=$?
         set -e
         if [ $v -gt 1 ]; then

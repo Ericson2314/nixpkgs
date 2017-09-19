@@ -165,7 +165,7 @@ in {
       group = "almir";
       uid = config.ids.uids.almir;
       createHome = true;
-      shell = "${pkgs.bash}/bin/bash";
+      shell = "${lib.getShellPath pkgs.bash}";
     };
 
     users.extraGroups.almir.gid = config.ids.gids.almir;

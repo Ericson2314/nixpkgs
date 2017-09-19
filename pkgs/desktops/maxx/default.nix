@@ -39,7 +39,7 @@ in stdenv.mkDerivation {
     done < <(find "." -type f -exec grep -Iq /opt/MaXX {} \; -and -print0)
 
     substituteInPlace bin/adminterm \
-      --replace /bin/bash ${bash}/bin/bash
+      --replace /bin/bash ${stdenv.lib.getShellPath bash}
 
     substituteInPlace share/misc/HOME/initMaXX-Desktop-Home.sh \
       --replace "cp " "cp --no-preserve=mode "

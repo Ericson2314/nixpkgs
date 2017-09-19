@@ -21,7 +21,7 @@ stdenv.mkDerivation rec {
   postPatch = ''
     substituteInPlace wscript           --replace /usr/share/            "\''${PREFIX}/share/"
     substituteInPlace src/dockbarx.vala --replace /usr/share/            $out/share/
-    substituteInPlace src/dockbarx.vala --replace '/usr/bin/env python2' ${bash}/bin/bash
+    substituteInPlace src/dockbarx.vala --replace '/usr/bin/env python2' ${stdenv.lib.getShellPath bash}
   '';
 
   configurePhase = "python waf configure --prefix=$out";

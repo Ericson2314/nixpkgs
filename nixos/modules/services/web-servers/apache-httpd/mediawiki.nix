@@ -109,7 +109,7 @@ let
         cp -r * $out
         cp ${mediawikiConfig} $out/LocalSettings.php
         sed -i \
-        -e 's|/bin/bash|${pkgs.bash}/bin/bash|g' \
+        -e 's|/bin/bash|${lib.getShellPath pkgs.bash}|g' \
         -e 's|/usr/bin/timeout|${pkgs.coreutils}/bin/timeout|g' \
           $out/includes/limit.sh \
           $out/includes/GlobalFunctions.php

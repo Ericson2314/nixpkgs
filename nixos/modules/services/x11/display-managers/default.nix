@@ -30,7 +30,7 @@ let
   # file provided by services.xserver.displayManager.session.script
   xsession = wm: dm: pkgs.writeScript "xsession"
     ''
-      #! ${pkgs.bash}/bin/bash
+      #! ${lib.getShellPath pkgs.bash}
 
       # Expected parameters:
       #   $1 = <desktop-manager>+<window-manager>

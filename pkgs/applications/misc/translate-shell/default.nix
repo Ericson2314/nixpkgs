@@ -42,15 +42,15 @@ stdenv.mkDerivation rec {
   '';
 
   postFixup = ''
-    substituteInPlace $out/bin/trans --replace "/bin/sh" "${bash}/bin/bash"
+    substituteInPlace $out/bin/trans --replace "/bin/sh" "${stdenv.lib.getShellPath bash}"
     substituteInPlace $out/bin/trans --replace "gawk " "${gawk}/bin/gawk "
     substituteInPlace $out/bin/trans --replace "translate.awk" "$out/share/translate.awk"
 
-    substituteInPlace $out/bin/translate --replace "/bin/sh" "${bash}/bin/bash"
+    substituteInPlace $out/bin/translate --replace "/bin/sh" "${stdenv.lib.getShellPath bash}"
     substituteInPlace $out/bin/translate --replace "gawk " "${gawk}/bin/gawk "
     substituteInPlace $out/bin/translate --replace "translate.awk" "$out/share/translate.awk"
 
-    substituteInPlace $out/bin/translate-shell --replace "/bin/sh" "${bash}/bin/bash"
+    substituteInPlace $out/bin/translate-shell --replace "/bin/sh" "${stdenv.lib.getShellPath bash}"
     substituteInPlace $out/bin/translate-shell --replace "gawk " "${gawk}/bin/gawk "
     substituteInPlace $out/bin/translate-shell --replace "translate.awk" "$out/share/translate.awk"
 

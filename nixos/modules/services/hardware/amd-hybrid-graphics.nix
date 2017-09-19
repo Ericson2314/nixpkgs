@@ -30,8 +30,8 @@
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
-        ExecStart = "${pkgs.bash}/bin/sh -c 'echo -e \"IGD\\nOFF\" > /sys/kernel/debug/vgaswitcheroo/switch'";
-        ExecStop = "${pkgs.bash}/bin/sh -c 'echo ON >/sys/kernel/debug/vgaswitcheroo/switch'";
+        ExecStart = "${lib.getShellPath pkgs.bash} -c 'echo -e \"IGD\\nOFF\" > /sys/kernel/debug/vgaswitcheroo/switch'";
+        ExecStop = "${lib.getShellPath pkgs.bash} -c 'echo ON >/sys/kernel/debug/vgaswitcheroo/switch'";
       };
     };
     systemd.paths."vgaswitcheroo" = {

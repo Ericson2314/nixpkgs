@@ -102,7 +102,7 @@ stdenv.mkDerivation rec {
 
     mkdir $topdir/dirtyhacks
     cat <<EOF > $topdir/dirtyhacks/clang
-    #!${bash}/bin/bash
+    #!${stdenv.lib.getShellPath bash}
     $(type -P clang) "\$@" 2> >(sed '/ld: warning:.*ignoring unexpected dylib file/ d' 1>&2)
     exit $?
     EOF

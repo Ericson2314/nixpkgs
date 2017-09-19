@@ -41,7 +41,7 @@ stdenv.mkDerivation rec {
   postPatch = ''
     find test -type f -exec \
       sed -i \
-        -e "1s|#!/usr/bin/env bash|#!${bash}/bin/bash|" \
+        -e "1s|#!/usr/bin/env bash|#!${stdenv.lib.getShellPath bash}|" \
         -e "s|gpg |${gnupg}/bin/gpg |" \
         -e "s| gpg| ${gnupg}/bin/gpg|" \
         -e "s|gpgsm |${gnupg}/bin/gpgsm |" \

@@ -44,7 +44,7 @@ stdenv.mkDerivation rec {
     cp -fa bin lib etc doc $out/
 
     cat > $out/bin/gxi <<EOF
-#!${bash}/bin/bash -e
+#!${stdenv.lib.getShellPath bash} -e
 export GERBIL_HOME=$out
 case "\$1" in -:*) GSIOPTIONS=\$1 ; shift ;; esac
 if [[ \$# = 0 ]] ; then

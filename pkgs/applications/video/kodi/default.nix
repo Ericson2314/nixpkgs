@@ -100,7 +100,7 @@ in stdenv.mkDerivation rec {
       substituteInPlace xbmc/linux/LinuxTimezone.cpp \
         --replace 'usr/share/zoneinfo' 'etc/zoneinfo'
       substituteInPlace tools/depends/target/ffmpeg/autobuild.sh \
-        --replace "/bin/bash" "${bash}/bin/bash -ex"
+        --replace "/bin/bash" "${stdenv.lib.getShellPath bash} -ex"
       cp ${ffmpeg_3_1_6} tools/depends/target/ffmpeg/ffmpeg-3.1.6-${rel}.tar.gz
       ln -s ${libdvdcss.src} tools/depends/target/libdvdcss/libdvdcss-master.tar.gz
       cp ${libdvdnav_src} tools/depends/target/libdvdnav/libdvdnav-master.tar.gz

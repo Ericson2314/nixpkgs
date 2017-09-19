@@ -24,7 +24,7 @@ runCommand "${openjdk.name}-bootstrap.tar.xz" {} ''
   rm -rf openjdk-bootstrap/lib/openjdk/jre/bin
 
   # Remove all of the references to the native nix store
-  find openjdk-bootstrap -print0 | xargs -0 ${nukeReferences}/bin/nuke-refs
+  find openjdk-bootstrap -print0 | xargs -0 ${stdenv.lib.getShellPath nukeReferences}
 
   # Create the output tarball
   tar cv openjdk-bootstrap | xz > $out

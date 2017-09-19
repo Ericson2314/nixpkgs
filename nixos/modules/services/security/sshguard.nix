@@ -109,13 +109,13 @@ in {
           mkdir -p /var/lib/sshguard
           ${pkgs.ipset}/bin/ipset -quiet create -exist sshguard4 hash:ip family inet
           ${pkgs.ipset}/bin/ipset -quiet create -exist sshguard6 hash:ip family inet6
-          ${pkgs.iptables}/bin/iptables -I INPUT -m set --match-set sshguard4 src -j DROP
-          ${pkgs.iptables}/bin/ip6tables -I INPUT -m set --match-set sshguard6 src -j DROP
+          ${lib.getShellPath pkgs.iptables} -I INPUT -m set --match-set sshguard4 src -j DROP
+          ${lib.getShellPath pkgs.iptables}6tables -I INPUT -m set --match-set sshguard6 src -j DROP
         '';
 
         preStop = ''
-          ${pkgs.iptables}/bin/iptables -D INPUT -m set --match-set sshguard4 src -j DROP
-          ${pkgs.iptables}/bin/ip6tables -D INPUT -m set --match-set sshguard6 src -j DROP
+          ${lib.getShellPath pkgs.iptables} -D INPUT -m set --match-set sshguard4 src -j DROP
+          ${lib.getShellPath pkgs.iptables}6tables -D INPUT -m set --match-set sshguard6 src -j DROP
         '';
 
         unitConfig.Documentation = "man:sshguard(8)";

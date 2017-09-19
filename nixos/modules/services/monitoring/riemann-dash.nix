@@ -15,7 +15,7 @@ let
 
   launcher = writeScriptBin "riemann-dash" ''
     #!/bin/sh
-    exec ${pkgs.riemann-dash}/bin/riemann-dash ${conf}
+    exec ${lib.getShellPath pkgs.riemann-dash} ${conf}
   '';
 
 in {

@@ -14,7 +14,7 @@ stdenv.mkDerivation rec {
   patches = [ ./pex-mtime.patch ];
 
   postPatch = ''
-    grep -l -r '/bin/bash' --null | xargs -0 sed -i -e "s!/bin/bash!${bash}/bin/bash!g"
+    grep -l -r '/bin/bash' --null | xargs -0 sed -i -e "s!/bin/bash!${stdenv.lib.getShellPath bash}!g"
   '';
 
   buildInputs = [ jdk ant python2 watchman python2Packages.pywatchman ];

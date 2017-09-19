@@ -34,7 +34,7 @@ stdenv.mkDerivation rec {
     find $out/share -type f -exec sed -i 's|/usr/share/cura|$out/share/cura|g' "{}" \;
 
     cat <<EOT > $out/bin/cura
-    #!${bash}/bin/bash
+    #!${stdenv.lib.getShellPath bash}
     PYTHONPATH=$PYTHONPATH:$out/share/cura ${py.python}/bin/python $out/share/cura/cura.py "\$@"
     EOT
 

@@ -457,7 +457,7 @@ in {
       { name = cfg.user;
         group = cfg.group;
         home = "${cfg.statePath}/home";
-        shell = "${pkgs.bash}/bin/bash";
+        shell = "${lib.getShellPath pkgs.bash}";
         uid = config.ids.uids.gitlab;
       }
     ];

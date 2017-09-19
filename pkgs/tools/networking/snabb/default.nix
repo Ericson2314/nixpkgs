@@ -18,7 +18,7 @@ stdenv.mkDerivation rec {
 
     # some hardcodeism
     for f in $(find src/program/snabbnfv/ -type f); do
-      substituteInPlace $f --replace "/bin/bash" "${bash}/bin/bash"
+      substituteInPlace $f --replace "/bin/bash" "${stdenv.lib.getShellPath bash}"
     done
 
     # We need a way to pass $PATH to the scripts

@@ -15,7 +15,7 @@ stdenv.mkDerivation rec {
     mkdir -p $out/bin
     cp -r * $out
     cat > $out/bin/nb << EOF 
-    #!${bash}/bin/bash
+    #!${stdenv.lib.getShellPath bash}
     $out/nb "\$@"
     EOF
     chmod 755 $out/bin/nb

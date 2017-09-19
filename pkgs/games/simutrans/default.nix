@@ -99,7 +99,7 @@ let
       cat > "$out/bin/simutrans" <<EOF
       #!${stdenv.shell}
       cd "$out"/share/simutrans
-      exec "${binaries}/bin/simutrans" -use_workdir "\''${extraFlagsArray[@]}" "\$@"
+      exec "${stdenv.lib.getShellPath binaries}" -use_workdir "\''${extraFlagsArray[@]}" "\$@"
       EOF
       chmod +x "$out/bin/simutrans"
     '';

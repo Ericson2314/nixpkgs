@@ -15,7 +15,7 @@ buildPythonPackage rec {
 
   postPatch = ''
     substituteInPlace pytest_cram/tests/test_options.py \
-      --replace "/bin/bash" "${bash}/bin/bash"
+      --replace "/bin/bash" "${stdenv.lib.getShellPath bash}"
   '';
 
   # Remove __init__.py from tests folder, otherwise pytest raises an error that

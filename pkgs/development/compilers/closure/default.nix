@@ -17,7 +17,7 @@ stdenv.mkDerivation rec {
     mkdir -p $out/share/java $out/bin
     tar -xzf $src
     cp -r closure-compiler-v${version}.jar $out/share/java/
-    echo "#!${bash}/bin/bash" > $out/bin/closure-compiler
+    echo "#!${stdenv.lib.getShellPath bash}" > $out/bin/closure-compiler
     echo "${jre}/bin/java -jar $out/share/java/closure-compiler-v${version}.jar \"\$@\"" >> $out/bin/closure-compiler
     chmod +x $out/bin/closure-compiler
   '';

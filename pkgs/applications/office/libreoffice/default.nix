@@ -142,7 +142,7 @@ in stdenv.mkDerivation rec {
     sed -z -r -e 's/DECLARE_OOXMLEXPORT_TEST[(]testTDF87348,[^)]*[)].[{]/& return;/' -i sw/qa/extras/ooxmlexport/ooxmlexport7.cxx
   '';
 
-  makeFlags = "SHELL=${bash}/bin/bash";
+  makeFlags = "SHELL=${stdenv.lib.getShellPath bash}";
 
   enableParallelBuilding = true;
 

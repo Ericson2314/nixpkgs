@@ -16,7 +16,7 @@ stdenv.mkDerivation rec {
     sed -ie '1 s_$_ -include ${glibc.dev}/include/errno.h_' src/conf-cc
 
     substituteInPlace src/Makefile \
-      --replace '/bin/sh' '${bash}/bin/bash -oxtrace'
+      --replace '/bin/sh' '${stdenv.lib.getShellPath bash} -oxtrace'
 
     sed -ie "s_^PATH=.*_PATH=$src/${name}/compile:''${PATH}_" src/rts.tests
 

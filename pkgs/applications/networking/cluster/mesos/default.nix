@@ -75,7 +75,7 @@ in stdenv.mkDerivation rec {
                 "${pythonProtobuf.protobuf}/lib/libprotobuf.so"
 
     substituteInPlace 3rdparty/stout/include/stout/os/posix/fork.hpp \
-      --subst-var-by sh ${bash}/bin/bash
+      --subst-var-by sh ${stdenv.lib.getShellPath bash}
 
     substituteInPlace 3rdparty/stout/include/stout/posix/os.hpp \
       --subst-var-by tar ${tarWithGzip}/bin/tar
@@ -151,7 +151,7 @@ in stdenv.mkDerivation rec {
       --subst-var-by mount ${utillinux}/bin/mount
 
     substituteInPlace src/slave/containerizer/mesos/isolators/network/cni/plugins/port_mapper/port_mapper.cpp \
-      --subst-var-by iptables ${iptables}/bin/iptables
+      --subst-var-by iptables ${stdenv.lib.getShellPath iptables}
 
     substituteInPlace src/slave/containerizer/mesos/isolators/network/port_mapping.cpp \
       --subst-var-by ethtool ${ethtool}/sbin/ethtool \

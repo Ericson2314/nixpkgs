@@ -18,7 +18,7 @@ stdenv.mkDerivation rec {
   ];
 
   buildPhase = ''
-    ${bash}/bin/bash ./update-locale.sh
+    ${stdenv.lib.getShellPath bash} ./update-locale.sh
     ${glib.dev}/bin/glib-compile-schemas --strict --targetdir=caffeine@patapon.info/schemas/ caffeine@patapon.info/schemas
   '';
 

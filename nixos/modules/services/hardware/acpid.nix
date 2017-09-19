@@ -31,7 +31,7 @@ let
           ''
             fn=$out/${name}
             echo "event=${handler.event}" > $fn
-            echo "action=${pkgs.writeScript "${name}.sh" (concatStringsSep "\n" [ "#! ${pkgs.bash}/bin/sh" handler.action ])}" >> $fn
+            echo "action=${pkgs.writeScript "${name}.sh" (concatStringsSep "\n" [ "#! ${lib.getShellPath pkgs.bash}" handler.action ])}" >> $fn
           '';
         in concatStringsSep "\n" (mapAttrsToList f (canonicalHandlers // config.services.acpid.handlers))
       }

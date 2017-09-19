@@ -36,7 +36,7 @@ stdenv.mkDerivation rec {
     cp "${desktopItem}/share/applications/"* $out/share/applications
 
     cat > $prefix/bin/${executable-name} <<EOF
-    #!${bash}/bin/bash
+    #!${stdenv.lib.getShellPath bash}
     exec "${pharo}/bin/pharo" $prefix/share/pharo-launcher/pharo-launcher.image
     EOF
     chmod +x $prefix/bin/${executable-name}

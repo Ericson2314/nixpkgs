@@ -23,7 +23,7 @@ stdenv.mkDerivation {
 
   preConfigure = ''
     find . -name '*.sh' -exec sed -e 's@#!/bin/sh@${stdenv.shell}@' -i '{}' ';'
-    find . -name '*.sh' -exec sed -e 's@#!/bin/bash@${bash}/bin/bash@' -i '{}' ';'
+    find . -name '*.sh' -exec sed -e 's@#!/bin/bash@${stdenv.lib.getShellPath bash}@' -i '{}' ';'
     cmakeFlagsArray=("-DCMAKE_BUILD_TYPE=" "-DCMAKE_C_FLAGS=${compileFlags}");
   '';
 

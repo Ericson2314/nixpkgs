@@ -11,7 +11,7 @@ stdenv.mkDerivation rec {
   inherit (import ./src.nix fetchurl) name src;
 
   preCheck = ''
-    substituteInPlace tests/libgitg/test-commit.c --replace "/bin/bash" "${bash}/bin/bash"
+    substituteInPlace tests/libgitg/test-commit.c --replace "/bin/bash" "${stdenv.lib.getShellPath bash}"
   '';
   doCheck = true;
 

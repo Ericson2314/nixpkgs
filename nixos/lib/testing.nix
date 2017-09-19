@@ -165,7 +165,7 @@ rec {
         startAll;
         $client->waitForUnit("multi-user.target");
         ${preBuild}
-        $client->succeed("env -i ${bash}/bin/bash ${buildrunner} /tmp/xchg/saved-env >&2");
+        $client->succeed("env -i ${lib.getShellPath bash} ${buildrunner} /tmp/xchg/saved-env >&2");
         ${postBuild}
         $client->succeed("sync"); # flush all data before pulling the plug
       '';
@@ -194,7 +194,7 @@ rec {
     in
       lib.overrideDerivation drv (attrs: {
         requiredSystemFeatures = [ "kvm" ];
-        builder = "${bash}/bin/sh";
+        builder = "${lib.getShellPath bash}";
         args = ["-e" vmRunCommand];
         origArgs = attrs.args;
         origBuilder = attrs.builder;

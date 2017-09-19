@@ -14,7 +14,7 @@ let
   # lightdm runs with clearenv(), but we need a few things in the enviornment for X to startup
   xserverWrapper = writeScript "xserver-wrapper"
     ''
-      #! ${pkgs.bash}/bin/bash
+      #! ${lib.getShellPath pkgs.bash}
       ${concatMapStrings (n: "export ${n}=\"${getAttr n xEnv}\"\n") (attrNames xEnv)}
 
       display=$(echo "$@" | xargs -n 1 | grep -P ^:\\d\$ | head -n 1 | sed s/^://)

@@ -26,7 +26,7 @@ stdenv.mkDerivation rec {
     substituteInPlace util/gdb-add-symbol-file \
       --replace /bin/bash ${stdenv.shell}
     substituteInPlace test/autotest.py \
-      --replace /bin/bash ${bash}/bin/bash \
+      --replace /bin/bash ${stdenv.lib.getShellPath bash} \
       --replace /usr/bin/perl ${perl}/bin/perl \
       --replace /usr/bin/python ${python}/bin/python \
       --replace "os.environ['USER']" "\"nixbld1\"" \

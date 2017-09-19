@@ -15,7 +15,7 @@ stdenv.mkDerivation rec {
     mkdir -p $out/share/fish-foreign-env/functions/
     cp functions/* $out/share/fish-foreign-env/functions/
     sed -e "s|sed|${gnused}/bin/sed|" \
-        -e "s|bash|${bash}/bin/bash|" \
+        -e "s|bash|${stdenv.lib.getShellPath bash}|" \
         -e "s|\| tr|\| ${coreutils}/bin/tr|" \
         -i $out/share/fish-foreign-env/functions/*
   '';

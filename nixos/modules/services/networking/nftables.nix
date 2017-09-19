@@ -111,7 +111,7 @@ in
       reloadIfChanged = true;
       serviceConfig = let
         rulesScript = pkgs.writeScript "nftables-rules" ''
-          #! ${pkgs.nftables}/bin/nft -f
+          #! ${lib.getShellPath pkgs.nftables} -f
           flush ruleset
           include "${cfg.rulesetFile}"
         '';
@@ -129,7 +129,7 @@ in
         RemainAfterExit = true;
         ExecStart = checkScript;
         ExecReload = checkScript;
-        ExecStop = "${pkgs.nftables}/bin/nft flush ruleset";
+        ExecStop = "${lib.getShellPath pkgs.nftables} flush ruleset";
       };
     };
   };

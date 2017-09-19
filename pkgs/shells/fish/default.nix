@@ -192,7 +192,7 @@ let
       '';
       in ''
         HOME=$(mktemp -d)
-        ${fish}/bin/fish ${fishScript}
+        ${stdenv.lib.getShellPath fish} ${fishScript}
       '';
   };
 

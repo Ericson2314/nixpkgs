@@ -27,7 +27,7 @@ stdenv.mkDerivation rec {
     substituteInPlace far2l/bootstrap/open.sh              \
       --replace 'xdg-open'    '${xdg_utils}/bin/xdg-open'
     substituteInPlace far2l/vtcompletor.cpp                \
-      --replace '"/bin/bash"' '"${bash}/bin/bash"'
+      --replace '"/bin/bash"' '"${stdenv.lib.getShellPath bash}"'
     substituteInPlace multiarc/src/formats/zip/zip.cpp     \
       --replace '"unzip '     '"${unzip}/bin/unzip '       \
       --replace '"zip '       '"${zip}/bin/zip '

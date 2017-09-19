@@ -14,7 +14,7 @@ stdenv.mkDerivation rec {
   patchPhase = ''
     substituteInPlace Makefile --replace "/usr/local" "$out"
     substituteInPlace Makefile --replace "mhash; ./configure" "mhash; ./configure --prefix=$out"
-    substituteInPlace udis86/autogen.sh --replace "/bin/bash" "${bash}/bin/bash"
+    substituteInPlace udis86/autogen.sh --replace "/bin/bash" "${stdenv.lib.getShellPath bash}"
   '';
 
   buildPhase = ''

@@ -15,7 +15,7 @@ stdenv.mkDerivation rec {
 
   preConfigure = ''
     #patchShebangs javac.in
-    configureFlagsArray+=("BIN_BASH=${bash}/bin/bash")
+    configureFlagsArray+=("BIN_BASH=${stdenv.lib.getShellPath bash}")
   '';
 
   configureFlags = [

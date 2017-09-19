@@ -102,7 +102,7 @@ in
 
       script = ''
         cd /var/felix
-        ${pkgs.su}/bin/su -s ${pkgs.bash}/bin/sh ${cfg.user} -c '${pkgs.jre}/bin/java -jar bin/felix.jar'
+        ${pkgs.su}/bin/su -s ${lib.getShellPath pkgs.bash} ${cfg.user} -c '${pkgs.jre}/bin/java -jar bin/felix.jar'
       '';
     };
   };

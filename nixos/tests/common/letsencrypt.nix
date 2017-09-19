@@ -405,7 +405,7 @@ in {
         serviceConfig.RemainAfterExit = true;
         serviceConfig.WorkingDirectory = boulderSource;
         path = commonPath;
-        script = "${pkgs.bash}/bin/sh test/create_db.sh";
+        script = "${lib.getShellPath pkgs.bash} test/create_db.sh";
       };
 
       boulder-init-softhsm = {

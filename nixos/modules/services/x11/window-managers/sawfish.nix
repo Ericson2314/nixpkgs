@@ -16,7 +16,7 @@ in
     services.xserver.windowManager.session = singleton {
       name = "sawfish";
       start = ''
-        ${pkgs.sawfish}/bin/sawfish &
+        ${lib.getShellPath pkgs.sawfish} &
         waitPID=$!
       '';
     };

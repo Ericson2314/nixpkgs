@@ -166,7 +166,7 @@ rec {
 
 
   stage2Init = writeScript "vm-run-stage2" ''
-    #! ${bash}/bin/sh
+    #! ${stdenv.lib.getShellPath bash}
     source /tmp/xchg/saved-env
 
     # Set the system time from the hardware clock.  Works around an
@@ -182,7 +182,7 @@ rec {
 
     if ! test -e /bin/sh; then
       ${coreutils}/bin/mkdir -p /bin
-      ${coreutils}/bin/ln -s ${bash}/bin/sh /bin/sh
+      ${coreutils}/bin/ln -s ${stdenv.lib.getShellPath bash} /bin/sh
     fi
 
     # Set up automatic kernel module loading.
@@ -254,7 +254,7 @@ rec {
     # debug inside the VM if the build fails (when Nix is called with
     # the -K option to preserve the temporary build directory).
     cat > ./run-vm <<EOF
-    #! ${bash}/bin/sh
+    #! ${stdenv.lib.getShellPath bash}
     diskImage=$diskImage
     TMPDIR=$TMPDIR
     cd $TMPDIR
@@ -296,7 +296,7 @@ rec {
     ${utillinux}/bin/mount -t ext4 /dev/${hd} /mnt
 
     if test -e /mnt/.debug; then
-      exec ${bash}/bin/sh
+      exec ${stdenv.lib.getShellPath bash}
     fi
     touch /mnt/.debug
 
@@ -328,7 +328,7 @@ rec {
 
   runInLinuxVM = drv: lib.overrideDerivation drv ({ memSize ? 512, QEMU_OPTS ? "", args, builder, ... }: {
     requiredSystemFeatures = [ "kvm" ];
-    builder = "${bash}/bin/sh";
+    builder = "${stdenv.lib.getShellPath bash}";
     args = ["-e" (vmRunCommand qemuCommandLinux)];
     origArgs = args;
     origBuilder = builder;
@@ -495,7 +495,7 @@ rec {
      in the given image. */
 
   makeImageTestScript = image: writeScript "image-test" ''
-    #! ${bash}/bin/sh
+    #! ${stdenv.lib.getShellPath bash}
     if test -z "$1"; then
       echo "Syntax: $0 <copy-on-write-temp-file>"
       exit 1

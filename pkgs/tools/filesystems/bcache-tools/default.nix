@@ -29,7 +29,7 @@ stdenv.mkDerivation rec {
 
   preBuild = ''
     export makeFlags="$makeFlags PREFIX=\"$out\" UDEVLIBDIR=\"$out/lib/udev/\"";
-    sed -e "s|/bin/sh|${bash}/bin/sh|" -i *.rules
+    sed -e "s|/bin/sh|${stdenv.lib.getShellPath bash}|" -i *.rules
   '';
 
   preInstall = ''

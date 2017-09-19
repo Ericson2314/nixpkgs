@@ -18,7 +18,7 @@ stdenv.mkDerivation rec {
   ];
 
   preConfigure = ''
-    find . -name '*.sh' -exec sed -e 's@#!/bin/bash@${bash}/bin/bash@' -i '{}' ';'
+    find . -name '*.sh' -exec sed -e 's@#!/bin/bash@${stdenv.lib.getShellPath bash}@' -i '{}' ';'
     sed -i 's@/usr@${libcangjie}@' tests/__init__.py
   '';
 

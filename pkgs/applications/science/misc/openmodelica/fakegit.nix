@@ -4,7 +4,7 @@ let
   mkscript = path : text : ''
     mkdir -pv `dirname ${path}`
     cat > ${path} <<"EOF"
-    #!${bash}/bin/bash
+    #!${stdenv.lib.getShellPath bash}
     ME=`basename ${path}`
     ${text}
     EOF

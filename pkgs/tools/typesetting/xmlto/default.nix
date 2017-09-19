@@ -11,7 +11,7 @@ stdenv.mkDerivation rec {
 
   patchPhase = ''
     substituteInPlace "xmlto.in" \
-      --replace "/bin/bash" "${bash}/bin/bash"
+      --replace "/bin/bash" "${stdenv.lib.getShellPath bash}"
     substituteInPlace "xmlto.in" \
       --replace "/usr/bin/locale" "$(type -P locale)"
     substituteInPlace "xmlto.in" \

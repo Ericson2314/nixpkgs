@@ -31,7 +31,7 @@ in stdenv.mkDerivation rec {
       --moz-plugin-path=$out/${mozillaPluginPath} \
       --wine-path=${wine_custom} \
       --gpg-exec=${gnupg}/bin/gpg \
-      --bash-interp=${bash}/bin/bash \
+      --bash-interp=${stdenv.lib.getShellPath bash} \
       --downloader=${curl.bin}/bin/curl
       $configureFlags
   '';

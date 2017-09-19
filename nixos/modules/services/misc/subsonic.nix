@@ -138,7 +138,7 @@ let cfg = config.services.subsonic; in {
         # Install transcoders.
         ${pkgs.coreutils}/bin/rm -rf ${cfg.home}/transcode ; \
         ${pkgs.coreutils}/bin/mkdir -p ${cfg.home}/transcode ; \
-        ${pkgs.bash}/bin/bash -c ' \
+        ${lib.getShellPath pkgs.bash} -c ' \
           for exe in "$@"; do \
             ${pkgs.coreutils}/bin/ln -sf "$exe" ${cfg.home}/transcode; \
           done' IGNORED_FIRST_ARG ${toString cfg.transcoders}

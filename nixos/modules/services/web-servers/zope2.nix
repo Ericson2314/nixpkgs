@@ -221,7 +221,7 @@ in
 
             ctl = pkgs.writeScript "zope2-${name}-ctl"
               ''
-              #!${pkgs.bash}/bin/bash -e
+              #!${lib.getShellPath pkgs.bash} -e
               export PYTHONHOME=${env}
               exec ${ctlScript} "$@"
               '';

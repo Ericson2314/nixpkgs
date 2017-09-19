@@ -12,7 +12,7 @@ stdenv.mkDerivation rec {
   dontPatchShebangs = true;
   buildInputs = [ which ];
   patchPhase = ''
-    sed -i -e 's|/bin/bash|${bash}/bin/bash|g' install.sh
+    sed -i -e 's|/bin/bash|${stdenv.lib.getShellPath bash}|g' install.sh
     sed -i -e 's|font_dir="\$HOME/.local/share/fonts|font_dir="$out/share/fonts/truetype|g' install.sh
   '';
   installPhase = ''

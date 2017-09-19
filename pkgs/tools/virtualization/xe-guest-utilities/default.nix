@@ -52,10 +52,10 @@ stdenv.mkDerivation (rec {
     substituteInPlace "$out/bin/xe-daemon" --replace /usr/ "$out/"
     substituteInPlace "$out/bin/xe-update-guest-attrs" --replace /usr/ "$out/"
     substituteInPlace "$out/bin/xe-update-guest-attrs" --replace 'export PATH=' 'export PATH=$PATH:'
-    substituteInPlace "$out/lib/udev/rules.d/10-xen-vcpu-hotplug.rules" --replace /bin/sh '${bash}/bin/sh'
+    substituteInPlace "$out/lib/udev/rules.d/10-xen-vcpu-hotplug.rules" --replace /bin/sh '${stdenv.lib.getShellPath bash}'
 
     cat <<'EOS' >"$out/bin/xe-linux-distribution"
-    #!${bash}/bin/bash -eu
+    #!${stdenv.lib.getShellPath bash} -eu
     . /etc/os-release
     if [[ $# -gt 0 ]]; then
       mkdir -p "$(dirname "$1")"

@@ -17,7 +17,7 @@ buildGoPackage rec {
   '';
 
   buildPhase = ''
-    make BASH_PATH=${bash}/bin/bash
+    make BASH_PATH=${stdenv.lib.getShellPath bash}
   '';
 
   installPhase = ''
