@@ -4,7 +4,7 @@
 let
   inherit (builtins) head tail length;
   inherit (lib.trivial) and or;
-  inherit (lib.strings) concatStringsSep;
+  inherit (lib.strings) concatStringsSep optionalString;
   inherit (lib.lists) fold concatMap concatLists all deepSeqList;
 in
 
@@ -455,6 +455,14 @@ rec {
   getBin = getOutput "bin";
   getLib = getOutput "lib";
   getDev = getOutput "dev";
+
+  /* Get the path to a shell.
+
+     If the input has a `shellPath` attribute, append it to it's bin output
+     path. Otherwise pass it as is.
+  */
+  getShellPath = shell:
+    getBin shell + optionalString (shell ? shellPath) shell.shellPath;
 
   /* Pick the outputs of packages to place in buildInputs */
   chooseDevOutputs = drvs: builtins.map getDev drvs;
