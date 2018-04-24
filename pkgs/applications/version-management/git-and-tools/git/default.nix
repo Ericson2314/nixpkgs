@@ -151,32 +151,39 @@ stdenv.mkDerivation {
       # Also put git-http-backend into $PATH, so that we can use smart
       # HTTP(s) transports for pushing
       ln -s $out/libexec/git-core/git-http-backend $out/bin/git-http-backend
-    '' + stdenv.lib.optionalString perlSupport ''
+
+      basePerlPrograms=(
+        git-cvsimport
+        git-add--interactive
+        git-archimport
+        git-instaweb
+        git-cvsexportcommit
+      )
+    ''
+
+   + (if perlSupport then ''
       # put in separate package for simpler maintenance
       mv $out/share/gitweb $gitweb/
 
+      selfperllib=$out/lib/perl5/site_perl
+
       # wrap perl commands
-      gitperllib=$out/lib/perl5/site_perl
-      for i in ${builtins.toString perlLibs}; do
+      for i in $selfperllib ${builtins.toString perlLibs}; do
         gitperllib=$gitperllib:$i/lib/perl5/site_perl
       done
-      wrapProgram $out/libexec/git-core/git-cvsimport \
-                  --set GITPERLLIB "$gitperllib"
-      wrapProgram $out/libexec/git-core/git-add--interactive \
-                  --set GITPERLLIB "$gitperllib"
-      wrapProgram $out/libexec/git-core/git-archimport \
-                  --set GITPERLLIB "$gitperllib"
-      wrapProgram $out/libexec/git-core/git-instaweb \
-                  --set GITPERLLIB "$gitperllib"
-      wrapProgram $out/libexec/git-core/git-cvsexportcommit \
-                  --set GITPERLLIB "$gitperllib"
-    ''
+      for prog in "''${basePerlPrograms[@]}"; do
+        wrapProgram "$out/libexec/git-core/$prog" --set GITPERLLIB "$gitperllib"
+      done
+    '' else ''
+      for prog in "''${basePerlPrograms[@]}"; do
+        notSupported "$out/libexec/git-core/$prog"
+      done
+    '')
 
    + (if svnSupport then
 
       ''# wrap git-svn
-        gitperllib=$out/lib/perl5/site_perl
-        for i in ${builtins.toString perlLibs} ${svn.out}; do
+        for i in $selfperllib ${builtins.toString perlLibs} ${svn.out}; do
           gitperllib=$gitperllib:$i/lib/perl5/site_perl
         done
         wrapProgram $out/libexec/git-core/git-svn     \
@@ -188,8 +195,7 @@ stdenv.mkDerivation {
 
    + (if sendEmailSupport then
       ''# wrap git-send-email
-        gitperllib=$out/lib/perl5/site_perl
-        for i in ${builtins.toString smtpPerlLibs}; do
+        for i in $selfperllib ${builtins.toString smtpPerlLibs}; do
           gitperllib=$gitperllib:$i/lib/perl5/site_perl
         done
         wrapProgram $out/libexec/git-core/git-send-email \
