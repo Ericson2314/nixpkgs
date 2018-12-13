@@ -59,7 +59,7 @@ let
 
     in
 
-crate_: lib.makeOverridable ({ rust, release, verbose, features, buildInputs, crateOverrides,
+crate_: lib.makeOverridable ({ rust, release, verbose, features, nativeBuildInputs, buildInputs, crateOverrides,
   dependencies, buildDependencies,
   extraRustcOpts,
   preUnpack, postUnpack, prePatch, patches, postPatch,
@@ -69,11 +69,12 @@ let crate = crate_ // (lib.attrByPath [ crate_.crateName ] (attr: {}) crateOverr
     dependencies_ = dependencies;
     buildDependencies_ = buildDependencies;
     processedAttrs = [
-      "src" "buildInputs" "crateBin" "crateLib" "libName" "libPath"
+      "src" "nativeBuildInputs" "buildInputs" "crateBin" "crateLib" "libName" "libPath"
       "buildDependencies" "dependencies" "features"
       "crateName" "version" "build" "authors" "colors" "edition"
     ];
     extraDerivationAttrs = lib.filterAttrs (n: v: ! lib.elem n processedAttrs) crate;
+    nativeBuildInputs_ = nativeBuildInputs;
     buildInputs_ = buildInputs;
     extraRustcOpts_ = extraRustcOpts;
 in
@@ -87,7 +88,7 @@ stdenv.mkDerivation (rec {
       else
         fetchCrate { inherit (crate) crateName version sha256; };
     name = "rust_${crate.crateName}-${crate.version}";
-    depsBuildBuild = [ rust stdenv.cc ];
+    nativeBuildInputs = [ rust stdenv.cc ] ++ (crate.nativeBuildInputs or []) ++ nativeBuildInputs_;
     buildInputs = (crate.buildInputs or []) ++ buildInputs_;
     dependencies =
       builtins.map
