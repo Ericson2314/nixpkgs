@@ -50,39 +50,41 @@ in stdenv.mkDerivation rec {
   # We need rust to build rust. If we don't provide it, configure will try to download it.
   # Reference: https://github.com/rust-lang/rust/blob/master/src/bootstrap/configure.py
   configureFlags = let
-    setBuild = "--set=target.${stdenv.buildPlatform.config}";
-    ccForBuild = "${buildPackages.stdenv.cc}/bin/${buildPackages.stdenv.cc.targetPrefix}cc";
-    setHost = "--set=target.${stdenv.hostPlatform.config}";
-    ccForHost = "${stdenv.cc}/bin/${stdenv.cc.targetPrefix}cc";
+    setHost   = "--set=target.${stdenv.hostPlatform.config}";
+    setBuild  = "--set=target.${stdenv.buildPlatform.config}";
     setTarget = "--set=target.${stdenv.targetPlatform.config}";
-    ccForTarget = "${targetPackages.stdenv.cc}/bin/${targetPackages.stdenv.cc.targetPrefix}cc";
+    ccForHost  = "${stdenv.cc}/bin/${stdenv.cc.targetPrefix}cc";
+    cxxForHost = "${stdenv.cc}/bin/${stdenv.cc.targetPrefix}c++";
+    ccForBuild  = "${buildPackages.stdenv.cc}/bin/${buildPackages.stdenv.cc.targetPrefix}cc";
+    cxxForBuild = "${buildPackages.stdenv.cc}/bin/${buildPackages.stdenv.cc.targetPrefix}c++";
+    ccForTarget  = "${targetPackages.stdenv.cc}/bin/${targetPackages.stdenv.cc.targetPrefix}cc";
+    cxxForTarget = "${targetPackages.stdenv.cc}/bin/${targetPackages.stdenv.cc.targetPrefix}c++";
   in [
     "--release-channel=stable"
     "--set=build.rustc=${rustPlatform.rust.rustc}/bin/rustc"
     "--set=build.cargo=${rustPlatform.rust.cargo}/bin/cargo"
     "--enable-rpath"
     "--enable-vendor"
-    "--default-linker=${ccForBuild}"
     "--build=${stdenv.buildPlatform.config}"
     "--host=${stdenv.hostPlatform.config}"
     "--target=${stdenv.targetPlatform.config}"
+
     "${setBuild}.cc=${ccForBuild}"
     "${setHost}.cc=${ccForHost}"
-    "${setTarget}.cc=${ccForTarget}"
 
     "${setBuild}.linker=${ccForBuild}"
     "${setHost}.linker=${ccForHost}"
-    "${setTarget}.linker=${ccForTarget}"
 
-    "${setBuild}.cxx=${buildPackages.stdenv.cc}/bin/c++"
-    "${setHost}.cxx=${stdenv.cc}/bin/c++"
-    "${setTarget}.cxx=${targetPackages.stdenv.cc}/bin/${targetPackages.stdenv.cc.targetPrefix}c++"
+    "${setBuild}.cxx=${cxxForBuild}"
+    "${setHost}.cxx=${cxxForHost}"
   ] ++ optional (!withBundledLLVM) [
     "--enable-llvm-link-shared"
     "${setBuild}.llvm-config=${buildLlvmShared}/bin/llvm-config"
-    "${setHost}.llvm-config=${llvmShared}/bin/llvm-config"
-    # should this be removed?
-    "${setTarget}.llvm-config=${llvmShared}/bin/llvm-config"
+    "${setHost}.llvm-config=${buildLlvmShared}/bin/llvm-config"
+  ] ++ optional (stdenv.hostPlatform != stdenv.targetPlatform) [
+    "${setTarget}.cc=${ccForTarget}"
+    "${setTarget}.linker=${ccForTarget}"
+    "${setTarget}.cxx=${cxxForTarget}"
   ];
 
   # The bootstrap.py will generated a Makefile that then executes the build.
@@ -91,7 +93,6 @@ in stdenv.mkDerivation rec {
   postConfigure = ''
     substituteInPlace Makefile \
       --replace 'BOOTSTRAP_ARGS :=' 'BOOTSTRAP_ARGS := --jobs $(NIX_BUILD_CORES)'
-     export CC=${buildPackages.stdenv.cc}/bin/cc
   '';
 
   patches = [
