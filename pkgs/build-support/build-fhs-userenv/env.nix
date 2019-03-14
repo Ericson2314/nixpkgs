@@ -56,7 +56,6 @@ let
 
     # Force compilers and other tools to look in default search paths
     unset NIX_ENFORCE_PURITY
-    export NIX_CC_WRAPPER_${stdenv.cc.infixSalt}_TARGET_HOST=1
     export NIX_CFLAGS_COMPILE='-idirafter /usr/include'
     export NIX_CFLAGS_LINK='-L/usr/lib -L/usr/lib32'
     export NIX_LDFLAGS='-L/usr/lib -L/usr/lib32'

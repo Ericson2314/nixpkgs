@@ -38,7 +38,7 @@
 #
 #  - The wrapped binaries will exclusively *read* cc-wrapper-derivation-specific
 #    environment variables distinguished with with `infixSalt`, like
-#    `NIX_@infixSalt@_CFLAGS_COMPILE`.
+#    `NIX_@platformPrefix@CFLAGS_COMPILE`.
 #
 #  - `add-flags`, beyond its old task of reading extra flags stuck inside the
 #    cc-wrapper derivation, will convert the relative-platform-specific
@@ -81,7 +81,6 @@ ccWrapper_addCVars () {
 
 # See ../setup-hooks/role.bash
 getTargetRole
-getTargetRoleWrapper
 
 # We use the `targetOffset` to choose the right env hook to accumulate the right
 # sort of deps (those with that offset).

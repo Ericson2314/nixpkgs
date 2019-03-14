@@ -52,24 +52,3 @@ function getHostRoleEnvHook()   {
 function getTargetRoleEnvHook() {
     getRole "$depTargetOffset"
 }
-
-# This variant is inteneded specifically for code-prodocing tool wrapper scripts
-# `NIX_@wrapperName@_@infixSalt@_TARGET_*` tracks this (needs to be an exported
-# env var so can't use fancier data structures).
-function getTargetRoleWrapper() {
-    case $targetOffset in
-        -1)
-            export NIX_@wrapperName@_@infixSalt@_TARGET_BUILD=1
-            ;;
-        0)
-            export NIX_@wrapperName@_@infixSalt@_TARGET_HOST=1
-            ;;
-        1)
-            export NIX_@wrapperName@_@infixSalt@_TARGET_TARGET=1
-            ;;
-        *)
-            echo "@name@: used as improper sort of dependency" >2
-            return 1
-            ;;
-    esac
-}

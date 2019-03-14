@@ -32,7 +32,6 @@ bintoolsWrapper_addLDVars () {
 
 # See ../setup-hooks/role.bash
 getTargetRole
-getTargetRoleWrapper
 
 addEnvHooks "$targetOffset" bintoolsWrapper_addLDVars
 

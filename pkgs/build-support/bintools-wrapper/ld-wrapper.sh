@@ -16,7 +16,7 @@ fi
 
 source @out@/nix-support/utils.bash
 
-if [ -z "${NIX_BINTOOLS_WRAPPER_@infixSalt@_FLAGS_SET:-}" ]; then
+if [ -z "${NIX_BINTOOLS_WRAPPER_@platformPrefix@FLAGS_SET:-}" ]; then
     source @out@/nix-support/add-flags.sh
 fi
 
@@ -24,7 +24,7 @@ fi
 # Optionally filter out paths not refering to the store.
 expandResponseParams "$@"
 if [[ "${NIX_ENFORCE_PURITY:-}" = 1 && -n "${NIX_STORE:-}"
-        && ( -z "$NIX_@infixSalt@_IGNORE_LD_THROUGH_GCC" || -z "${NIX_@infixSalt@_LDFLAGS_SET:-}" ) ]]; then
+        && ( -z "$NIX_@platformPrefix@IGNORE_LD_THROUGH_GCC" || -z "${NIX_@platformPrefix@LDFLAGS_SET:-}" ) ]]; then
     rest=()
     nParams=${#params[@]}
     declare -i n=0
@@ -60,12 +60,12 @@ source @out@/nix-support/add-hardening.sh
 extraAfter=()
 extraBefore=(${hardeningLDFlags[@]+"${hardeningLDFlags[@]}"})
 
-if [ -z "${NIX_@infixSalt@_LDFLAGS_SET:-}" ]; then
-    extraAfter+=($NIX_@infixSalt@_LDFLAGS)
-    extraBefore+=($NIX_@infixSalt@_LDFLAGS_BEFORE)
+if [ -z "${NIX_@platformPrefix@LDFLAGS_SET:-}" ]; then
+    extraAfter+=($NIX_@platformPrefix@LDFLAGS)
+    extraBefore+=($NIX_@platformPrefix@LDFLAGS_BEFORE)
 fi
 
-extraAfter+=($NIX_@infixSalt@_LDFLAGS_AFTER)
+extraAfter+=($NIX_@platformPrefix@LDFLAGS_AFTER)
 
 # Specify the target emulation if nothing is passed in ("-m" overrides this
 # environment variable). Ensures we never blindly fallback on targeting the host
@@ -84,8 +84,8 @@ declare -A libs
 declare -i relocatable=0 link32=0
 
 if
-    [ "$NIX_@infixSalt@_DONT_SET_RPATH" != 1 ] \
-        || [ "$NIX_@infixSalt@_SET_BUILD_ID" = 1 ] \
+    [ "$NIX_@platformPrefix@DONT_SET_RPATH" != 1 ] \
+        || [ "$NIX_@platformPrefix@SET_BUILD_ID" = 1 ] \
         || [ -e @out@/nix-support/dynamic-linker-m32 ]
 then
     prev=
@@ -144,7 +144,7 @@ if [ -e "@out@/nix-support/dynamic-linker-m32" ] && (( "$link32" )); then
 fi
 
 # Add all used dynamic libraries to the rpath.
-if [ "$NIX_@infixSalt@_DONT_SET_RPATH" != 1 ]; then
+if [ "$NIX_@platformPrefix@DONT_SET_RPATH" != 1 ]; then
     # For each directory in the library search path (-L...),
     # see if it contains a dynamic library used by a -l... flag.  If
     # so, add the directory to the rpath.
@@ -186,7 +186,7 @@ fi
 
 # Only add --build-id if this is a final link. FIXME: should build gcc
 # with --enable-linker-build-id instead?
-if [ "$NIX_@infixSalt@_SET_BUILD_ID" = 1 ] && ! (( "$relocatable" )); then
+if [ "$NIX_@platformPrefix@SET_BUILD_ID" = 1 ] && ! (( "$relocatable" )); then
     extraAfter+=(--build-id)
 fi
 
