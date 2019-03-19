@@ -2,6 +2,7 @@
 , fetchurl, fetchgit, fetchzip, file, python2, tzdata, ps
 , llvm_7, ncurses, darwin, git, cmake, curl, rustPlatform
 , which, libffi, gdb
+, writeShellScriptBin
 , withBundledLLVM ? false
 }:
 
@@ -11,6 +12,12 @@ let
 
   llvmShared = llvm_7.override { enableSharedLibraries = true; };
   buildLlvmShared = buildPackages.llvm_7.override { enableSharedLibraries = true; };
+
+  llvm-config-host = writeShellScriptBin "llvm-config" ''
+    exec ${buildLlvmShared}/bin/llvm-config "$@" \
+      | sed 's|${buildLlvmShared}|${llvmShared}|g' \
+      | sed 's|${buildLlvmShared.lib}|${llvmShared.lib}|g'
+  '';
 in stdenv.mkDerivation rec {
   pname = "rustc";
   version = "1.32.0";
@@ -83,7 +90,8 @@ in stdenv.mkDerivation rec {
   ] ++ optional (!withBundledLLVM) [
     "--enable-llvm-link-shared"
     "${setBuild}.llvm-config=${buildLlvmShared}/bin/llvm-config"
-    "${setHost}.llvm-config=${buildLlvmShared}/bin/llvm-config"
+  ] ++ optional (!withBundledLLVM && stdenv.hostPlatform != stdenv.buildPlatform) [
+    "${setHost}.llvm-config=${llvm-config-host}/bin/llvm-config"
   ] ++ optional (stdenv.hostPlatform != stdenv.targetPlatform) [
     "${setTarget}.cc=${ccForTarget}"
     "${setTarget}.linker=${ccForTarget}"
