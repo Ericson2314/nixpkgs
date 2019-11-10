@@ -49,7 +49,6 @@ let version = "7-20170409";
       ++ optional langFortran ../gfortran-driving.patch;
 
     /* Cross-gcc settings (build == host != target) */
-    crossMingw = targetPlatform != hostPlatform && targetPlatform.libc == "msvcrt";
     stageNameAddon = if crossStageStatic then "-stage-static" else "-stage-final";
     crossNameAddon = if targetPlatform != hostPlatform then "-${targetPlatform.config}" + stageNameAddon else "";
 
@@ -93,8 +92,7 @@ stdenv.mkDerivation ({
         ''
     else null;
 
-  inherit noSysDirs staticCompiler crossStageStatic
-    libcCross crossMingw;
+  inherit noSysDirs staticCompiler;
 
   depsBuildBuild = [ buildPackages.stdenv.cc ];
   nativeBuildInputs = [ texinfo which gettext ]
@@ -238,11 +236,20 @@ stdenv.mkDerivation ({
 
     broken = true;
   };
-}
 
-// optionalAttrs (targetPlatform != hostPlatform && targetPlatform.libc == "msvcrt" && crossStageStatic) {
-  makeFlags = [ "all-gcc" "all-target-libgcc" ];
-  installTargets = "install-gcc install-target-libgcc";
+  makeFlags = [
+    # We don't want the gcc build to assume there will be a libc providing
+    # limits.h in this stagae
+    "LIMITS_H_TEST=${if crossStageStatic then "false" else "true"}"
+  ];
+
+  buildTargets = stdenv.lib.optionals
+    (targetPlatform != hostPlatform && targetPlatform.libc == "msvcrt" && crossStageStatic)
+    [ "all-gcc" "all-target-libgcc" ];
+
+  installTargets = stdenv.lib.optionals
+    (targetPlatform != hostPlatform && targetPlatform.libc == "msvcrt" && crossStageStatic)
+    [ "install-gcc" "install-target-libgcc" ];
 }
 
 // optionalAttrs (enableMultilib) { dontMoveLib64 = true; }

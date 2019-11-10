@@ -130,18 +130,6 @@ if test "$noSysDirs" = "1"; then
             "BOOT_LDFLAGS=$EXTRA_TARGET_FLAGS $EXTRA_TARGET_LDFLAGS"
         )
     fi
-
-    if test "$crossStageStatic" == 1; then
-        # We don't want the gcc build to assume there will be a libc providing
-        # limits.h in this stagae
-        makeFlagsArray+=(
-            'LIMITS_H_TEST=false'
-        )
-    else
-        makeFlagsArray+=(
-            'LIMITS_H_TEST=true'
-        )
-    fi
 fi
 
 if test -n "${targetConfig-}"; then
@@ -175,13 +163,6 @@ preConfigure() {
         sed -i \
             -e "s,glibc_header_dir=/usr/include,glibc_header_dir=$libc_dev/include", \
             gcc/configure
-    fi
-
-    if test -n "$crossMingw" -a -n "$crossStageStatic"; then
-        mkdir -p ../mingw
-        # --with-build-sysroot expects that:
-        cp -R $libcCross/include ../mingw
-        configureFlags="$configureFlags --with-build-sysroot=`pwd`/.."
     fi
 
     # Eval the preConfigure script from nix expression.

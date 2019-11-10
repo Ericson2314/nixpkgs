@@ -53,7 +53,6 @@ let version = "8.3.0";
       ++ optional (targetPlatform.libc == "musl") ../libgomp-dont-force-initial-exec.patch;
 
     /* Cross-gcc settings (build == host != target) */
-    crossMingw = targetPlatform != hostPlatform && targetPlatform.libc == "msvcrt";
     stageNameAddon = if crossStageStatic then "-stage-static" else "-stage-final";
     crossNameAddon = if targetPlatform != hostPlatform then "-${targetPlatform.config}" + stageNameAddon else "";
 
@@ -122,8 +121,7 @@ stdenv.mkDerivation ({
         )
     else "");
 
-  inherit noSysDirs staticCompiler crossStageStatic
-    libcCross crossMingw;
+  inherit noSysDirs staticCompiler;
 
   depsBuildBuild = [ buildPackages.stdenv.cc ];
   nativeBuildInputs = [ texinfo which gettext ]
@@ -267,11 +265,20 @@ stdenv.mkDerivation ({
     # See #40038
     broken = stdenv.isDarwin;
   };
-}
 
-// optionalAttrs (targetPlatform != hostPlatform && targetPlatform.libc == "msvcrt" && crossStageStatic) {
-  makeFlags = [ "all-gcc" "all-target-libgcc" ];
-  installTargets = "install-gcc install-target-libgcc";
+  makeFlags = [
+    # We don't want the gcc build to assume there will be a libc providing
+    # limits.h in this stagae
+    "LIMITS_H_TEST=${if crossStageStatic then "false" else "true"}"
+  ];
+
+  buildTargets = stdenv.lib.optionals
+    (targetPlatform != hostPlatform && targetPlatform.libc == "msvcrt" && crossStageStatic)
+    [ "all-gcc" "all-target-libgcc" ];
+
+  installTargets = stdenv.lib.optionals
+    (targetPlatform != hostPlatform && targetPlatform.libc == "msvcrt" && crossStageStatic)
+    [ "install-gcc" "install-target-libgcc" ];
 }
 
 // optionalAttrs (enableMultilib) { dontMoveLib64 = true; }

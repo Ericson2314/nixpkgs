@@ -100,7 +100,6 @@ let version = "4.9.4";
     javaAwtGtk = langJava && x11Support;
 
     /* Cross-gcc settings (build == host != target) */
-    crossMingw = targetPlatform != hostPlatform && targetPlatform.libc == "msvcrt";
     stageNameAddon = if crossStageStatic then "-stage-static" else "-stage-final";
     crossNameAddon = if targetPlatform != hostPlatform then "-${targetPlatform.config}" + stageNameAddon else "";
 
@@ -148,8 +147,7 @@ stdenv.mkDerivation ({
         ''
     else null;
 
-  inherit noSysDirs staticCompiler langJava crossStageStatic
-    libcCross crossMingw;
+  inherit noSysDirs staticCompiler langJava;
 
   depsBuildBuild = [ buildPackages.stdenv.cc ];
   nativeBuildInputs = [ texinfo which gettext ]
@@ -310,18 +308,18 @@ stdenv.mkDerivation ({
       stdenv.lib.platforms.darwin;
     badPlatforms = [ "x86_64-darwin" ];
   };
+
+  makeFlags = [
+    # We don't want the gcc build to assume there will be a libc providing
+    # limits.h in this stagae
+    "LIMITS_H_TEST=${if crossStageStatic then "false" else "true"}"
+  ];
+
+  buildTargets = stdenv.lib.optionals
+    (targetPlatform != hostPlatform && targetPlatform.libc == "msvcrt" && crossStageStatic)
+    [ "all-gcc" "all-target-libgcc" ];
+
+  installTargets = stdenv.lib.optionals
+    (targetPlatform != hostPlatform && targetPlatform.libc == "msvcrt" && crossStageStatic)
+    [ "install-gcc" "install-target-libgcc" ];
 }
-
-// optionalAttrs (targetPlatform != hostPlatform && targetPlatform.libc == "msvcrt" && crossStageStatic) {
-  makeFlags = [ "all-gcc" "all-target-libgcc" ];
-  installTargets = "install-gcc install-target-libgcc";
-}
-
-// optionalAttrs (enableMultilib) { dontMoveLib64 = true; }
-
-// optionalAttrs (langJava) {
-     postFixup = ''
-       target="$(echo "$out/libexec/gcc"/*/*/ecj*)"
-       patchelf --set-rpath "$(patchelf --print-rpath "$target"):$out/lib" "$target"
-     '';}
-)
