@@ -3,7 +3,7 @@
 , buildPackages, splicePackages, newScope
 , bsdSetupHook, makeSetupHook, fetchcvs, groff, mandoc, byacc, flex
 , zlib
-, writeText, symlinkJoin
+, writeScript, writeText, runtimeShell, symlinkJoin
 }:
 
 let
@@ -248,11 +248,12 @@ in lib.makeScopeWithSplicing
 
   # HACK: to ensure parent directories exist. This emulates GNU
   # install’s -D option. No alternative seems to exist in BSD install.
-  install = let binstall = writeText "binstall" ''
-    #!${stdenv.shell}
-    for last in $@; do true; done
+  install = let binstall = writeScript "binstall" ''
+    #!${runtimeShell}
+    set -eu
+    for last in "$@"; do true; done
     mkdir -p $(dirname $last)
-    xinstall "$@"
+    @out@/bin/xinstall "$@"
   ''; in mkDerivation {
     path = "usr.bin/xinstall";
     version = "9.2";
@@ -264,54 +265,19 @@ in lib.makeScopeWithSplicing
       mandoc groff rsync
     ];
     skipIncludesPhase = true;
-    buildInputs = with self; compatIfNeeded ++ [ fts ];
+    buildInputs = with self; compatIfNeeded;
     installPhase = ''
       runHook preInstall
 
       install -D install.1 $out/share/man/man1/install.1
       install -D xinstall $out/bin/xinstall
       install -D -m 0550 ${binstall} $out/bin/binstall
+      substituteInPlace $out/bin/binstall --subst-var out
       ln -s $out/bin/binstall $out/bin/install
 
       runHook postInstall
     '';
     setupHook = ./install-setup-hook.sh;
-  };
-
-  fts = mkDerivation {
-    pname = "fts";
-    path = "include/fts.h";
-    sha256 = "01d4fpxvz1pgzfk5xznz5dcm0x0gdzwcsfm1h3d0xc9kc6hj2q77";
-    version = "9.2";
-    nativeBuildInputs = with buildPackages.netbsd; [
-      bsdSetupHook netbsdSetupHook rsync
-    ];
-    propagatedBuildInputs = with self; compatIfNeeded;
-    extraPaths = with self; [
-      (fetchNetBSD "lib/libc/gen/fts.c" "9.2" "1a8hmf26242nmv05ipn3ircxb0jqmmi66rh78kkyi9vjwkfl3qn7")
-      (fetchNetBSD "lib/libc/include/namespace.h" "9.2" "0kksr3pdwdc1cplqf5z12ih4cml6l11lqrz91f7hjjm64y7785kc")
-      (fetchNetBSD "lib/libc/gen/fts.3" "9.2" "1asxw0n3fhjdadwkkq3xplfgqgl3q32w1lyrvbakfa3gs0wz5zc1")
-    ];
-    skipIncludesPhase = true;
-    buildPhase = ''
-      "$CC" -c -Iinclude -Ilib/libc/include lib/libc/gen/fts.c \
-          -o lib/libc/gen/fts.o
-      "$AR" -rsc libfts.a lib/libc/gen/fts.o
-    '';
-    installPhase = ''
-      runHook preInstall
-
-      install -D lib/libc/gen/fts.3 $out/share/man/man3/fts.3
-      install -D include/fts.h $out/include/fts.h
-      install -D lib/libc/include/namespace.h $out/include/namespace.h
-      install -D libfts.a $out/lib/libfts.a
-
-      runHook postInstall
-    '';
-    setupHooks = [
-      ../../../build-support/setup-hooks/role.bash
-      ./fts-setup-hook.sh
-    ];
   };
 
   # Don't add this to nativeBuildInputs directly.  Use statHook instead.
@@ -358,6 +324,7 @@ in lib.makeScopeWithSplicing
       install mandoc groff rsync
     ];
   };
+
   ##
   ## END BOOTSTRAPPING
   ##
