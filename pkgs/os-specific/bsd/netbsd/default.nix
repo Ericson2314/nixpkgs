@@ -14,6 +14,10 @@ let
     tag = "netbsd-${lib.replaceStrings ["."] ["-"] version}-RELEASE";
   };
 
+  defaultMakeFlags = [
+    "-e"
+  ];
+
   otherSplices = {
     selfBuildBuild = pkgsBuildBuild.netbsd;
     selfBuildHost = pkgsBuildHost.netbsd;
@@ -171,7 +175,7 @@ in lib.makeScopeWithSplicing
 
     # temporarily use gnuinstall for bootstrapping
     # bsdinstall will be built later
-    makeFlags = [
+    makeFlags = defaultMakeFlags ++ [
       "INSTALL=${buildPackages.coreutils}/bin/install"
       "TOOLDIR=$(out)"
     ];
@@ -517,7 +521,9 @@ in lib.makeScopeWithSplicing
       popd
     '';
 
-    makeFlags = [ "FIRMWAREDIR=$(out)/libdata/firmware" ];
+    makeFlags = defaultMakeFlags ++ [
+      "FIRMWAREDIR=$(out)/libdata/firmware"
+    ];
     hardeningDisable = [ "pic" ];
     MKKMOD = "no";
     NIX_CFLAGS_COMPILE = [ "-Wa,--no-warn" ];
@@ -664,7 +670,9 @@ in lib.makeScopeWithSplicing
     path = "lib/librpcsvc";
     version = "9.2";
     sha256 = "1q34pfiyjbrgrdqm46jwrsqms49ly6z3b0xh1wg331zga900vq5n";
-    makeFlags = [ "INCSDIR=$(out)/include/rpcsvc" ];
+    makeFlags = defaultMakeFlags ++ [
+      "INCSDIR=$(out)/include/rpcsvc"
+    ];
     meta.platforms = lib.platforms.netbsd;
     nativeBuildInputs = with buildPackages.netbsd; [
       bsdSetupHook
@@ -794,7 +802,9 @@ in lib.makeScopeWithSplicing
     SHLIBINSTALLDIR = "$(out)/lib";
     MKPICINSTALL = "yes";
     NLSDIR = "$(out)/share/nls";
-    makeFlags = [ "FILESDIR=$(out)/var/db"];
+    makeFlags = defaultMakeFlags ++ [
+      "FILESDIR=$(out)/var/db"
+    ];
     postInstall = ''
       pushd ${self.headers}
       find . -type d -exec mkdir -p $out/\{} \;
@@ -848,7 +858,9 @@ in lib.makeScopeWithSplicing
     noCC = true;
     version = "9.2";
     sha256 = "0svfc0byk59ri37pyjslv4c4rc7zw396r73mr593i78d39q5g3ad";
-    makeFlags = [ "BINDIR=$(out)/share" ];
+    makeFlags = defaultMakeFlags ++ [
+      "BINDIR=$(out)/share"
+    ];
   };
 
   misc = mkDerivation {
@@ -856,7 +868,9 @@ in lib.makeScopeWithSplicing
     noCC = true;
     version = "9.2";
     sha256 = "1j2cdssdx6nncv8ffj7f7ybl7m9hadjj8vm8611skqdvxnjg6nbc";
-    makeFlags = [ "BINDIR=$(out)/share" ];
+    makeFlags = defaultMakeFlags ++ [
+      "BINDIR=$(out)/share"
+    ];
   };
 
   man = mkDerivation {
@@ -864,7 +878,9 @@ in lib.makeScopeWithSplicing
     noCC = true;
     version = "9.2";
     sha256 = "1l4lmj4kmg8dl86x94sr45w0xdnkz8dn4zjx0ipgr9bnq98663zl";
-    makeFlags = [ "FILESDIR=$(out)/share" ];
+    makeFlags = defaultMakeFlags ++ [
+      "FILESDIR=$(out)/share"
+    ];
   };
   #
   # END MISCELLANEOUS
