@@ -1,0 +1,13 @@
+diff --git a/src/freebsd-glue/Makefile b/src/freebsd-glue/Makefile
+index f34fc1a..bd7f1f1 100644
+--- a/src/freebsd-glue/Makefile
++++ b/src/freebsd-glue/Makefile
+@@ -13,7 +13,7 @@ SRCS= \
+
+ LDADD= -lbsd
+
+-SYS!=	dpkg-architecture -qDEB_HOST_GNU_SYSTEM
++SYS =	${if stdenv.hostPlatform.isFreeBSD then "kfreebsd-gnu" else "nope"}
+
+ .if ''${SYS} == "kfreebsd-gnu"
+ SRCS+= \

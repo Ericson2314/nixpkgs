@@ -3,7 +3,7 @@
 , buildPackages, splicePackages, newScope
 , bsdSetupHook, makeSetupHook, fetchcvs, groff, mandoc, byacc, flex
 , zlib
-, writeText, symlinkJoin
+, writeScript, writeText, runtimeShell, symlinkJoin
 }:
 
 let
@@ -234,8 +234,8 @@ in lib.makeScopeWithSplicing
 
   # HACK: to ensure parent directories exist. This emulates GNU
   # install’s -D option. No alternative seems to exist in BSD install.
-  install = let binstall = writeText "binstall" ''
-    #!${stdenv.shell}
+  install = let binstall = writeScript "binstall" ''
+    #!${runtimeShell}
     for last in $@; do true; done
     mkdir -p $(dirname $last)
     xinstall "$@"
@@ -250,7 +250,7 @@ in lib.makeScopeWithSplicing
       mandoc groff rsync
     ];
     skipIncludesPhase = true;
-    buildInputs = with self; compatIfNeeded ++ [ fts ];
+    buildInputs = with self; compatIfNeeded;
     installPhase = ''
       runHook preInstall
 
@@ -343,6 +343,7 @@ in lib.makeScopeWithSplicing
       install mandoc groff rsync
     ];
   };
+
   ##
   ## END BOOTSTRAPPING
   ##
