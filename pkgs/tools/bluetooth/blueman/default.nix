@@ -1,6 +1,6 @@
 { config, stdenv, lib, fetchurl, intltool, pkgconfig, python3Packages, bluez, gtk3
 , obex_data_server, xdg_utils, dnsmasq, dhcp, libappindicator, iproute
-, gnome3, librsvg, wrapGAppsHook, gobject-introspection, autoreconfHook
+, gnome3, librsvg, wrapGAppsHook, gobject-introspection-tools, autoreconfHook
 , networkmanager, withPulseAudio ? config.pulseaudio or stdenv.isLinux, libpulseaudio, fetchpatch }:
 
 let
@@ -17,7 +17,7 @@ in stdenv.mkDerivation rec {
   };
 
   nativeBuildInputs = [
-    gobject-introspection intltool pkgconfig pythonPackages.cython
+    gobject-introspection-tools intltool pkgconfig pythonPackages.cython
     pythonPackages.wrapPython wrapGAppsHook
     autoreconfHook # drop when below patch is removed
   ];

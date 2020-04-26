@@ -1,5 +1,5 @@
 {stdenv, fetchurl, fetchFromBitbucket, autoreconfHook, gtk-doc, gettext
-, pkgconfig, glib, libxml2, gobject-introspection, gnome-common, unzip
+, pkgconfig, glib, libxml2, gobject-introspection-tools, gnome-common, unzip
 }:
 
 stdenv.mkDerivation rec {
@@ -35,7 +35,7 @@ stdenv.mkDerivation rec {
     ''--with-locale-alias=${stdenv.cc.libc}/share/locale/locale.alias''
   ];
 
-  buildInputs = [ gettext glib libxml2 gobject-introspection gnome-common
+  buildInputs = [ gettext glib libxml2 gobject-introspection-tools gnome-common
     unzip ];
   nativeBuildInputs = [ autoreconfHook gtk-doc gettext pkgconfig ];
 

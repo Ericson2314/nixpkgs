@@ -4,7 +4,7 @@
 , pkgconfig
 , glib
 , icu
-, gobject-introspection
+, gobject-introspection-tools
 , dbus-glib
 , vala
 , python3
@@ -40,7 +40,7 @@ stdenv.mkDerivation rec {
     pkgconfig
     vala
     autoreconfHook
-    gobject-introspection
+    gobject-introspection-tools
     python3
   ];
 

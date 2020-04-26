@@ -1,4 +1,4 @@
-{ stdenv, fetchurl, meson, ninja, pkgconfig, gettext, gobject-introspection
+{ stdenv, fetchurl, meson, ninja, pkgconfig, gettext, gobject-introspection-tools
 , gtk-doc, docbook_xsl, docbook_xml_dtd_412, docbook_xml_dtd_44
 , glib, systemd, libusb1, vala, hwdata
 }:
@@ -16,7 +16,7 @@ stdenv.mkDerivation rec {
   nativeBuildInputs = [
     meson ninja pkgconfig gettext
     gtk-doc docbook_xsl docbook_xml_dtd_412 docbook_xml_dtd_44
-    gobject-introspection vala
+    gobject-introspection-tools vala
   ];
   buildInputs = [ systemd glib ];
 

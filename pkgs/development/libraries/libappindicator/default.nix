@@ -5,7 +5,7 @@
 , glib, dbus-glib, gtkVersion ? "3"
 , gtk2 ? null, libindicator-gtk2 ? null, libdbusmenu-gtk2 ? null
 , gtk3 ? null, libindicator-gtk3 ? null, libdbusmenu-gtk3 ? null
-, vala, gobject-introspection
+, vala, gobject-introspection-tools
 , monoSupport ? false, mono ? null, gtk-sharp-2_0 ? null
  }:
 
@@ -26,7 +26,7 @@ stdenv.mkDerivation rec {
     sha256 = "17xlqd60v0zllrxp8bgq3k5a1jkj0svkqn8rzllcyjh8k0gpr46m";
   };
 
-  nativeBuildInputs = [ pkgconfig autoreconfHook vala gobject-introspection ];
+  nativeBuildInputs = [ pkgconfig autoreconfHook vala gobject-introspection-tools ];
 
   propagatedBuildInputs =
     if gtkVersion == "2"

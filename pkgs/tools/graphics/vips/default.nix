@@ -20,7 +20,7 @@
 , fetchpatch
 , autoreconfHook
 , gtk-doc
-, gobject-introspection
+, gobject-introspection-tools
 ,
 }:
 
@@ -46,7 +46,7 @@ stdenv.mkDerivation rec {
     pkgconfig
     autoreconfHook
     gtk-doc
-    gobject-introspection
+    gobject-introspection-tools
   ];
 
   buildInputs = [

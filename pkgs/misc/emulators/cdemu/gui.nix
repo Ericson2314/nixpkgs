@@ -1,4 +1,4 @@
-{ callPackage, makeWrapper, gobject-introspection, cmake
+{ callPackage, makeWrapper, gobject-introspection-tools, cmake
 , python3Packages, gtk3, glib, libnotify, intltool, gnome3, gdk-pixbuf, librsvg }:
 let
   pkg = import ./base.nix {
@@ -11,7 +11,7 @@ in callPackage pkg {
   buildInputs = [ python pygobject3 gtk3 glib libnotify intltool makeWrapper
                   gnome3.adwaita-icon-theme gdk-pixbuf librsvg ];
   drvParams = {
-    nativeBuildInputs = [ gobject-introspection cmake ];
+    nativeBuildInputs = [ gobject-introspection-tools cmake ];
     postFixup = ''
       wrapProgram $out/bin/gcdemu \
         --set PYTHONPATH "$PYTHONPATH" \

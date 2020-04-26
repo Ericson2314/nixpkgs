@@ -20,7 +20,7 @@
 , accountsservice
 , gtk-doc
 , gnome3
-, gobject-introspection
+, gobject-introspection-tools
 , vala
 , fetchpatch
 , withQt4 ? false
@@ -50,7 +50,7 @@ stdenv.mkDerivation rec {
     automake
     yelp-tools
     gnome3.yelp-xsl
-    gobject-introspection
+    gobject-introspection-tools
     gtk-doc
     intltool
     itstool

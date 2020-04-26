@@ -1,5 +1,5 @@
 { stdenv, fetchFromGitHub, autoconf, automake, libtool, pkgconfig, gnome3
-, gtk-doc, gtk3, libX11, libXext, libXrender, gobject-introspection
+, gtk-doc, gtk3, libX11, libXext, libXrender, gobject-introspection-tools
 }:
 
 stdenv.mkDerivation rec {
@@ -13,10 +13,13 @@ stdenv.mkDerivation rec {
     sha256 = "196ibn86j54fywfwwgyh89i9wygm4vh7ls19fn20vrnm6ijlzh9r";
   };
 
-  nativeBuildInputs = [ autoconf automake libtool pkgconfig ];
+  nativeBuildInputs = [
+    autoconf automake libtool pkgconfig
+    gobject-introspection-tools
+  ];
   buildInputs = [
     gnome3.gnome-common gtk-doc gtk3
-    libX11 libXext libXrender gobject-introspection
+    libX11 libXext libXrender
   ];
 
   preConfigure = ''

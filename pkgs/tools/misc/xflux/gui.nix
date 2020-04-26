@@ -1,5 +1,5 @@
 { stdenv, fetchFromGitHub, buildPythonApplication, python3Packages, wrapGAppsHook
-, xflux, librsvg, gtk3, gobject-introspection, pango, gdk-pixbuf, atk
+, xflux, librsvg, gtk3, gobject-introspection-tools, pango, gdk-pixbuf, atk
 , pexpect, pyGtkGlade, pygobject3, pyxdg, libappindicator-gtk3
 }:
 buildPythonApplication rec {
@@ -24,7 +24,7 @@ buildPythonApplication rec {
   ];
 
   nativeBuildInputs = [
-    wrapGAppsHook gobject-introspection
+    wrapGAppsHook gobject-introspection-tools
     pango gdk-pixbuf atk libappindicator-gtk3
   ];
 

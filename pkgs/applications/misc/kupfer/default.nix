@@ -2,7 +2,7 @@
 , fetchurl
 , intltool
 , python3Packages
-, gobject-introspection
+, gobject-introspection-tools
 , gtk3
 , libwnck3
 , keybinder3
@@ -24,7 +24,7 @@ buildPythonApplication rec {
   nativeBuildInputs = [
     wrapGAppsHook intltool
     # For setup hook
-    gobject-introspection wafHook
+    gobject-introspection-tools wafHook
   ];
   buildInputs = [ docutils libwnck3 keybinder3 ];
   propagatedBuildInputs = [ pygobject3 gtk3 pyxdg dbus-python pycairo ];

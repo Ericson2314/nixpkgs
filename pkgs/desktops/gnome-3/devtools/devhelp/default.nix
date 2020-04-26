@@ -9,7 +9,7 @@
 , glib
 , amtk
 , appstream-glib
-, gobject-introspection
+, gobject-introspection-tools
 , python3
 , webkitgtk
 , gettext
@@ -35,7 +35,7 @@ stdenv.mkDerivation rec {
     itstool
     wrapGAppsHook
     appstream-glib
-    gobject-introspection
+    gobject-introspection-tools
     python3
   ];
 

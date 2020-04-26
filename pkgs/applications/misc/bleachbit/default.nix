@@ -2,7 +2,7 @@
 , pythonPackages
 , fetchurl
 , gettext
-, gobject-introspection
+, gobject-introspection-tools
 , wrapGAppsHook
 , glib
 , gtk3
@@ -22,7 +22,7 @@ pythonPackages.buildPythonApplication rec {
 
   nativeBuildInputs = [
     gettext
-    gobject-introspection
+    gobject-introspection-tools
     wrapGAppsHook
   ];
 

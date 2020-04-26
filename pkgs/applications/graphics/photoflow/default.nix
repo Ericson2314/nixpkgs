@@ -1,4 +1,4 @@
-{ stdenv, fetchFromGitHub, gettext, glib, libxml2, pkgconfig, swig, automake, gobject-introspection, cmake, ninja, libtiff, libjpeg, fftw, exiv2, lensfun, gtkmm2, libraw, lcms2, libexif, vips, expat, pcre, pugixml }:
+{ stdenv, fetchFromGitHub, gettext, glib, libxml2, pkgconfig, swig, automake, gobject-introspection-tools, cmake, ninja, libtiff, libjpeg, fftw, exiv2, lensfun, gtkmm2, libraw, lcms2, libexif, vips, expat, pcre, pugixml }:
 
 stdenv.mkDerivation {
   name = "photoflow-unstable-2018-08-28";
@@ -17,7 +17,7 @@ stdenv.mkDerivation {
     pkgconfig
     swig
     automake
-    gobject-introspection
+    gobject-introspection-tools
     cmake
     ninja
   ];

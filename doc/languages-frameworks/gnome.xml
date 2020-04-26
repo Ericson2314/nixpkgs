@@ -127,9 +127,9 @@ preFixup = ''
       <package>hicolor-icon-theme</package>’s setup hook will add icon themes to <envar>XDG_ICON_DIRS</envar> which is prepended to <envar>XDG_DATA_DIRS</envar> by <package>wrapGAppsHook</package>.
      </para>
     </listitem>
-    <listitem xml:id="ssec-gnome-hooks-gobject-introspection">
+    <listitem xml:id="ssec-gnome-hooks-gobject-introspection-tools">
      <para>
-      <package>gobject-introspection</package> setup hook populates <envar>GI_TYPELIB_PATH</envar> variable with <filename>lib/girepository-1.0</filename> directories of dependencies, which is then added to wrapper by <package>wrapGAppsHook</package>. It also adds <filename>share</filename> directories of dependencies to <envar>XDG_DATA_DIRS</envar>, which is intended to promote GIR files but it also <link xlink:href="https://github.com/NixOS/nixpkgs/issues/32790">pollutes the closures</link> of packages using <package>wrapGAppsHook</package>.
+      <package>gobject-introspection-tools</package> setup hook populates <envar>GI_TYPELIB_PATH</envar> variable with <filename>lib/girepository-1.0</filename> directories of run-time dependencies (assuming <package>gobject-introspection-tools</package> is a build-time dep), which is then added to wrapper by <package>wrapGAppsHook</package>. It also adds <filename>share</filename> directories of dependencies to <envar>XDG_DATA_DIRS</envar>, which is intended to promote GIR files but it also <link xlink:href="https://github.com/NixOS/nixpkgs/issues/32790">pollutes the closures</link> of packages using <package>wrapGAppsHook</package>.
      </para>
      <warning>
       <para>
@@ -209,7 +209,7 @@ python3.pkgs.buildPythonApplication {
 
   nativeBuildInputs = [
     wrapGAppsHook
-    gobject-introspection
+    gobject-introspection-tools
     ...
   ];
 

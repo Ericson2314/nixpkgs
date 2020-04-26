@@ -9,7 +9,7 @@
 , wrapGAppsHook
 , gnome3
 , libwnck3
-, gobject-introspection
+, gobject-introspection-tools
 , gettext
 , itstool
 }:
@@ -27,7 +27,7 @@ python3.pkgs.buildPythonApplication rec {
 
   nativeBuildInputs = [
     gettext
-    gobject-introspection
+    gobject-introspection-tools
     itstool
     meson
     ninja

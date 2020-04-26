@@ -2,7 +2,7 @@
 , python3Packages
 , pkgconfig
 , librsvg
-, gobject-introspection
+, gobject-introspection-tools
 , atk
 , gtk3
 , gtkspell3
@@ -31,7 +31,7 @@ python3Packages.buildPythonApplication rec {
 
   nativeBuildInputs = [
     pkgconfig
-    gobject-introspection
+    gobject-introspection-tools
     wrapGAppsHook
   ];
 

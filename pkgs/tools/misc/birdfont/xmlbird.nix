@@ -1,4 +1,4 @@
-{ stdenv, fetchurl, python3, pkgconfig, vala, glib, gobject-introspection }:
+{ stdenv, fetchurl, python3, pkgconfig, vala, glib, gobject-introspection-tools }:
 
 stdenv.mkDerivation rec {
   pname = "xmlbird";
@@ -9,7 +9,7 @@ stdenv.mkDerivation rec {
     sha256 = "1ycbgjvywnlc0garw8qjqd18s0xnrwjvssdrb410yschv3wjq1i0";
   };
 
-  nativeBuildInputs = [ python3 pkgconfig vala gobject-introspection ];
+  nativeBuildInputs = [ python3 pkgconfig vala gobject-introspection-tools ];
 
   buildInputs = [ glib ];
 

@@ -15,7 +15,7 @@
 , libXres
 , libstartup_notification
 , gettext
-, gobject-introspection
+, gobject-introspection-tools
 , gnome3
 }:
 
@@ -36,7 +36,7 @@ stdenv.mkDerivation rec{
     ninja
     pkgconfig
     gettext
-    gobject-introspection
+    gobject-introspection-tools
     gtk-doc
     docbook_xsl
     docbook_xml_dtd_412

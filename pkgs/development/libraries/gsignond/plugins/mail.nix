@@ -1,4 +1,7 @@
-{ stdenv, fetchFromGitLab, pkgconfig, meson, ninja, vala, glib, gsignond, gobject-introspection }:
+{ stdenv, fetchFromGitLab
+, pkgconfig, meson, ninja, vala, gobject-introspection-tools
+, glib, gsignond
+}:
 
 stdenv.mkDerivation rec {
   pname = "gsignond-plugin-mail";
@@ -12,7 +15,7 @@ stdenv.mkDerivation rec {
   };
 
   nativeBuildInputs = [
-    gobject-introspection
+    gobject-introspection-tools
     meson
     ninja
     pkgconfig

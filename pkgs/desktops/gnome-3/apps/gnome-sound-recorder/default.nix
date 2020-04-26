@@ -1,4 +1,4 @@
-{ stdenv, fetchurl, pkgconfig, gettext, gobject-introspection, wrapGAppsHook, gjs, glib, gtk3, gdk-pixbuf, gst_all_1, gnome3
+{ stdenv, fetchurl, pkgconfig, gettext, gobject-introspection-tools, wrapGAppsHook, gjs, glib, gtk3, gdk-pixbuf, gst_all_1, gnome3
 , meson, ninja, python3, desktop-file-utils }:
 
 stdenv.mkDerivation rec {
@@ -11,7 +11,7 @@ stdenv.mkDerivation rec {
   };
 
   nativeBuildInputs = [
-    pkgconfig gettext meson ninja gobject-introspection
+    pkgconfig gettext meson ninja gobject-introspection-tools
     wrapGAppsHook python3 desktop-file-utils
   ];
   buildInputs = [ gjs glib gtk3 gdk-pixbuf ] ++ (with gst_all_1; [ gstreamer.dev gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad ]);

@@ -5,7 +5,7 @@
 , meson
 , ninja
 , gettext
-, gobject-introspection
+, gobject-introspection-tools
 , gtk-doc
 , docbook_xsl
 , glib
@@ -38,7 +38,7 @@ stdenv.mkDerivation rec {
     ninja
     vala
     gettext
-    gobject-introspection
+    gobject-introspection-tools
     gtk-doc
     docbook_xsl
     perl # for pod2man

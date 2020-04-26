@@ -9,7 +9,7 @@
 , pkgconfig
 , cargo
 , rustc
-, gobject-introspection
+, gobject-introspection-tools
 , gtk-doc
 , libxml2
 , libxslt
@@ -59,7 +59,7 @@ stdenv.mkDerivation rec {
     gperf
     cargo
     rustc
-    gobject-introspection
+    gobject-introspection-tools
     gtk-doc
     libxml2
     libxslt

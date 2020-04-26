@@ -6,7 +6,7 @@
 , pkgconfig
 , python
 , pygobject3
-, gobject-introspection
+, gobject-introspection-tools
 , gst-plugins-base
 , isPy3k
 , fetchpatch
@@ -30,7 +30,7 @@ buildPythonPackage rec {
     ninja
     pkgconfig
     python
-    gobject-introspection
+    gobject-introspection-tools
     gst-plugins-base
   ];
 

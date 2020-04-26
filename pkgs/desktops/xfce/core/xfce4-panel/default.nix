@@ -1,4 +1,4 @@
-{ mkXfceDerivation, tzdata, exo, garcon, gtk2, gtk3, glib, gettext, glib-networking, libxfce4ui, libxfce4util, libwnck3, xfconf, gobject-introspection }:
+{ mkXfceDerivation, tzdata, exo, garcon, gtk2, gtk3, glib, gettext, glib-networking, libxfce4ui, libxfce4util, libwnck3, xfconf, gobject-introspection-tools }:
 
 mkXfceDerivation {
   category = "xfce";
@@ -7,7 +7,7 @@ mkXfceDerivation {
 
   sha256 = "1srzgb9vsvfrbhym74zkz9hdhxcrvbffxpfgv5vprhlwxw3vk3fq";
 
-  nativeBuildInputs = [ gobject-introspection ];
+  nativeBuildInputs = [ gobject-introspection-tools ];
   buildInputs = [ exo garcon gtk2 gtk3 glib glib-networking libxfce4ui libxfce4util libwnck3 xfconf ];
 
   patches = [ ./xfce4-panel-datadir.patch ];

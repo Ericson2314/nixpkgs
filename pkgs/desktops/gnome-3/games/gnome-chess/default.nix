@@ -1,4 +1,4 @@
-{ stdenv, fetchurl, meson, ninja, vala, pkgconfig, wrapGAppsHook, gobject-introspection
+{ stdenv, fetchurl, meson, ninja, vala, pkgconfig, wrapGAppsHook, gobject-introspection-tools
 , gettext, itstool, libxml2, python3, gnome3, glib, gtk3, librsvg }:
 
 stdenv.mkDerivation rec {
@@ -10,7 +10,7 @@ stdenv.mkDerivation rec {
     sha256 = "1a9fgi749gy1f60vbcyrqqkab9vqs42hji70q73k1xx8rv0agmg0";
   };
 
-  nativeBuildInputs = [ meson ninja vala pkgconfig gettext itstool libxml2 python3 wrapGAppsHook gobject-introspection ];
+  nativeBuildInputs = [ meson ninja vala pkgconfig gettext itstool libxml2 python3 wrapGAppsHook gobject-introspection-tools ];
   buildInputs = [ glib gtk3 librsvg gnome3.adwaita-icon-theme ];
 
   postPatch = ''

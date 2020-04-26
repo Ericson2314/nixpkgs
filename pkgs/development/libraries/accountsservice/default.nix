@@ -5,7 +5,7 @@
 , pkgconfig
 , glib
 , shadow
-, gobject-introspection
+, gobject-introspection-tools
 , polkit
 , systemd
 , coreutils
@@ -30,7 +30,7 @@ stdenv.mkDerivation rec {
   nativeBuildInputs = [
     dbus
     gettext
-    gobject-introspection
+    gobject-introspection-tools
     meson
     ninja
     pkgconfig

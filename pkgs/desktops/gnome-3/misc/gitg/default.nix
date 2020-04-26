@@ -10,7 +10,7 @@
 , wrapGAppsHook
 , libpeas
 , bash
-, gobject-introspection
+, gobject-introspection-tools
 , libsoup
 , gtksourceview
 , gsettings-desktop-schemas
@@ -64,7 +64,7 @@ stdenv.mkDerivation rec {
   ];
 
   nativeBuildInputs = [
-    gobject-introspection
+    gobject-introspection-tools
     gettext
     meson
     ninja

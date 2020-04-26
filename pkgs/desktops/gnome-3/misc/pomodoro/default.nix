@@ -13,7 +13,7 @@
 , libxml2
 , autoreconfHook
 , glib
-, gobject-introspection
+, gobject-introspection-tools
 , libpeas
 , gnome-shell
 , gsettings-desktop-schemas
@@ -37,7 +37,7 @@ stdenv.mkDerivation rec {
     autoconf-archive
     autoreconfHook
     gettext
-    gobject-introspection
+    gobject-introspection-tools
     libxml2
     pkgconfig
     vala

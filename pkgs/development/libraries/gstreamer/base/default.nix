@@ -5,7 +5,7 @@
 , meson
 , ninja
 , gettext
-, gobject-introspection
+, gobject-introspection-tools
 , python3
 , gstreamer
 , orc
@@ -63,7 +63,7 @@ stdenv.mkDerivation rec {
     gettext
     orc
     glib
-    gobject-introspection
+    gobject-introspection-tools
 
     # docs
     gtk-doc

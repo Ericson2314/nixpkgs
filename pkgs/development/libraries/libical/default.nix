@@ -2,7 +2,7 @@
 , fetchFromGitHub
 , cmake
 , glib
-, gobject-introspection
+, gobject-introspection-tools
 , icu
 , libxml2
 , ninja
@@ -28,7 +28,7 @@ stdenv.mkDerivation rec {
 
   nativeBuildInputs = [
     cmake
-    gobject-introspection
+    gobject-introspection-tools
     ninja
     perl
     pkgconfig

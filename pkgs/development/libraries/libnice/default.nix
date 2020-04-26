@@ -5,7 +5,7 @@
 , ninja
 , pkgconfig
 , python3
-, gobject-introspection
+, gobject-introspection-tools
 , gtk-doc
 , docbook_xsl
 , docbook_xml_dtd_412
@@ -40,7 +40,7 @@ stdenv.mkDerivation rec {
     ninja
     pkgconfig
     python3
-    gobject-introspection
+    gobject-introspection-tools
 
     # documentation
     gtk-doc

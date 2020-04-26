@@ -4,7 +4,7 @@
 , buildPythonApplication
 , autoreconfHook
 , wrapGAppsHook
-, gobject-introspection
+, gobject-introspection-tools
 , gettext
 , yelp-tools
 , itstool
@@ -62,7 +62,7 @@ buildPythonApplication rec {
     gettext
     yelp-tools
     itstool
-    gobject-introspection
+    gobject-introspection-tools
   ];
 
   propagatedBuildInputs = [

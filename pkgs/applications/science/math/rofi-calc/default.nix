@@ -6,7 +6,7 @@
 , libqalculate
 , glib
 , cairo
-, gobject-introspection
+, gobject-introspection-tools
 , wrapGAppsHook
 }:
 
@@ -24,7 +24,7 @@ stdenv.mkDerivation rec {
   nativeBuildInputs = [
     autoreconfHook
     pkgconfig
-    gobject-introspection
+    gobject-introspection-tools
     wrapGAppsHook
   ];
 

@@ -7,7 +7,7 @@
 , gtk3
 , appstream-glib
 , desktop-file-utils
-, gobject-introspection
+, gobject-introspection-tools
 , wrapGAppsHook
 , glib
 , gdk-pixbuf
@@ -31,7 +31,7 @@ python3.pkgs.buildPythonApplication rec {
   nativeBuildInputs = [
     appstream-glib
     desktop-file-utils
-    gobject-introspection
+    gobject-introspection-tools
     meson
     ninja
     pkgconfig

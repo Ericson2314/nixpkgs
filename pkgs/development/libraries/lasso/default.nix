@@ -1,4 +1,4 @@
-{ stdenv, autoconf, automake, autoreconfHook, fetchurl, glib, gobject-introspection, gtk-doc, libtool, libxml2, libxslt, openssl, pkgconfig, python27Packages, xmlsec, zlib }:
+{ stdenv, autoconf, automake, autoreconfHook, fetchurl, glib, gobject-introspection-tools, gtk-doc, libtool, libxml2, libxslt, openssl, pkgconfig, python27Packages, xmlsec, zlib }:
 
 stdenv.mkDerivation rec {
 
@@ -11,15 +11,20 @@ stdenv.mkDerivation rec {
 
   };
 
-  nativeBuildInputs = [ autoreconfHook pkgconfig ];
-  buildInputs = [ autoconf automake glib gobject-introspection gtk-doc libtool libxml2 libxslt openssl python27Packages.six xmlsec zlib ];
+  nativeBuildInputs = [
+	autoconf automake autoreconfHook pkgconfig gobject-introspection-tools
+	python27Packages.six
+  ];
+  buildInputs = [
+	glib gtk-doc libtool libxml2 libxslt openssl xmlsec zlib 
+  ];
 
-  configurePhase = ''
-    ./configure --with-pkg-config=$PKG_CONFIG_PATH \
-                --disable-python \
-                --disable-perl \
-                --prefix=$out
-  '';
+  configureFlags = [
+    "--with-pkg-config=$PKG_CONFIG_PATH"
+    "--disable-python"
+    "--disable-perl"
+    "--prefix=$out"
+  ];
 
   meta = with stdenv.lib; {
     homepage = "https://lasso.entrouvert.org/";

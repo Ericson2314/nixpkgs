@@ -1,6 +1,7 @@
 { stdenv, meson, ninja, pkgconfig, gettext, fetchFromGitHub, python3
 , wrapGAppsHook, gtk3, glib, desktop-file-utils, appstream-glib, gnome3
-, gobject-introspection }:
+, gobject-introspection-tools
+}:
 
 python3.pkgs.buildPythonApplication rec {
   pname = "piper";
@@ -15,13 +16,13 @@ python3.pkgs.buildPythonApplication rec {
     sha256 = "17h06j8lxpbfygq8fzycl7lml4vv7r05bsyhh3gga2hp0zms4mvg";
   };
 
-  nativeBuildInputs = [ meson ninja gettext pkgconfig wrapGAppsHook desktop-file-utils appstream-glib gobject-introspection ];
+  nativeBuildInputs = [
+    meson ninja gettext pkgconfig wrapGAppsHook desktop-file-utils appstream-glib gobject-introspection-tools
+  ];
   buildInputs = [
     gtk3 glib gnome3.adwaita-icon-theme python3
   ];
-  propagatedBuildInputs = with python3.pkgs; [ lxml evdev pygobject3 ] ++ [
-    gobject-introspection # fixes https://github.com/NixOS/nixpkgs/issues/56943 for now
-  ];
+  propagatedBuildInputs = with python3.pkgs; [ lxml evdev pygobject3 ];
 
   postPatch = ''
     chmod +x meson_install.sh # patchShebangs requires executable file

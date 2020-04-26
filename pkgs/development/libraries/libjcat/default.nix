@@ -6,7 +6,7 @@
 , json-glib
 , gnutls
 , gpgme
-, gobject-introspection
+, gobject-introspection-tools
 , vala
 , help2man
 , gtk-doc
@@ -41,7 +41,7 @@ stdenv.mkDerivation rec {
     pkg-config
     docbook_xml_dtd_43
     docbook-xsl-nons
-    gobject-introspection
+    gobject-introspection-tools
     vala
     help2man
     gtk-doc

@@ -1,5 +1,5 @@
 { stdenv, fetchurl, glib, udev, libgudev, polkit, ppp, gettext, pkgconfig
-, libmbim, libqmi, systemd, vala, gobject-introspection, dbus }:
+, libmbim, libqmi, systemd, vala, gobject-introspection-tools, dbus }:
 
 stdenv.mkDerivation rec {
   pname = "modem-manager";
@@ -11,7 +11,7 @@ stdenv.mkDerivation rec {
     sha256 = "1zrsf57bn9rmaa2qvavr1aisci76vwlx0viqpwmkw3ds2l33vdb8";
   };
 
-  nativeBuildInputs = [ vala gobject-introspection gettext pkgconfig ];
+  nativeBuildInputs = [ vala gobject-introspection-tools gettext pkgconfig ];
 
   buildInputs = [ glib udev libgudev polkit ppp libmbim libqmi systemd ];
 

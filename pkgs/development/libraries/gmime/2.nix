@@ -1,4 +1,4 @@
-{ stdenv, fetchurl, pkgconfig, glib, zlib, gnupg, libgpgerror, gobject-introspection }:
+{ stdenv, fetchurl, pkgconfig, glib, zlib, gnupg, libgpgerror, gobject-introspection-tools }:
 
 stdenv.mkDerivation rec {
   version = "2.6.23";
@@ -11,7 +11,7 @@ stdenv.mkDerivation rec {
 
   outputs = [ "out" "dev" ];
 
-  nativeBuildInputs = [ pkgconfig gobject-introspection ];
+  nativeBuildInputs = [ pkgconfig gobject-introspection-tools ];
   propagatedBuildInputs = [ glib zlib libgpgerror ];
   configureFlags = [ "--enable-introspection=yes" ];
 

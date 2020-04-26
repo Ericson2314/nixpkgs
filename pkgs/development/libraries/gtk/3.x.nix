@@ -19,7 +19,7 @@
 , gdk-pixbuf
 , atk
 , at-spi2-atk
-, gobject-introspection
+, gobject-introspection-tools
 , fribidi
 , xorg
 , epoxy
@@ -119,7 +119,7 @@ stdenv.mkDerivation rec {
 
   nativeBuildInputs = [
     gettext
-    gobject-introspection
+    gobject-introspection-tools
     makeWrapper
     meson
     ninja

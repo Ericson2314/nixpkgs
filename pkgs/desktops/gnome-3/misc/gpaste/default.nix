@@ -5,7 +5,7 @@
 , clutter
 , gjs
 , glib
-, gobject-introspection
+, gobject-introspection-tools
 , gtk3
 , meson
 , mutter
@@ -44,7 +44,7 @@ stdenv.mkDerivation rec {
 
   nativeBuildInputs = [
     appstream-glib
-    gobject-introspection
+    gobject-introspection-tools
     meson
     ninja
     pkgconfig

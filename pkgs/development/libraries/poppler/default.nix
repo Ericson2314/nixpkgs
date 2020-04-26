@@ -2,17 +2,20 @@
 , zlib, curl, cairo, freetype, fontconfig, lcms, libjpeg, openjpeg
 , withData ? true, poppler_data
 , qt5Support ? false, qtbase ? null
-, introspectionSupport ? false, gobject-introspection ? null
+, introspectionSupport ? false, gobject-introspection-tools ? null
 , utils ? false, nss ? null
 , minimal ? false, suffix ? "glib"
 }:
 
+assert introspectionSupport -> gobject-introspection-tools != null;
+
 let
+  version = "0.88.0"; # beware: updates often break cups-filters build, check texlive and scribusUnstable too!
   mkFlag = optset: flag: "-DENABLE_${flag}=${if optset then "on" else "off"}";
 in
 stdenv.mkDerivation rec {
-  name = "poppler-${suffix}-${version}";
-  version = "0.88.0"; # beware: updates often break cups-filters build, check texlive and scribusUnstable too!
+  pname = "poppler-${suffix}";
+  inherit version;
 
   src = fetchurl {
     url = "${meta.homepage}/poppler-${version}.tar.xz";
@@ -21,17 +24,21 @@ stdenv.mkDerivation rec {
 
   outputs = [ "out" "dev" ];
 
-  buildInputs = [ libiconv libintl ] ++ lib.optional withData poppler_data;
+  nativeBuildInputs = [
+    cmake ninja pkgconfig
+  ] ++ lib.optional introspectionSupport gobject-introspection-tools;
+
+  buildInputs = [
+    libiconv libintl
+  ] ++ lib.optional withData poppler_data;
 
   # TODO: reduce propagation to necessary libs
-  propagatedBuildInputs = with lib;
-    [ zlib freetype fontconfig libjpeg openjpeg ]
-    ++ optionals (!minimal) [ cairo lcms curl ]
-    ++ optional qt5Support qtbase
-    ++ optional utils nss
-    ++ optional introspectionSupport gobject-introspection;
-
-  nativeBuildInputs = [ cmake ninja pkgconfig ];
+  propagatedBuildInputs = [
+    zlib freetype fontconfig libjpeg openjpeg
+  ] ++ lib.optionals (!minimal) [
+    cairo lcms curl
+  ] ++ lib.optional qt5Support qtbase
+    ++ lib.optional utils nss;
 
   # Workaround #54606
   preConfigure = stdenv.lib.optionalString stdenv.isDarwin ''

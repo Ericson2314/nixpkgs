@@ -8,7 +8,7 @@
 , itstool
 , libvirt-glib
 , glib
-, gobject-introspection
+, gobject-introspection-tools
 , libxml2
 , gtk3
 , gtk-vnc
@@ -63,7 +63,7 @@ stdenv.mkDerivation rec {
   nativeBuildInputs = [
     desktop-file-utils
     gettext
-    gobject-introspection
+    gobject-introspection-tools
     itstool
     meson
     ninja

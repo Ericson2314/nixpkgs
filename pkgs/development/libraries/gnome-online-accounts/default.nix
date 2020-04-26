@@ -13,7 +13,7 @@
 , librest
 , libsecret
 , gtk-doc
-, gobject-introspection
+, gobject-introspection-tools
 , gettext
 , icu
 , glib-networking
@@ -56,7 +56,7 @@ stdenv.mkDerivation rec {
     docbook_xml_dtd_412
     docbook_xsl
     gettext
-    gobject-introspection
+    gobject-introspection-tools
     gtk-doc
     libxslt
     meson

@@ -25916,7 +25916,7 @@ in
   rfc-bibtex = python3Packages.callPackage ../development/python-modules/rfc-bibtex { };
 
   pick-colour-picker = python3Packages.callPackage ../applications/graphics/pick-colour-picker {
-    inherit (pkgs) glib gtk3 gobject-introspection wrapGAppsHook;
+    inherit (pkgs) glib gtk3 gobject-introspection-tools wrapGAppsHook;
   };
 
   rpl = callPackage ../tools/text/rpl {

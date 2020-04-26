@@ -6,7 +6,7 @@
 , anthy
 , ibus
 , glib
-, gobject-introspection
+, gobject-introspection-tools
 , gtk3
 , python3
 }:
@@ -33,7 +33,7 @@ stdenv.mkDerivation rec {
 
   nativeBuildInputs = [
     gettext
-    gobject-introspection
+    gobject-introspection-tools
     pkgconfig
     wrapGAppsHook
   ];

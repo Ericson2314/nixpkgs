@@ -10,7 +10,7 @@
 , pango
 , wrapGAppsHook
 , python3
-, gobject-introspection
+, gobject-introspection-tools
 , gjs
 , libunistring
 , gsettings-desktop-schemas
@@ -29,7 +29,7 @@ stdenv.mkDerivation rec {
 
   nativeBuildInputs = [
     gettext
-    gobject-introspection
+    gobject-introspection-tools
     meson
     ninja
     pkgconfig

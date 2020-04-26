@@ -1,4 +1,4 @@
-{ stdenv, fetchurl, ninja, meson, pkgconfig, vala, gobject-introspection, libxml2
+{ stdenv, fetchurl, ninja, meson, pkgconfig, vala, gobject-introspection-tools, libxml2
 , gtk-doc, docbook_xsl, docbook_xml_dtd_43, dbus, xvfb_run, glib, gtk3, gnome3 }:
 
 stdenv.mkDerivation rec {
@@ -13,7 +13,7 @@ stdenv.mkDerivation rec {
     sha256 = "0n6r16a07in82cnzw91vl675pbjzbvazkxwbqxq2kihganzipcw2";
   };
 
-  nativeBuildInputs = [ ninja meson pkgconfig vala gobject-introspection libxml2 gtk-doc docbook_xsl docbook_xml_dtd_43 dbus xvfb_run glib ];
+  nativeBuildInputs = [ ninja meson pkgconfig vala gobject-introspection-tools libxml2 gtk-doc docbook_xsl docbook_xml_dtd_43 dbus xvfb_run glib ];
   buildInputs = [ glib gtk3 ];
 
   mesonFlags = [

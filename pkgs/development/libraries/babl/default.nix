@@ -3,7 +3,7 @@
 , meson
 , ninja
 , pkgconfig
-, gobject-introspection
+, gobject-introspection-tools
 , lcms2
 }:
 
@@ -22,7 +22,7 @@ stdenv.mkDerivation rec {
     meson
     ninja
     pkgconfig
-    gobject-introspection
+    gobject-introspection-tools
   ];
 
   buildInputs = [

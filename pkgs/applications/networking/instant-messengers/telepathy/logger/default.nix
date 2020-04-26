@@ -1,5 +1,5 @@
 { stdenv, fetchurl, dbus-glib, libxml2, sqlite, telepathy-glib, pkgconfig
-, dconf, makeWrapper, intltool, libxslt, gobject-introspection, dbus }:
+, dconf, makeWrapper, intltool, libxslt, gobject-introspection-tools, dbus }:
 
 stdenv.mkDerivation rec {
   project = "telepathy-logger";
@@ -11,7 +11,7 @@ stdenv.mkDerivation rec {
   };
 
   nativeBuildInputs = [
-    makeWrapper pkgconfig intltool libxslt gobject-introspection
+    makeWrapper pkgconfig intltool libxslt gobject-introspection-tools
   ];
   buildInputs = [
     dbus-glib libxml2 sqlite telepathy-glib

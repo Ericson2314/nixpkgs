@@ -11,7 +11,7 @@
 , libtasn1
 , gtk3
 , pango
-, gobject-introspection
+, gobject-introspection-tools
 , makeWrapper
 , libxslt
 , vala
@@ -44,7 +44,7 @@ stdenv.mkDerivation rec {
     python3
     ninja
     gettext
-    gobject-introspection
+    gobject-introspection-tools
     libxslt
     makeWrapper
     vala

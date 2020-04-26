@@ -9,7 +9,7 @@
 , python3
 , gst-plugins-base
 , orc
-, gobject-introspection
+, gobject-introspection-tools
 , enableZbar ? false
 , faacSupport ? false
 , faac ? null
@@ -114,7 +114,7 @@ in stdenv.mkDerivation rec {
     pkgconfig
     python3
     gettext
-    gobject-introspection
+    gobject-introspection-tools
   ] ++ optionals stdenv.isLinux [
     wayland-protocols
   ];

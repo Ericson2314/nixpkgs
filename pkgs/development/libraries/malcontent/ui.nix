@@ -2,7 +2,7 @@
 , meson
 , ninja
 , pkg-config
-, gobject-introspection
+, gobject-introspection-tools
 , wrapGAppsHook
 , glib
 , accountsservice
@@ -34,7 +34,7 @@ stdenv.mkDerivation rec {
     meson
     ninja
     pkg-config
-    gobject-introspection
+    gobject-introspection-tools
     desktop-file-utils
     wrapGAppsHook
   ];

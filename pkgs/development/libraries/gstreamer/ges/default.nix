@@ -9,7 +9,7 @@
 , libxml2
 , flex
 , gettext
-, gobject-introspection
+, gobject-introspection-tools
 }:
 
 stdenv.mkDerivation rec {
@@ -32,7 +32,7 @@ stdenv.mkDerivation rec {
     ninja
     pkgconfig
     gettext
-    gobject-introspection
+    gobject-introspection-tools
     python3
     flex
   ];

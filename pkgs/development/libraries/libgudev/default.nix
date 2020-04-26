@@ -3,7 +3,7 @@
 , pkgconfig
 , udev
 , glib
-, gobject-introspection
+, gobject-introspection-tools
 , gnome3
 }:
 
@@ -18,7 +18,7 @@ stdenv.mkDerivation rec {
     sha256 = "00xvva04lgqamhnf277lg32phjn971wgpc9cxvgf5x13xdq4jz2q";
   };
 
-  nativeBuildInputs = [ pkgconfig gobject-introspection ];
+  nativeBuildInputs = [ pkgconfig gobject-introspection-tools ];
   buildInputs = [ udev glib ];
 
   # There's a dependency cycle with umockdev and the tests fail to LD_PRELOAD anyway.

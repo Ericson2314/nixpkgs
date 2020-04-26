@@ -8,7 +8,7 @@
 , flatpak
 , gnome3
 , libgit2-glib
-, gobject-introspection
+, gobject-introspection-tools
 , gspell
 , gtk-doc
 , gtk3
@@ -51,7 +51,7 @@ stdenv.mkDerivation rec {
     desktop-file-utils
     docbook_xsl
     docbook_xml_dtd_43
-    gobject-introspection
+    gobject-introspection-tools
     gtk-doc
     meson
     ninja

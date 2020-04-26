@@ -5,7 +5,7 @@
 , sqlite
 , gpsbabel
 , gnome3
-, gobject-introspection
+, gobject-introspection-tools
 , wrapGAppsHook
 , gtk3
 , xvfb_run
@@ -61,7 +61,7 @@ python3.pkgs.buildPythonApplication rec {
   ];
 
   nativeBuildInputs = [
-    gobject-introspection
+    gobject-introspection-tools
     wrapGAppsHook
     xvfb_run
   ];

@@ -4,7 +4,7 @@
 , gettext
 , meson
 , ninja
-, gobject-introspection
+, gobject-introspection-tools
 , gtk-doc
 , docbook-xsl-ns
 , docbook_xsl
@@ -32,7 +32,7 @@ stdenv.mkDerivation rec {
     gettext
     meson
     ninja
-    gobject-introspection
+    gobject-introspection-tools
     gtk-doc
     docbook-xsl-ns
     docbook_xsl

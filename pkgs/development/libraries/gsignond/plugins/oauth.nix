@@ -1,6 +1,8 @@
-{ stdenv, fetchFromGitLab, pkgconfig, meson, ninja, glib, gsignond, check
+{ stdenv
+, fetchFromGitLab, pkgconfig, meson, ninja, glib, gsignond, check
 , json-glib, libsoup, gnutls, gtk-doc, docbook_xml_dtd_43, docbook_xml_dtd_45
-, docbook_xsl, glibcLocales, gobject-introspection }:
+, docbook_xsl, glibcLocales, gobject-introspection-tools
+}:
 
 stdenv.mkDerivation {
   pname = "gsignond-plugin-oauth";
@@ -19,7 +21,7 @@ stdenv.mkDerivation {
     docbook_xml_dtd_45
     docbook_xsl
     glibcLocales
-    gobject-introspection
+    gobject-introspection-tools
     gtk-doc
     meson
     ninja

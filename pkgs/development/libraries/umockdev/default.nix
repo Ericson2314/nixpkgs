@@ -1,5 +1,5 @@
 { stdenv, fetchurl, fetchpatch, pkgconfig
-, gobject-introspection, glib, systemd, libgudev, vala
+, gobject-introspection-tools, glib, systemd, libgudev, vala
 , usbutils, which, python3 }:
 
 stdenv.mkDerivation rec {
@@ -35,7 +35,7 @@ stdenv.mkDerivation rec {
 
   buildInputs = [ glib systemd libgudev ];
 
-  nativeBuildInputs = [ pkgconfig vala gobject-introspection ];
+  nativeBuildInputs = [ pkgconfig vala gobject-introspection-tools ];
 
   checkInputs = [ python3 which usbutils ];
 

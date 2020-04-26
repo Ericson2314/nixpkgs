@@ -4,6 +4,7 @@
 , substituteAll
 , pkgconfig
 , gtk-doc
+, gobject-introspection-tools
 , gobject-introspection
 , gjs
 , nixosTests
@@ -68,7 +69,7 @@ in stdenv.mkDerivation rec {
     libtool
     pkgconfig
     gtk-doc
-    gobject-introspection
+    gobject-introspection-tools
     which
     makeWrapper
     yacc

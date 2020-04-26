@@ -27,7 +27,7 @@
 , gdk-pixbuf
 , librsvg
 , wrapGAppsHook
-, gobject-introspection
+, gobject-introspection-tools
 , itstool
 , libgdata
 , libchamplain
@@ -56,7 +56,7 @@ stdenv.mkDerivation rec {
     desktop-file-utils
     python3
     wrapGAppsHook
-    gobject-introspection
+    gobject-introspection-tools
   ];
 
   buildInputs = [

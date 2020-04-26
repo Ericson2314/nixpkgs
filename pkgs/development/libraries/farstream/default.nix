@@ -7,7 +7,7 @@
 , gstreamer
 , gst-plugins-base
 , gupnp-igd
-, gobject-introspection
+, gobject-introspection-tools
 , gst-plugins-good
 , gst-plugins-bad
 , gst-libav
@@ -40,7 +40,7 @@ stdenv.mkDerivation rec {
   nativeBuildInputs = [
     pkgconfig
     autoreconfHook
-    gobject-introspection
+    gobject-introspection-tools
   ];
 
   propagatedBuildInputs = [

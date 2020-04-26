@@ -11,7 +11,7 @@
 , appstream-glib
 , desktop-file-utils
 , totem-pl-parser
-, gobject-introspection
+, gobject-introspection-tools
 , glib-networking
 , gdk-pixbuf
 , glib
@@ -38,7 +38,7 @@ python3.pkgs.buildPythonApplication rec  {
   nativeBuildInputs = [
     appstream-glib
     desktop-file-utils
-    gobject-introspection
+    gobject-introspection-tools
     meson
     ninja
     pkgconfig

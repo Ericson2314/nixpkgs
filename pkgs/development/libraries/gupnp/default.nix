@@ -4,7 +4,7 @@
 , meson
 , ninja
 , pkgconfig
-, gobject-introspection
+, gobject-introspection-tools
 , vala
 , gtk-doc
 , docbook_xsl
@@ -54,7 +54,7 @@ stdenv.mkDerivation rec {
     meson
     ninja
     pkgconfig
-    gobject-introspection
+    gobject-introspection-tools
     vala
     gtk-doc
     docbook_xsl

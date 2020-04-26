@@ -8,7 +8,7 @@
 , gdk-pixbuf
 , gettext
 , glib
-, gobject-introspection
+, gobject-introspection-tools
 , gperf
 , gtk-doc
 , gtk3
@@ -39,7 +39,7 @@ stdenv.mkDerivation rec {
     docbook_xml_dtd_42
     docbook_xsl
     gettext
-    gobject-introspection
+    gobject-introspection-tools
     gperf
     gtk-doc
     libxslt

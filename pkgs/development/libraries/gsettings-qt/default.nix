@@ -1,6 +1,6 @@
 { stdenv, fetchbzr, pkgconfig
 , qmake, qtbase, qtdeclarative, wrapQtAppsHook
-, glib, gobject-introspection
+, glib, gobject-introspection-tools
 }:
 
 stdenv.mkDerivation {
@@ -16,7 +16,7 @@ stdenv.mkDerivation {
   nativeBuildInputs = [
     pkgconfig
     qmake
-    gobject-introspection
+    gobject-introspection-tools
     wrapQtAppsHook
   ];
 

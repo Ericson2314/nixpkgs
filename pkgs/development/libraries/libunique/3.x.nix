@@ -1,5 +1,5 @@
 { stdenv, fetchurl, pkgconfig
-, dbus, dbus-glib, gtk3, gobject-introspection
+, dbus, dbus-glib, gtk3, gobject-introspection-tools
 , gtk-doc, docbook_xml_dtd_45, docbook_xsl
 , libxslt, libxml2 }:
 
@@ -17,8 +17,12 @@ stdenv.mkDerivation rec {
     sha256 = "0f70lkw66v9cj72q0iw1s2546r6bwwcd8idcm3621fg2fgh2rw58";
   };
 
-  nativeBuildInputs = [ pkgconfig ];
-  buildInputs = [ dbus dbus-glib gtk3 gobject-introspection gtk-doc docbook_xml_dtd_45 docbook_xsl libxslt libxml2 ];
+  nativeBuildInputs = [
+    pkgconfig gobject-introspection-tools
+  ];
+  buildInputs = [
+    dbus dbus-glib gtk3 gtk-doc docbook_xml_dtd_45 docbook_xsl libxslt libxml2
+  ];
 
   meta = {
     homepage = "https://wiki.gnome.org/Attic/LibUnique";

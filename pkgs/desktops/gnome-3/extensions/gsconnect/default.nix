@@ -1,5 +1,5 @@
 { stdenv, fetchFromGitHub, substituteAll, python3, openssl, gsound
-, meson, ninja, libxml2, pkgconfig, gobject-introspection, wrapGAppsHook
+, meson, ninja, libxml2, pkgconfig, gobject-introspection-tools, wrapGAppsHook
 , glib, gtk3, at-spi2-core, upower, openssh, gnome3, gjs }:
 
 stdenv.mkDerivation rec {
@@ -23,7 +23,7 @@ stdenv.mkDerivation rec {
 
   nativeBuildInputs = [
     meson ninja pkgconfig
-    gobject-introspection # for locating typelibs
+    gobject-introspection-tools # for locating typelibs
     wrapGAppsHook # for wrapping daemons
     libxml2 # xmllint
   ];

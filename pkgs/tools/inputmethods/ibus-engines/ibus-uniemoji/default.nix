@@ -1,6 +1,6 @@
 { stdenv
 , fetchFromGitHub
-, gobject-introspection
+, gobject-introspection-tools
 , wrapGAppsHook
 , python3
 , ibus
@@ -33,7 +33,7 @@ in stdenv.mkDerivation rec {
 
   nativeBuildInputs = [
     wrapGAppsHook
-    gobject-introspection
+    gobject-introspection-tools
   ];
 
   buildInputs = [

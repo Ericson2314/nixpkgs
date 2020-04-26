@@ -5,7 +5,7 @@
 , pycairo
 , glib
 , gtk3
-, gobject-introspection
+, gobject-introspection-tools
 , wrapGAppsHook
 , python
 }:
@@ -22,7 +22,7 @@ buildPythonPackage rec {
   };
 
   nativeBuildInputs = [
-    gobject-introspection
+    gobject-introspection-tools
     wrapGAppsHook
   ];
 
@@ -35,10 +35,6 @@ buildPythonPackage rec {
     glib
     gtk3
   ];
-
-  # https://github.com/NixOS/nixpkgs/issues/56943
-  # this must be false, otherwise the gobject-introspection hook doesn't run
-  strictDeps = false;
 
   preDistPhases = [ "fixupIconPath" ];
 

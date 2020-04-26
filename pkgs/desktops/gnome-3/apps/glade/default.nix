@@ -1,5 +1,5 @@
 { stdenv, intltool, fetchurl, python3
-, pkgconfig, gtk3, glib, gobject-introspection
+, pkgconfig, gtk3, glib, gobject-introspection-tools
 , wrapGAppsHook, itstool, libxml2, docbook_xsl
 , gnome3, gdk-pixbuf, libxslt, gsettings-desktop-schemas }:
 
@@ -17,7 +17,7 @@ stdenv.mkDerivation rec {
   };
 
   nativeBuildInputs = [
-    pkgconfig intltool itstool wrapGAppsHook docbook_xsl libxslt libxml2 gobject-introspection
+    pkgconfig intltool itstool wrapGAppsHook docbook_xsl libxslt libxml2 gobject-introspection-tools
   ];
   buildInputs = [
     gtk3 glib libxml2 python3 python3.pkgs.pygobject3

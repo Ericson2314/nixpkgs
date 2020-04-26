@@ -6,7 +6,7 @@
 , automake
 , which
 , libtool
-, gobject-introspection
+, gobject-introspection-tools
 , glib
 , gtk2
 , libGLU
@@ -36,7 +36,7 @@ stdenv.mkDerivation rec {
     automake
     which
     libtool
-    gobject-introspection
+    gobject-introspection-tools
   ];
 
   buildInputs = [

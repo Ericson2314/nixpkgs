@@ -12,7 +12,7 @@
 , vala
 , pkgconfig
 , libstartup_notification
-, gobject-introspection
+, gobject-introspection-tools
 , gtk-doc
 , docbook_xsl
 , xorgserver
@@ -40,7 +40,7 @@ stdenv.mkDerivation rec {
     dbus
     docbook_xsl
     gnome3.gnome-common
-    gobject-introspection
+    gobject-introspection-tools
     gtk-doc
     libtool
     pkgconfig

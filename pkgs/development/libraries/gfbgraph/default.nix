@@ -1,5 +1,5 @@
 { stdenv, fetchurl, pkgconfig, glib, librest, gnome-online-accounts
-, gnome3, libsoup, json-glib, gobject-introspection }:
+, gnome3, libsoup, json-glib, gobject-introspection-tools }:
 
 stdenv.mkDerivation rec {
   pname = "gfbgraph";
@@ -12,7 +12,7 @@ stdenv.mkDerivation rec {
     sha256 = "1dp0v8ia35fxs9yhnqpxj3ir5lh018jlbiwifjfn8ayy7h47j4fs";
   };
 
-  nativeBuildInputs = [ pkgconfig gobject-introspection ];
+  nativeBuildInputs = [ pkgconfig gobject-introspection-tools ];
   buildInputs = [ glib gnome-online-accounts ];
   propagatedBuildInputs = [ libsoup json-glib librest ];
 

@@ -7,7 +7,7 @@
 , gnome3
 , nspr
 , gettext
-, gobject-introspection
+, gobject-introspection-tools
 , vala
 , sqlite
 , libxml2
@@ -47,7 +47,7 @@ stdenv.mkDerivation rec {
 
   nativeBuildInputs = [
     gettext
-    gobject-introspection
+    gobject-introspection-tools
     gtk3
     gtk-doc
     docbook-xsl-nons

@@ -8,7 +8,7 @@
 , sqlite
 , gdk-pixbuf
 , gnome3
-, gobject-introspection
+, gobject-introspection-tools
 }:
 
 stdenv.mkDerivation rec {
@@ -27,7 +27,7 @@ stdenv.mkDerivation rec {
   ];
 
   nativeBuildInputs = [
-    gobject-introspection
+    gobject-introspection-tools
     meson
     ninja
     pkgconfig

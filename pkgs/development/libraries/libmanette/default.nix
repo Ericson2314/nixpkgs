@@ -4,7 +4,7 @@
 , meson
 , pkgconfig
 , vala
-, gobject-introspection
+, gobject-introspection-tools
 , glib
 , libgudev
 , libevdev
@@ -27,7 +27,7 @@ stdenv.mkDerivation rec {
     ninja
     pkgconfig
     vala
-    gobject-introspection
+    gobject-introspection-tools
   ];
 
   buildInputs = [

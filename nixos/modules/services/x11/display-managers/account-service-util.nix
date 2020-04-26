@@ -1,6 +1,6 @@
 { accountsservice
 , glib
-, gobject-introspection
+, gobject-introspection-tools
 , python3
 , wrapGAppsHook
 , lib
@@ -19,7 +19,7 @@ python3.pkgs.buildPythonApplication {
 
   nativeBuildInputs = [
     wrapGAppsHook
-    gobject-introspection
+    gobject-introspection-tools
   ];
 
   buildInputs = [

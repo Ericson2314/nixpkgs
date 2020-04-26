@@ -1,6 +1,6 @@
 { stdenv, fetchurl, meson, ninja, pkgconfig, gettext, itstool, python3, wrapGAppsHook
 , cairo, gdk-pixbuf, colord, glib, gtk3, gusb, packagekit, libwebp
-, libxml2, sane-backends, vala, gnome3, gobject-introspection }:
+, libxml2, sane-backends, vala, gnome3, gobject-introspection-tools }:
 
 stdenv.mkDerivation rec {
   pname = "simple-scan";
@@ -18,7 +18,7 @@ stdenv.mkDerivation rec {
   nativeBuildInputs = [
     meson ninja gettext itstool pkgconfig python3 wrapGAppsHook libxml2
     # For setup hook
-    gobject-introspection
+    gobject-introspection-tools
   ];
 
   postPatch = ''

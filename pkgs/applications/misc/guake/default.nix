@@ -2,7 +2,7 @@
 , fetchFromGitHub
 , python3
 , gettext
-, gobject-introspection
+, gobject-introspection-tools
 , wrapGAppsHook
 , gtk3
 , keybinder3
@@ -32,7 +32,7 @@ python3.pkgs.buildPythonApplication rec {
 
   nativeBuildInputs = [
     gettext
-    gobject-introspection
+    gobject-introspection-tools
     wrapGAppsHook
     python3.pkgs.pip
   ];

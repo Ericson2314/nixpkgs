@@ -7,7 +7,7 @@
 , docbook_xsl
 , which
 , libxml2
-, gobject-introspection
+, gobject-introspection-tools
 , gtk-doc
 , intltool
 , libxslt
@@ -111,7 +111,7 @@ stdenv.mkDerivation rec {
     docbook_xml_dtd_43
     docbook_xsl
     which
-    gobject-introspection
+    gobject-introspection-tools
     gtk-doc
     intltool
     libxslt

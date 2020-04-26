@@ -4,7 +4,7 @@
 , meson
 , ninja
 , pkgconfig
-, gobject-introspection
+, gobject-introspection-tools
 , gsettings-desktop-schemas
 , makeWrapper
 
@@ -29,7 +29,7 @@ stdenv.mkDerivation rec {
 
   outputs = [ "out" "dev" ];
 
-  nativeBuildInputs = [ meson ninja pkgconfig gobject-introspection makeWrapper ];
+  nativeBuildInputs = [ meson ninja pkgconfig gobject-introspection-tools makeWrapper ];
   buildInputs = [ libX11 libXtst libXi ];
   # In atspi-2.pc dbus-1 glib-2.0
   propagatedBuildInputs = [ dbus glib ];

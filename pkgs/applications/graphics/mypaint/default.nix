@@ -6,7 +6,7 @@
 , lcms2
 , libpng
 , librsvg
-, gobject-introspection
+, gobject-introspection-tools
 , libmypaint
 , mypaint-brushes
 , gdk-pixbuf
@@ -35,7 +35,7 @@ in buildPythonApplication rec {
     pkgconfig
     swig
     wrapGAppsHook
-    gobject-introspection # for setup hook
+    gobject-introspection-tools # for setup hook
   ];
   buildInputs = [
     gtk3

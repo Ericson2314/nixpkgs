@@ -5,6 +5,7 @@
 , pyatspi
 , pycairo
 , at-spi2-core
+, gobject-introspection-tools
 , gobject-introspection
 , gtk3
 , gsettings-desktop-schemas
@@ -33,9 +34,8 @@ buildPythonPackage {
     ./nix-support.patch
   ];
 
-  nativeBuildInputs = [ gobject-introspection dbus xvfb_run wrapGAppsHook ]; # for setup hooks
-  propagatedBuildInputs = [ at-spi2-core gtk3 pygobject3 pyatspi pycairo ];
-  strictDeps = false; # issue 56943
+  nativeBuildInputs = [ gobject-introspection-tools dbus xvfb_run wrapGAppsHook ]; # for setup hooks
+  propagatedBuildInputs = [ gobject-introspection at-spi2-core gtk3 pygobject3 pyatspi pycairo ];
 
   checkPhase = ''
     runHook preCheck

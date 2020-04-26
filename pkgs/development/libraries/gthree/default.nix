@@ -4,7 +4,7 @@
 , ninja
 , meson
 , pkgconfig
-, gobject-introspection
+, gobject-introspection-tools
 , gtk-doc
 , docbook_xsl
 , docbook_xml_dtd_43
@@ -35,7 +35,7 @@ stdenv.mkDerivation rec {
     gtk-doc
     docbook_xsl
     docbook_xml_dtd_43
-    gobject-introspection
+    gobject-introspection-tools
   ];
 
   buildInputs = [

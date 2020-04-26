@@ -1,4 +1,4 @@
-{ stdenv, fetchFromGitHub, pythonPackages, libpulseaudio, glib, gtk3, gobject-introspection, wrapGAppsHook }:
+{ stdenv, fetchFromGitHub, pythonPackages, libpulseaudio, glib, gtk3, gobject-introspection-tools, wrapGAppsHook }:
 
 pythonPackages.buildPythonApplication rec {
   pname = "volctl";
@@ -12,7 +12,7 @@ pythonPackages.buildPythonApplication rec {
   };
 
   nativeBuildInputs = [
-    gobject-introspection
+    gobject-introspection-tools
     wrapGAppsHook
   ];
 

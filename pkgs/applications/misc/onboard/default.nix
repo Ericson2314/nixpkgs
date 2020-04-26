@@ -8,7 +8,7 @@
 , glib
 , glibcLocales
 , dconf
-, gobject-introspection
+, gobject-introspection-tools
 , gsettings-desktop-schemas
 , gtk3
 , hunspell
@@ -57,7 +57,7 @@ python3.pkgs.buildPythonApplication rec {
   ];
 
   nativeBuildInputs = [
-    gobject-introspection
+    gobject-introspection-tools
     intltool
     pkgconfig
     wrapGAppsHook

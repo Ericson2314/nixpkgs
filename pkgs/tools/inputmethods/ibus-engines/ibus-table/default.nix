@@ -1,6 +1,6 @@
 { stdenv, fetchFromGitHub
 , autoreconfHook, docbook2x, pkgconfig
-, gtk3, dconf, gobject-introspection
+, gtk3, dconf, gobject-introspection-tools
 , ibus, python3, wrapGAppsHook }:
 
 stdenv.mkDerivation rec {
@@ -43,7 +43,7 @@ stdenv.mkDerivation rec {
     autoreconfHook
     docbook2x
     pkgconfig
-    gobject-introspection
+    gobject-introspection-tools
     wrapGAppsHook
   ];
 

@@ -4,7 +4,7 @@
 , gstreamer
 , gst-plugins-base
 , python3
-, gobject-introspection
+, gobject-introspection-tools
 , json-glib
 }:
 
@@ -21,7 +21,7 @@ stdenv.mkDerivation rec {
 
   nativeBuildInputs = [
     pkgconfig
-    gobject-introspection
+    gobject-introspection-tools
   ];
 
   buildInputs = [

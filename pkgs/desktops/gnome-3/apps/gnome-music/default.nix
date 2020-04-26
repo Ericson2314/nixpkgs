@@ -10,6 +10,7 @@
 , libnotify
 , wrapGAppsHook
 , libmediaart
+, gobject-introspection-tools
 , gobject-introspection
 , gnome-online-accounts
 , grilo
@@ -49,7 +50,7 @@ python3.pkgs.buildPythonApplication rec {
     wrapGAppsHook
     desktop-file-utils
     appstream-glib
-    gobject-introspection
+    gobject-introspection-tools
   ];
 
   buildInputs = [

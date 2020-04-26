@@ -7,7 +7,7 @@
 , gtk3
 , gnome3
 , gdk-pixbuf
-, gobject-introspection
+, gobject-introspection-tools
 }:
 
 let
@@ -36,7 +36,7 @@ stdenv.mkDerivation {
 
   nativeBuildInputs = [
     pkgconfig
-    gobject-introspection
+    gobject-introspection-tools
     gdk-pixbuf
     # only for build, the install command also wants to use GTK through introspection
     # but we are using Nix for installation so we will not need that.

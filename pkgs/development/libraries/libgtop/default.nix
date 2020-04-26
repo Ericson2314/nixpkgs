@@ -4,7 +4,7 @@
 , pkgconfig
 , perl
 , gettext
-, gobject-introspection
+, gobject-introspection-tools
 , gnome3
 , gtk-doc
 }:
@@ -23,7 +23,7 @@ stdenv.mkDerivation rec {
     gtk-doc
     perl
     gettext
-    gobject-introspection
+    gobject-introspection-tools
   ];
 
   propagatedBuildInputs = [

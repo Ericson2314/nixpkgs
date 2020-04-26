@@ -1,5 +1,5 @@
 { stdenv, fetchurl, pkgconfig, glib, expat, pam, perl, fetchpatch
-, intltool, spidermonkey_60 , gobject-introspection, libxslt, docbook_xsl, dbus
+, intltool, spidermonkey_60 , gobject-introspection-tools, libxslt, docbook_xsl, dbus
 , docbook_xml_dtd_412, gtk-doc, coreutils
 , useSystemd ? (stdenv.isLinux && !stdenv.hostPlatform.isMusl), systemd, elogind
 , withIntrospection ? true
@@ -50,14 +50,16 @@ stdenv.mkDerivation rec {
 
   outputs = [ "bin" "dev" "out" ]; # small man pages in $bin
 
-  nativeBuildInputs =
-    [ glib gtk-doc pkgconfig intltool perl ]
-    ++ [ libxslt docbook_xsl docbook_xml_dtd_412 ]; # man pages
-  buildInputs =
-    [ expat pam spidermonkey_60 ]
-    # On Linux, fall back to elogind when systemd support is off.
-    ++ stdenv.lib.optional stdenv.isLinux (if useSystemd then systemd else elogind)
-    ++ stdenv.lib.optional withIntrospection gobject-introspection;
+  nativeBuildInputs = [
+    glib gtk-doc pkgconfig intltool perl
+    # man pages
+    libxslt docbook_xsl docbook_xml_dtd_412
+  ] ++ stdenv.lib.optional withIntrospection gobject-introspection-tools;
+
+  buildInputs = [
+    expat pam spidermonkey_60 ]
+  ] # On Linux, fall back to elogind when systemd support is off.
+    ++ stdenv.lib.optional stdenv.isLinux (if useSystemd then systemd else elogind);
 
   propagatedBuildInputs = [
     glib # in .pc Requires
@@ -86,7 +88,7 @@ stdenv.mkDerivation rec {
     "--with-systemdsystemunitdir=${placeholder "out"}/etc/systemd/system"
     "--with-polkitd-user=polkituser" #TODO? <nixos> config.ids.uids.polkituser
     "--with-os-type=NixOS" # not recognized but prevents impurities on non-NixOS
-    (if withIntrospection then "--enable-introspection" else "--disable-introspection")
+    (stdenv.lib.enableFeature withIntrospection "introspection")
   ] ++ stdenv.lib.optional (!doCheck) "--disable-test";
 
   makeFlags = [

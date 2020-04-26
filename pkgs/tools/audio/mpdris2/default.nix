@@ -2,7 +2,7 @@
 , autoreconfHook
 , fetchFromGitHub
 , glib
-, gobject-introspection
+, gobject-introspection-tools
 , intltool
 , libnotify
 , python3
@@ -28,7 +28,7 @@ python3.pkgs.buildPythonApplication rec {
 
   nativeBuildInputs = [
     autoreconfHook
-    gobject-introspection
+    gobject-introspection-tools
     intltool
     wrapGAppsHook
   ];

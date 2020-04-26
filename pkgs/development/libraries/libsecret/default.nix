@@ -1,5 +1,5 @@
 { stdenv, fetchurl, fetchpatch, glib, pkgconfig, gettext, libxslt, python3
-, docbook_xsl, docbook_xml_dtd_42 , libgcrypt, gobject-introspection, vala
+, docbook_xsl, docbook_xml_dtd_42 , libgcrypt, gobject-introspection-tools, vala
 , gtk-doc, gnome3, gjs, libintl, dbus, xvfb_run }:
 
 stdenv.mkDerivation rec {
@@ -20,7 +20,7 @@ stdenv.mkDerivation rec {
   propagatedBuildInputs = [ glib ];
   nativeBuildInputs = [
     pkgconfig gettext libxslt docbook_xsl docbook_xml_dtd_42 libintl
-    gobject-introspection vala gtk-doc glib
+    gobject-introspection-tools vala gtk-doc glib
   ];
   buildInputs = [ libgcrypt ];
   # optional: build docs with gtk-doc? (probably needs a flag as well)

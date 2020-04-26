@@ -9,7 +9,7 @@
 , ninja
 , pkgconfig
 , gettext
-, gobject-introspection
+, gobject-introspection-tools
 , libnotify
 , gnutls
 , libgcrypt
@@ -90,7 +90,7 @@ stdenv.mkDerivation rec {
     bison
     cmake
     gettext
-    gobject-introspection
+    gobject-introspection-tools
     gperf
     ninja
     perl

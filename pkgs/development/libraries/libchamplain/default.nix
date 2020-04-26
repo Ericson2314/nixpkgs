@@ -1,5 +1,5 @@
 { fetchurl, stdenv, meson, ninja, vala, gtk-doc, docbook_xsl, docbook_xml_dtd_412, pkgconfig, glib, gtk3, cairo, sqlite, gnome3
-, clutter-gtk, libsoup, gobject-introspection /*, libmemphis */ }:
+, clutter-gtk, libsoup, gobject-introspection-tools /*, libmemphis */ }:
 
 stdenv.mkDerivation rec {
   pname = "libchamplain";
@@ -12,7 +12,7 @@ stdenv.mkDerivation rec {
 
   outputs = [ "out" "dev" "devdoc" ];
 
-  nativeBuildInputs = [ meson ninja pkgconfig gobject-introspection vala gtk-doc docbook_xsl docbook_xml_dtd_412 ];
+  nativeBuildInputs = [ meson ninja pkgconfig gobject-introspection-tools vala gtk-doc docbook_xsl docbook_xml_dtd_412 ];
 
   buildInputs = [ sqlite libsoup ];
 

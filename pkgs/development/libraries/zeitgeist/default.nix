@@ -4,7 +4,7 @@
 , pkgconfig
 , glib
 , sqlite
-, gobject-introspection
+, gobject-introspection-tools
 , vala
 , autoconf
 , automake
@@ -48,7 +48,7 @@ stdenv.mkDerivation rec {
     libtool
     pkgconfig
     gettext
-    gobject-introspection
+    gobject-introspection-tools
     vala
     python2Packages.python
   ];

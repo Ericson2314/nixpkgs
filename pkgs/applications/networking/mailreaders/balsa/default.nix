@@ -1,6 +1,6 @@
 { stdenv, fetchurl, pkgconfig, intltool, glib, gtk3, gmime, gnutls,
   webkitgtk, libesmtp, openssl, libnotify, gtkspell3, gpgme,
-  libcanberra-gtk3, libsecret, gtksourceview, gobject-introspection,
+  libcanberra-gtk3, libsecret, gtksourceview, gobject-introspection-tools,
   wrapGAppsHook
 }:
 
@@ -16,7 +16,7 @@ stdenv.mkDerivation rec {
   nativeBuildInputs = [
     pkgconfig
     intltool
-    gobject-introspection
+    gobject-introspection-tools
     wrapGAppsHook
   ];
 

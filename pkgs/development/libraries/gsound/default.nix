@@ -1,4 +1,7 @@
-{ stdenv, fetchurl, pkgconfig, glib, vala, libcanberra, gobject-introspection, libtool, gnome3 }:
+{ stdenv
+, fetchurl, pkgconfig, vala, gobject-introspection-tools, libtool, gnome3
+, glib, libcanberra
+}:
 
 stdenv.mkDerivation rec {
   pname = "gsound";
@@ -9,7 +12,7 @@ stdenv.mkDerivation rec {
     sha256 = "bba8ff30eea815037e53bee727bbd5f0b6a2e74d452a7711b819a7c444e78e53";
   };
 
-  nativeBuildInputs = [ pkgconfig gobject-introspection libtool vala ];
+  nativeBuildInputs = [ pkgconfig gobject-introspection-tools libtool vala ];
   buildInputs = [ glib libcanberra ];
 
   passthru = {

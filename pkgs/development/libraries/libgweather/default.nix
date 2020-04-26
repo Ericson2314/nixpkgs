@@ -1,5 +1,5 @@
 { stdenv, fetchurl, meson, ninja, pkgconfig, libxml2, glib, gtk3, gettext, libsoup
-, gtk-doc, docbook_xsl, docbook_xml_dtd_43, gobject-introspection, python3, tzdata, geocode-glib, vala, gnome3 }:
+, gtk-doc, docbook_xsl, docbook_xml_dtd_43, gobject-introspection-tools, python3, tzdata, geocode-glib, vala, gnome3 }:
 
 stdenv.mkDerivation rec {
   pname = "libgweather";
@@ -12,7 +12,7 @@ stdenv.mkDerivation rec {
     sha256 = "0bd30g3facfcgf18y2110xhc7ijly313y49mpwdkvl482z0fxzyj";
   };
 
-  nativeBuildInputs = [ meson ninja pkgconfig gettext vala gtk-doc docbook_xsl docbook_xml_dtd_43 gobject-introspection python3 ];
+  nativeBuildInputs = [ meson ninja pkgconfig gettext vala gtk-doc docbook_xsl docbook_xml_dtd_43 gobject-introspection-tools python3 ];
   buildInputs = [ glib gtk3 libsoup libxml2 geocode-glib ];
 
   postPatch = ''

@@ -5,7 +5,7 @@
 , pkgconfig
 , wayland
 , gtk3
-, gobject-introspection
+, gobject-introspection-tools
 }:
 
 stdenv.mkDerivation rec {
@@ -20,11 +20,11 @@ stdenv.mkDerivation rec {
   };
 
   nativeBuildInputs = [
-    meson ninja pkgconfig
+    meson ninja pkgconfig gobject-introspection-tools
   ];
 
   buildInputs = [
-    wayland gtk3 gobject-introspection
+    wayland gtk3
   ];
 
   mesonFlags = [

@@ -1,6 +1,6 @@
 { stdenv, fetchurl, substituteAll, pkgconfig, libxslt, ninja, libX11, gnome3, gtk3, glib
 , gettext, libxml2, xkeyboard_config, isocodes, meson, wayland
-, libseccomp, systemd, bubblewrap, gobject-introspection, gtk-doc, docbook_xsl, gsettings-desktop-schemas }:
+, libseccomp, systemd, bubblewrap, gobject-introspection-tools, gtk-doc, docbook_xsl, gsettings-desktop-schemas }:
 
 stdenv.mkDerivation rec {
   pname = "gnome-desktop";
@@ -14,7 +14,7 @@ stdenv.mkDerivation rec {
   };
 
   nativeBuildInputs = [
-    pkgconfig meson ninja gettext libxslt libxml2 gobject-introspection
+    pkgconfig meson ninja gettext libxslt libxml2 gobject-introspection-tools
     gtk-doc docbook_xsl glib
   ];
   buildInputs = [

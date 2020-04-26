@@ -3,7 +3,7 @@
 , pkgconfig
 , meson
 , gettext
-, gobject-introspection
+, gobject-introspection-tools
 , glib
 , clutter-gtk
 , clutter-gst
@@ -37,7 +37,7 @@ stdenv.mkDerivation rec {
     meson
     ninja
     gettext
-    gobject-introspection
+    gobject-introspection-tools
     wrapGAppsHook
   ];
   buildInputs = [

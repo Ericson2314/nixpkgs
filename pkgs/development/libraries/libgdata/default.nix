@@ -11,7 +11,7 @@
 , json-glib
 , gcr
 , gnome-online-accounts
-, gobject-introspection
+, gobject-introspection-tools
 , gnome3
 , p11-kit
 , openssl
@@ -36,7 +36,7 @@ stdenv.mkDerivation rec {
 
   nativeBuildInputs = [
     gettext
-    gobject-introspection
+    gobject-introspection-tools
     meson
     ninja
     pkgconfig

@@ -4,7 +4,7 @@
 , glib
 , vala
 , dee
-, gobject-introspection
+, gobject-introspection-tools
 , libdbusmenu
 , gtk3
 , intltool
@@ -26,7 +26,7 @@ stdenv.mkDerivation {
 
   nativeBuildInputs = [
     autoreconfHook
-    gobject-introspection
+    gobject-introspection-tools
     intltool
     pkgconfig
     python3

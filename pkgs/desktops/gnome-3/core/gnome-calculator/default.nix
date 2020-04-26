@@ -1,5 +1,5 @@
 { stdenv, meson, ninja, vala, gettext, itstool, fetchurl, pkgconfig, libxml2
-, gtk3, glib, gtksourceview4, wrapGAppsHook, gobject-introspection, python3
+, gtk3, glib, gtksourceview4, wrapGAppsHook, gobject-introspection-tools, python3
 , gnome3, mpfr, gmp, libsoup, libmpc, gsettings-desktop-schemas, libgee }:
 
 stdenv.mkDerivation rec {
@@ -13,7 +13,7 @@ stdenv.mkDerivation rec {
 
   nativeBuildInputs = [
     meson ninja pkgconfig vala gettext itstool wrapGAppsHook python3
-    gobject-introspection # for finding vapi files
+    gobject-introspection-tools # for finding vapi files
   ];
 
   buildInputs = [

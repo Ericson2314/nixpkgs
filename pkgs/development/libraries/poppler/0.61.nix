@@ -2,17 +2,20 @@
 , zlib, curl, cairo, freetype, fontconfig, lcms, libjpeg, openjpeg, fetchpatch
 , withData ? true, poppler_data
 , qt5Support ? false, qtbase ? null
-, introspectionSupport ? false, gobject-introspection ? null
+, introspectionSupport ? false, gobject-introspection-tools ? null
 , utils ? false
 , minimal ? false, suffix ? "glib"
 }:
+
+assert introspectionSupport -> gobject-introspection-tools != null;
 
 let
   version = "0.61.1";
   mkFlag = optset: flag: "-DENABLE_${flag}=${if optset then "on" else "off"}";
 in
 stdenv.mkDerivation rec {
-  name = "poppler-${suffix}-${version}";
+  pname = "poppler-${suffix}";
+  inherit version;
 
   src = fetchurl {
     url = "${meta.homepage}/poppler-${version}.tar.xz";
@@ -30,16 +33,21 @@ stdenv.mkDerivation rec {
     ./0.61-CVE-2019-9959.patch
   ];
 
-  buildInputs = [ libiconv libintl ] ++ lib.optional withData poppler_data;
+  nativeBuildInputs = [
+    cmake ninja pkgconfig
+  ] ++ lib.optional introspectionSupport gobject-introspection-tools;
+
+  buildInputs = [
+    libiconv libintl
+  ] ++ lib.optional withData poppler_data;
 
   # TODO: reduce propagation to necessary libs
-  propagatedBuildInputs = with lib;
-    [ zlib freetype fontconfig libjpeg openjpeg ]
-    ++ optionals (!minimal) [ cairo lcms curl ]
-    ++ optional qt5Support qtbase
-    ++ optional introspectionSupport gobject-introspection;
-
-  nativeBuildInputs = [ cmake ninja pkgconfig ];
+  propagatedBuildInputs = [
+    zlib freetype fontconfig libjpeg openjpeg
+  ] ++ lib.optionals (!minimal) [
+    cairo lcms curl
+  ] ++ lib.optional qt5Support qtbase;
+    
 
   # Not sure when and how to pass it.  It seems an upstream bug anyway.
   CXXFLAGS = stdenv.lib.optionalString stdenv.cc.isClang "-std=c++11";

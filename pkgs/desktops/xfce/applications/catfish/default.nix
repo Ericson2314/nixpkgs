@@ -1,6 +1,7 @@
-{ stdenv, fetchurl, file, which, intltool, gobject-introspection,
-  findutils, xdg_utils, dconf, gtk3, python3Packages,
-  wrapGAppsHook
+{ stdenv, fetchurl, file, which, intltool
+, gobject-introspection-tools
+, findutils, xdg_utils, dconf, gtk3, python3Packages
+, wrapGAppsHook
 }:
 
 python3Packages.buildPythonApplication rec {
@@ -17,7 +18,7 @@ python3Packages.buildPythonApplication rec {
     file
     which
     intltool
-    gobject-introspection # for setup hook populating GI_TYPELIB_PATH
+    gobject-introspection-tools
     wrapGAppsHook
   ];
 
@@ -27,7 +28,6 @@ python3Packages.buildPythonApplication rec {
     python3Packages.pyxdg
     python3Packages.ptyprocess
     python3Packages.pycairo
-    gobject-introspection # Temporary fix, see https://github.com/NixOS/nixpkgs/issues/56943
   ];
 
   propagatedBuildInputs = [

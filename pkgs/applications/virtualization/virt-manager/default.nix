@@ -1,6 +1,6 @@
 { stdenv, fetchurl, python3Packages, intltool, file
 , wrapGAppsHook, gtk-vnc, vte, avahi, dconf
-, gobject-introspection, libvirt-glib, system-libvirt
+, gobject-introspection-tools, libvirt-glib, system-libvirt
 , gsettings-desktop-schemas, glib, libosinfo, gnome3
 , gtksourceview4
 , spiceSupport ? true, spice-gtk ? null
@@ -20,14 +20,13 @@ python3Packages.buildPythonApplication rec {
 
   nativeBuildInputs = [
     intltool file
-    gobject-introspection # for setup hook populating GI_TYPELIB_PATH
+    gobject-introspection-tools
   ];
 
   buildInputs = [
     wrapGAppsHook
     libvirt-glib vte dconf gtk-vnc gnome3.adwaita-icon-theme avahi
     gsettings-desktop-schemas libosinfo gtksourceview4
-    gobject-introspection # Temporary fix, see https://github.com/NixOS/nixpkgs/issues/56943
   ] ++ optional spiceSupport spice-gtk;
 
   propagatedBuildInputs = with python3Packages;

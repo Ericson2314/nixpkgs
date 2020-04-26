@@ -3,7 +3,7 @@
 , docbook_xml_dtd_43
 , docbook_xsl
 , glib
-, gobject-introspection
+, gobject-introspection-tools
 , gtk-doc
 , meson
 , ninja
@@ -33,7 +33,7 @@ stdenv.mkDerivation rec {
   nativeBuildInputs = [
     docbook_xml_dtd_43
     docbook_xsl
-    gobject-introspection
+    gobject-introspection-tools
     gtk-doc
     meson
     ninja

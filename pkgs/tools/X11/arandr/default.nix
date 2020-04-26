@@ -1,5 +1,5 @@
 { stdenv, fetchurl, python3Packages
-, gobject-introspection, gsettings-desktop-schemas, gtk3
+, gobject-introspection-tools, gsettings-desktop-schemas, gtk3
 , wrapGAppsHook, xrandr
 }:
 
@@ -23,12 +23,8 @@ in buildPythonApplication rec {
   # no tests
   doCheck = false;
 
-  # hook for gobject-introspection doesn't like strictDeps
-  # https://github.com/NixOS/nixpkgs/issues/56943
-  strictDeps = false;
-
   buildInputs = [ docutils gsettings-desktop-schemas gtk3 ];
-  nativeBuildInputs = [ gobject-introspection wrapGAppsHook ];
+  nativeBuildInputs = [ gobject-introspection-tools wrapGAppsHook ];
   propagatedBuildInputs = [ xrandr pygobject3 ];
 
   meta = {

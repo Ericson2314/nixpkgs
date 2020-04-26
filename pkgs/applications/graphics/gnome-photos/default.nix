@@ -14,7 +14,7 @@
 , glib
 , gnome-online-accounts
 , gnome3
-, gobject-introspection
+, gobject-introspection-tools
 , grilo
 , grilo-plugins
 , gsettings-desktop-schemas
@@ -51,7 +51,7 @@ stdenv.mkDerivation rec {
   nativeBuildInputs = [
     desktop-file-utils
     gettext
-    gobject-introspection # for setup hook
+    gobject-introspection-tools # for setup hook
     glib # for setup hook
     itstool
     libxml2

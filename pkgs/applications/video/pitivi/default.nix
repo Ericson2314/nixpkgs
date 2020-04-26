@@ -1,6 +1,7 @@
 { stdenv, fetchFromGitHub, fetchurl, pkgconfig, intltool, itstool, python3, wrapGAppsHook
 , python3Packages, gst_all_1, gtk3
-, gobject-introspection, librsvg, gnome3, libnotify, gsound
+, gobject-introspection-tools, gobject-introspection
+, librsvg, gnome3, libnotify, gsound
 , meson, ninja, gsettings-desktop-schemas
 }:
 
@@ -19,7 +20,7 @@ let
       rev = version;
       sha256 = "16skiz9akavssii529v9nr8zd54w43livc14khdyzv164djg9q8f";
     };
-    nativeBuildInputs = [ pkgconfig meson ninja gobject-introspection python3 ];
+    nativeBuildInputs = [ pkgconfig meson ninja gobject-introspection-tools python3 ];
     buildInputs = with gst_all_1; [ gstreamer gst-plugins-base ];
   };
 

@@ -6,7 +6,7 @@
 
 # Gtk deps
 # upstream gImagereader supports Qt too
-, gobject-introspection, wrapGAppsHook
+, gobject-introspection-tools, wrapGAppsHook
 , gtkmm3, gtksourceview3, gtksourceviewmm, gtkspell3, gtkspellmm, cairomm
 }:
 
@@ -33,7 +33,7 @@ stdenv.mkDerivation rec {
 
     # Gtk specific
     wrapGAppsHook
-    gobject-introspection
+    gobject-introspection-tools
   ];
 
   buildInputs = [

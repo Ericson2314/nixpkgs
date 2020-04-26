@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 { stdenv
 , fetchFromGitHub
 , python3
@@ -9,6 +10,13 @@
 , libnotify
 , wrapGAppsHook
 , vte
+||||||| parent of ce62a6e493b... treewide: Adapt for gobject-introspection split
+{ stdenv, fetchurl, python2, keybinder3, intltool, file, gtk3, gobject-introspection
+, libnotify, wrapGAppsHook, vte
+=======
+{ stdenv, fetchurl, python2, keybinder3, intltool, file, gtk3, gobject-introspection-tools
+, libnotify, wrapGAppsHook, vte
+>>>>>>> ce62a6e493b... treewide: Adapt for gobject-introspection split
 }:
 
 python3.pkgs.buildPythonApplication rec {
@@ -31,7 +39,6 @@ python3.pkgs.buildPythonApplication rec {
 
   buildInputs = [
     gtk3
-    gobject-introspection # Temporary fix, see https://github.com/NixOS/nixpkgs/issues/56943
     keybinder3
     libnotify
     python3

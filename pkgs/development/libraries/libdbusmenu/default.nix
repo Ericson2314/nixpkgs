@@ -1,7 +1,7 @@
 { stdenv, fetchurl, lib, file
 , pkgconfig, intltool
 , glib, dbus-glib, json-glib
-, gobject-introspection, vala
+, gobject-introspection-tools, vala
 , gtkVersion ? null, gtk2 ? null, gtk3 ? null }:
 
 with lib;
@@ -18,7 +18,7 @@ stdenv.mkDerivation rec {
     sha256 = "12l7z8dhl917iy9h02sxmpclnhkdjryn08r8i4sr8l3lrlm4mk5r";
   };
 
-  nativeBuildInputs = [ vala pkgconfig intltool gobject-introspection ];
+  nativeBuildInputs = [ vala pkgconfig intltool gobject-introspection-tools ];
 
   buildInputs = [
     glib dbus-glib json-glib

@@ -1,4 +1,4 @@
-{ stdenv, fetchurl, pkgconfig, glib, gobject-introspection
+{ stdenv, fetchurl, pkgconfig, glib, gobject-introspection-tools
 , meson
 , ninja
 , python3
@@ -37,9 +37,11 @@ stdenv.mkDerivation rec {
     patchShebangs build-aux/meson/post-install.py
   '';
 
-  buildInputs = [ glib gobject-introspection ];
+  nativeBuildInputs = [ 
+	pkgconfig python3 meson ninja glib gobject-introspection-tools
+  ];
 
-  nativeBuildInputs = [ pkgconfig python3 meson ninja glib ];
+  buildInputs = [ glib ];
 
   meta = with stdenv.lib; {
     maintainers = teams.gnome.members;

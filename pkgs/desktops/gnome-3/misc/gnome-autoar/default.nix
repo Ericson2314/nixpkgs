@@ -4,7 +4,7 @@
 , gnome3
 , gtk3
 , glib
-, gobject-introspection
+, gobject-introspection-tools
 , libarchive
 , vala
 }:
@@ -25,7 +25,7 @@ stdenv.mkDerivation rec {
   };
 
   nativeBuildInputs = [
-    gobject-introspection
+    gobject-introspection-tools
     pkgconfig
     vala
   ];

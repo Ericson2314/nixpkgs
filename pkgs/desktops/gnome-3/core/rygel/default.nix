@@ -6,7 +6,7 @@
 , vala
 , gettext
 , libxml2
-, gobject-introspection
+, gobject-introspection-tools
 , wrapGAppsHook
 , python3
 , glib
@@ -45,7 +45,7 @@ stdenv.mkDerivation rec {
     vala
     gettext
     libxml2
-    gobject-introspection
+    gobject-introspection-tools
     wrapGAppsHook
     python3
   ];

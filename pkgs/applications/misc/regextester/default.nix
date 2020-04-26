@@ -9,7 +9,7 @@
 , gnome3
 , meson
 , ninja
-, gobject-introspection
+, gobject-introspection-tools
 , gsettings-desktop-schemas
 , pantheon
 , wrapGAppsHook }:
@@ -28,7 +28,7 @@ stdenv.mkDerivation rec {
   nativeBuildInputs = [
     vala
     gettext
-    gobject-introspection
+    gobject-introspection-tools
     libxml2
     meson
     ninja

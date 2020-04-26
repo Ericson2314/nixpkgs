@@ -1,4 +1,4 @@
-{ stdenv, fetchFromGitLab, python3Packages, glib, gobject-introspection, wrapGAppsHook }:
+{ stdenv, fetchFromGitLab, python3Packages, glib, gobject-introspection-tools, wrapGAppsHook }:
 
 python3Packages.buildPythonApplication {
   pname = "connman-notify";
@@ -13,7 +13,7 @@ python3Packages.buildPythonApplication {
 
   format = "other";
 
-  nativeBuildInputs = [ gobject-introspection wrapGAppsHook ];
+  nativeBuildInputs = [ gobject-introspection-tools wrapGAppsHook ];
 
   buildInputs = [ glib ];
 

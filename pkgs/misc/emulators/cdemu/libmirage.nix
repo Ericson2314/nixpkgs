@@ -1,4 +1,4 @@
-{ callPackage, gobject-introspection, cmake, pkgconfig
+{ callPackage, gobject-introspection-tools, cmake, pkgconfig
 , glib, libsndfile, zlib, bzip2, lzma, libsamplerate, intltool
 , pcre, utillinux, libselinux, libsepol }:
 
@@ -12,7 +12,7 @@ in callPackage pkg {
   drvParams = {
     PKG_CONFIG_GOBJECT_INTROSPECTION_1_0_GIRDIR = "${placeholder "out"}/share/gir-1.0";
     PKG_CONFIG_GOBJECT_INTROSPECTION_1_0_TYPELIBDIR = "${placeholder "out"}/lib/girepository-1.0";
-    nativeBuildInputs = [ cmake gobject-introspection pkgconfig ];
+    nativeBuildInputs = [ cmake gobject-introspection-tools pkgconfig ];
     propagatedBuildInputs = [ pcre utillinux libselinux libsepol ];
   };
 }

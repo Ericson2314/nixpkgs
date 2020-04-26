@@ -6,7 +6,7 @@
 , substituteAll
 , gtk-doc
 , pkgconfig
-, gobject-introspection
+, gobject-introspection-tools
 , intltool
 , libgudev
 , polkit
@@ -104,7 +104,7 @@ stdenv.mkDerivation rec {
     ninja
     gtk-doc
     pkgconfig
-    gobject-introspection
+    gobject-introspection-tools
     intltool
     shared-mime-info
     valgrind

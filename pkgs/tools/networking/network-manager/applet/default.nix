@@ -17,7 +17,7 @@
 , libgudev
 , jansson
 , wrapGAppsHook
-, gobject-introspection
+, gobject-introspection-tools
 , python3
 , gtk3
 , libappindicator-gtk3
@@ -62,7 +62,7 @@ stdenv.mkDerivation rec {
     gettext
     pkg-config
     wrapGAppsHook
-    gobject-introspection
+    gobject-introspection-tools
     python3
   ];
 

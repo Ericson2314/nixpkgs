@@ -9,7 +9,7 @@
 , gnome3
 , glib
 , gtk3
-, gobject-introspection
+, gobject-introspection-tools
 , vala
 , libxml2
 , gnutls
@@ -39,7 +39,7 @@ stdenv.mkDerivation rec {
 
   nativeBuildInputs = [
     gettext
-    gobject-introspection
+    gobject-introspection-tools
     gperf
     libxml2
     meson

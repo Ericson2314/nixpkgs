@@ -1,4 +1,4 @@
-{ stdenv, fetchurl, meson, ninja, vala, gobject-introspection, pkgconfig, gnome3, gtk3, wrapGAppsHook
+{ stdenv, fetchurl, meson, ninja, vala, gobject-introspection-tools, pkgconfig, gnome3, gtk3, wrapGAppsHook
 , librsvg, gettext, itstool, python3, libxml2, libgnome-games-support, libgee, desktop-file-utils }:
 
 stdenv.mkDerivation rec {
@@ -10,9 +10,9 @@ stdenv.mkDerivation rec {
     sha256 = "0m53ymxbgr3rb3yv13fzjwqh6shsfr51abkm47rchsy2jryqkzja";
   };
 
-  # gobject-introspection for finding vapi files
+  # gobject-introspection-tools for finding vapi files
   nativeBuildInputs = [
-    meson ninja vala gobject-introspection pkgconfig gettext itstool python3
+    meson ninja vala gobject-introspection-tools pkgconfig gettext itstool python3
     libxml2 wrapGAppsHook desktop-file-utils
   ];
   buildInputs = [ gtk3 librsvg gnome3.adwaita-icon-theme libgnome-games-support libgee ];

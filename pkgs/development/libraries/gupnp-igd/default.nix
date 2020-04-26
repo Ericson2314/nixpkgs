@@ -4,7 +4,7 @@
 , autoreconfHook
 , pkgconfig
 , gettext
-, gobject-introspection
+, gobject-introspection-tools
 , gtk-doc
 , docbook_xsl
 , docbook_xml_dtd_412
@@ -36,7 +36,7 @@ stdenv.mkDerivation rec {
     pkgconfig
     autoreconfHook
     gettext
-    gobject-introspection
+    gobject-introspection-tools
     gtk-doc
     docbook_xsl
     docbook_xml_dtd_412

@@ -1,7 +1,7 @@
 { stdenv
 , fetchurl
 , pkgconfig
-, gobject-introspection
+, gobject-introspection-tools
 , vala
 , gtk-doc
 , docbook_xsl
@@ -24,7 +24,7 @@ stdenv.mkDerivation rec {
 
   nativeBuildInputs = [
     pkgconfig
-    gobject-introspection
+    gobject-introspection-tools
     vala
     gtk-doc
     docbook_xsl

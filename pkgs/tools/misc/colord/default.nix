@@ -11,7 +11,7 @@
 , sqlite
 , systemd
 , dbus
-, gobject-introspection
+, gobject-introspection-tools
 , argyllcms
 , meson
 , ninja
@@ -63,7 +63,7 @@ stdenv.mkDerivation rec {
     docbook_xsl
     docbook_xsl_ns
     gettext
-    gobject-introspection
+    gobject-introspection-tools
     gtk-doc
     libxslt
     meson

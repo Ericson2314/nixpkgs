@@ -10,7 +10,7 @@
 , gtk3
 , glib
 , gettext
-, gobject-introspection
+, gobject-introspection-tools
 , wrapGAppsHook
 }:
 
@@ -33,7 +33,7 @@ stdenv.mkDerivation rec {
 
   nativeBuildInputs = [
     gettext
-    gobject-introspection
+    gobject-introspection-tools
     meson
     ninja
     pkgconfig

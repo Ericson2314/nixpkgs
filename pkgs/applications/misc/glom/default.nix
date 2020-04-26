@@ -28,7 +28,7 @@
 , isocodes
 , gtksourceviewmm4
 , postgresql
-, gobject-introspection
+, gobject-introspection-tools
 , yelp-tools
 , wrapGAppsHook
 }:
@@ -73,7 +73,7 @@ in stdenv.mkDerivation rec {
     graphviz
     sphinx-build
     wrapGAppsHook
-    gobject-introspection # for setup hook
+    gobject-introspection-tools # for setup hook
   ];
 
   buildInputs = [

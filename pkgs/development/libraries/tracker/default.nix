@@ -1,4 +1,4 @@
-{ stdenv, fetchurl, gettext, meson, ninja, pkgconfig, gobject-introspection, python3
+{ stdenv, fetchurl, gettext, meson, ninja, pkgconfig, gobject-introspection-tools, python3
 , gtk-doc, docbook_xsl, docbook_xml_dtd_412, docbook_xml_dtd_43, glibcLocales
 , libxml2, upower, glib, wrapGAppsHook, vala, sqlite, libxslt, libstemmer
 , gnome3, icu, libuuid, networkmanager, libsoup, json-glib, systemd, dbus
@@ -16,7 +16,7 @@ stdenv.mkDerivation rec {
   };
 
   nativeBuildInputs = [
-    meson ninja vala pkgconfig gettext libxslt wrapGAppsHook gobject-introspection
+    meson ninja vala pkgconfig gettext libxslt wrapGAppsHook gobject-introspection-tools
     gtk-doc docbook_xsl docbook_xml_dtd_412 docbook_xml_dtd_43 glibcLocales
     python3 # for data-generators
     systemd # used for checks to install systemd user service

@@ -27,7 +27,7 @@
 , gnome-desktop
 , gst_all_1
 , gsettings-desktop-schemas
-, gobject-introspection
+, gobject-introspection-tools
 }:
 
 stdenv.mkDerivation rec {
@@ -42,7 +42,7 @@ stdenv.mkDerivation rec {
   nativeBuildInputs = [
     desktop-file-utils
     gettext
-    gobject-introspection
+    gobject-introspection-tools
     libxml2
     meson
     ninja

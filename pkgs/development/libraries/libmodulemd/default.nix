@@ -5,7 +5,7 @@
 , pkg-config
 , meson
 , ninja
-, gobject-introspection
+, gobject-introspection-tools
 , python3
 , libyaml
 , rpm
@@ -57,7 +57,7 @@ stdenv.mkDerivation rec {
     docbook-xsl-nons
     help2man
     docbook_xml_dtd_412
-    gobject-introspection
+    gobject-introspection-tools
   ];
 
   buildInputs = [

@@ -3,7 +3,7 @@
 , libpeas, libsecret, gmime3, isocodes, libxml2, gettext, fetchpatch
 , sqlite, gcr, json-glib, itstool, libgee, gnome3, webkitgtk, python3
 , xvfb_run, dbus, shared-mime-info, libunwind, folks, glib-networking
-, gobject-introspection, gspell, appstream-glib, libytnef, libhandy }:
+, gobject-introspection-tools, gspell, appstream-glib, libytnef, libhandy }:
 
 stdenv.mkDerivation rec {
   pname = "geary";
@@ -17,7 +17,7 @@ stdenv.mkDerivation rec {
   nativeBuildInputs = [
     desktop-file-utils gettext itstool libxml2 meson ninja
     pkgconfig vala wrapGAppsHook python3 appstream-glib
-    gobject-introspection
+    gobject-introspection-tools
   ];
 
   buildInputs = [

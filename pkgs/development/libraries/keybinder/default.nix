@@ -1,10 +1,15 @@
 { stdenv, fetchurl, autoconf, automake, libtool, pkgconfig, gnome3
-, gtk-doc, gtk2, python2Packages, lua, gobject-introspection
+, gtk-doc, gtk2, lua, gobject-introspection-tools
+, pythonSupport ? true, python2Packages ? null
 }:
+
+assert pythonSupport -> python2Packages != null;
 
 let
   inherit (python2Packages) python pygtk;
-in stdenv.mkDerivation rec {
+in
+
+stdenv.mkDerivation rec {
   pname = "keybinder";
   version = "0.3.0";
 
@@ -14,15 +19,21 @@ in stdenv.mkDerivation rec {
     sha256 = "0kkplz5snycik5xknwq1s8rnmls3qsp32z09mdpmaacydcw7g3cf";
   };
 
-  nativeBuildInputs = [ pkgconfig ];
+  nativeBuildInputs = [
+	autoconf automake gobject-introspection-tools
+	libtool lua pkgconfig
+  ] ++ stdenv.lib.optional pythonSupport python;
   buildInputs = [
-    autoconf automake libtool gnome3.gnome-common gtk-doc gtk2
-    python pygtk lua gobject-introspection
-  ];
+    gnome3.gnome-common gtk-doc gtk2
+  ] ++ stdenv.lib.optional pythonSupport pygtk;
 
   preConfigure = ''
     ./autogen.sh --prefix="$out"
   '';
+
+  configureFlags = [
+    (stdenv.lib.enableFeature pythonSupport "python")
+  ];
 
   meta = with stdenv.lib; {
     description = "Library for registering global key bindings";

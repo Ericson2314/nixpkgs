@@ -1,6 +1,6 @@
 { stdenv
 , buildPythonPackage
-, pkgs
+, buildPackages, pkgs
 , python
 , pygobject3
 }:
@@ -14,12 +14,16 @@ buildPythonPackage rec {
     sha256 = "0qk8fv8cszzqpdi3wl9vvkym1jil502ycn6sic4jrxckw5s9jsfj";
   };
 
-  buildInputs = [ pkgs.glibcLocales ];
-
   LC_ALL="en_US.UTF-8";
 
+  nativeBuildInputs = [
+    buildPackages.makeWrapper
+  ];
+
+  buildInputs = [ pkgs.glibcLocales ];
+
   # TODO: AppIndicator
-  propagatedBuildInputs = [ pkgs.gobject-introspection pygobject3 pkgs.makeWrapper pkgs.gtk3 ];
+  propagatedBuildInputs = [ pkgs.gobject-introspection pygobject3 pkgs.gtk3 ];
 
   checkPhase = ''
     substituteInPlace runtests --replace "/usr/bin/env python" "${python}/bin/${python.executable}"

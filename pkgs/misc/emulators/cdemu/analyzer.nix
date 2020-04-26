@@ -1,4 +1,4 @@
-{ callPackage, makeWrapper, gobject-introspection, cmake
+{ callPackage, makeWrapper, gobject-introspection-tools, cmake
 , python3Packages, gtk3, glib, libxml2, gnuplot, gnome3, gdk-pixbuf, librsvg, intltool, libmirage }:
 let pkg = import ./base.nix {
   version = "3.2.3";
@@ -10,7 +10,7 @@ in callPackage pkg {
                   gnome3.adwaita-icon-theme gdk-pixbuf librsvg intltool
                   python3Packages.python python3Packages.pygobject3 python3Packages.matplotlib ];
   drvParams = {
-    nativeBuildInputs = [ gobject-introspection cmake ];
+    nativeBuildInputs = [ gobject-introspection-tools cmake ];
     postFixup = ''
       wrapProgram $out/bin/image-analyzer \
         --set PYTHONPATH "$PYTHONPATH" \

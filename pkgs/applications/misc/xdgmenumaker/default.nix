@@ -1,4 +1,4 @@
-{ stdenv, fetchFromGitHub, txt2tags, python3Packages, glib, gobject-introspection, wrapGAppsHook }:
+{ stdenv, fetchFromGitHub, txt2tags, python3Packages, glib, gobject-introspection-tools, wrapGAppsHook }:
 
 python3Packages.buildPythonApplication rec {
   pname = "xdgmenumaker";
@@ -16,7 +16,7 @@ python3Packages.buildPythonApplication rec {
   strictDeps = false;
 
   nativeBuildInputs = [
-    gobject-introspection
+    gobject-introspection-tools
     txt2tags
     wrapGAppsHook
   ];

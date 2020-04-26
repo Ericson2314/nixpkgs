@@ -24,7 +24,7 @@
 , unihan-database
 , runCommand
 , symlinkJoin
-, gobject-introspection
+, gobject-introspection-tools
 }:
 
 let
@@ -71,7 +71,7 @@ in stdenv.mkDerivation rec {
     yelp-tools
     libxml2
     desktop-file-utils
-    gobject-introspection
+    gobject-introspection-tools
   ];
 
   buildInputs = [

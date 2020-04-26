@@ -3,7 +3,7 @@
 , fetchpatch
 , python3
 , wrapGAppsHook
-, gobject-introspection
+, gobject-introspection-tools
 , gtk3
 , glib
 , gnome3
@@ -40,7 +40,7 @@ python3.pkgs.buildPythonApplication rec {
 
   nativeBuildInputs = [
     wrapGAppsHook
-    gobject-introspection
+    gobject-introspection-tools
   ] ++ (with python3.pkgs; [
     Babel
     babelgladeextractor

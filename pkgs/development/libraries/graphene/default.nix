@@ -10,7 +10,7 @@
 , gtk-doc
 , docbook_xsl
 , docbook_xml_dtd_43
-, gobject-introspection
+, gobject-introspection-tools
 }:
 
 stdenv.mkDerivation rec {
@@ -43,13 +43,12 @@ stdenv.mkDerivation rec {
     meson
     ninja
     pkgconfig
-    gobject-introspection
+    gobject-introspection-tools
     python3
   ];
 
   buildInputs = [
     glib
-    gobject-introspection
   ];
 
   checkInputs = [

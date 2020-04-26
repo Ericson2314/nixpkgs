@@ -1,7 +1,8 @@
 { stdenv, fetchurl, substituteAll, intltool, pkgconfig, fetchpatch, dbus
 , gnome3, systemd, libuuid, polkit, gnutls, ppp, dhcp, iptables, python3, vala
 , libgcrypt, dnsmasq, bluez5, readline, libselinux, audit
-, gobject-introspection, modemmanager, openresolv, libndp, newt, libsoup
+, gobject-introspection-tools, gobject-introspection
+, modemmanager, openresolv, libndp, newt, libsoup
 , ethtool, gnused, iputils, kmod, jansson, gtk-doc, libxslt
 , docbook_xsl, docbook_xml_dtd_412, docbook_xml_dtd_42, docbook_xml_dtd_43
 , openconnect, curl, meson, ninja, libpsl, mobile-broadband-provider-info, runtimeShell }:
@@ -63,19 +64,19 @@ in stdenv.mkDerivation rec {
     ./fix-install-paths.patch
   ];
 
+  nativeBuildInputs = [
+    meson ninja intltool pkgconfig
+    vala gobject-introspection-tools dbus
+    # Docs
+    gtk-doc libxslt docbook_xsl docbook_xml_dtd_412 docbook_xml_dtd_42 docbook_xml_dtd_43 pythonForDocs
+  ];
+
   buildInputs = [
     systemd libselinux audit libpsl libuuid polkit ppp libndp curl mobile-broadband-provider-info
     bluez5 dnsmasq gobject-introspection modemmanager readline newt libsoup jansson
   ];
 
   propagatedBuildInputs = [ gnutls libgcrypt ];
-
-  nativeBuildInputs = [
-    meson ninja intltool pkgconfig
-    vala gobject-introspection dbus
-    # Docs
-    gtk-doc libxslt docbook_xsl docbook_xml_dtd_412 docbook_xml_dtd_42 docbook_xml_dtd_43 pythonForDocs
-  ];
 
   doCheck = false; # requires /sys, the net
 

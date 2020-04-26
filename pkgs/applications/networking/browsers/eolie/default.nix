@@ -1,7 +1,8 @@
 { stdenv, fetchgit, meson, ninja, pkgconfig
 , python3, gtk3, libsecret, gst_all_1, webkitgtk
 , glib-networking, gtkspell3, hunspell, desktop-file-utils
-, gobject-introspection, wrapGAppsHook }:
+, gobject-introspection-tools, gobject-introspection, wrapGAppsHook
+}:
 
 python3.pkgs.buildPythonApplication rec {
   pname = "eolie";
@@ -19,7 +20,7 @@ python3.pkgs.buildPythonApplication rec {
 
   nativeBuildInputs = [
     desktop-file-utils
-    gobject-introspection
+    gobject-introspection-tools
     meson
     ninja
     pkgconfig

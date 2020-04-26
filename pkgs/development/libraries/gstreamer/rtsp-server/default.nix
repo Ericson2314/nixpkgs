@@ -4,7 +4,7 @@
 , ninja
 , pkgconfig
 , gettext
-, gobject-introspection
+, gobject-introspection-tools
 , gst-plugins-base
 , gst-plugins-bad
 }:
@@ -24,7 +24,7 @@ stdenv.mkDerivation rec {
     meson
     ninja
     gettext
-    gobject-introspection
+    gobject-introspection-tools
     pkgconfig
   ];
 

@@ -11,7 +11,7 @@
 , libxfce4util
 , libxslt
 , xfconf
-, gobject-introspection
+, gobject-introspection-tools
 , gvfs
 , makeWrapper
 , symlinkJoin
@@ -27,7 +27,7 @@ let unwrapped = mkXfceDerivation {
 
   nativeBuildInputs = [
     docbook_xsl
-    gobject-introspection
+    gobject-introspection-tools
     libxslt
   ];
 

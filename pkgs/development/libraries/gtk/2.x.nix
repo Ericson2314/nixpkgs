@@ -1,5 +1,5 @@
 { config, stdenv, fetchurl, pkgconfig, gettext, glib, atk, pango, cairo, perl, xorg
-, gdk-pixbuf, xlibsWrapper, gobject-introspection
+, gdk-pixbuf, xlibsWrapper, gobject-introspection-tools
 , xineramaSupport ? stdenv.isLinux
 , cupsSupport ? config.gtk2.cups or stdenv.isLinux, cups ? null
 , gdktarget ? if stdenv.isDarwin then "quartz" else "x11"
@@ -30,7 +30,9 @@ stdenv.mkDerivation rec {
     ./hooks/drop-icon-theme-cache.sh
   ];
 
-  nativeBuildInputs = setupHooks ++ [ perl pkgconfig gettext gobject-introspection ];
+  nativeBuildInputs = setupHooks ++ [
+    perl pkgconfig gettext gobject-introspection-tools
+  ];
 
   patches = [
     ./patches/2.0-immodules.cache.patch

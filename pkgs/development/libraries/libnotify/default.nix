@@ -7,7 +7,7 @@
 , docbook-xsl-ns
 , glib
 , gdk-pixbuf
-, gobject-introspection
+, gobject-introspection-tools
 , gnome3
 }:
 
@@ -30,7 +30,7 @@ stdenv.mkDerivation rec {
   ];
 
   nativeBuildInputs = [
-    gobject-introspection
+    gobject-introspection-tools
     meson
     ninja
     pkgconfig

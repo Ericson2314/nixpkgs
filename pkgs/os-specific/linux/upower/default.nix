@@ -7,7 +7,7 @@
 , libgudev
 , libusb1
 , glib
-, gobject-introspection
+, gobject-introspection-tools
 , gettext
 , systemd
 , useIMobileDevice ? true
@@ -28,7 +28,7 @@ stdenv.mkDerivation {
   nativeBuildInputs = [
     docbook_xsl
     gettext
-    gobject-introspection
+    gobject-introspection-tools
     libxslt
     pkgconfig
   ];

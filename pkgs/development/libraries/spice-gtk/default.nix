@@ -5,7 +5,7 @@
 , docbook_xsl
 , epoxy
 , gettext
-, gobject-introspection
+, gobject-introspection-tools
 , gst_all_1
 , gtk-doc
 , gtk3
@@ -75,7 +75,7 @@ stdenv.mkDerivation rec {
   nativeBuildInputs = [
     docbook_xsl
     gettext
-    gobject-introspection
+    gobject-introspection-tools
     gtk-doc
     libsoup
     meson

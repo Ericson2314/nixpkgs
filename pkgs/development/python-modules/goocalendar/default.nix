@@ -3,7 +3,7 @@
 , buildPythonPackage
 , pkgconfig
 , gtk3
-, gobject-introspection
+, gobject-introspection-tools
 , pygtk
 , pygobject3
 , goocanvas2
@@ -25,7 +25,7 @@ buildPythonPackage rec {
 
   nativeBuildInputs = [
     pkgconfig
-    gobject-introspection
+    gobject-introspection-tools
   ];
 
   propagatedBuildInputs = [

@@ -3,7 +3,7 @@
 , fetchpatch
 , meson
 , ninja
-, gobject-introspection
+, gobject-introspection-tools
 , gnutls
 , cairo
 , glib
@@ -43,7 +43,7 @@ stdenv.mkDerivation rec {
     meson
     ninja
     pkgconfig
-    gobject-introspection
+    gobject-introspection-tools
     vala
     gettext
     perl # for pod2man

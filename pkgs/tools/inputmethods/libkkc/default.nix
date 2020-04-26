@@ -1,5 +1,5 @@
 { stdenv, fetchurl
-, vala, gobject-introspection, intltool, python2Packages, glib
+, vala, gobject-introspection-tools, intltool, python2Packages, glib
 , pkgconfig
 , libgee, json-glib, marisa, libkkc-data
 }:
@@ -14,7 +14,7 @@ stdenv.mkDerivation rec {
   };
 
   nativeBuildInputs = [
-    vala gobject-introspection
+    vala gobject-introspection-tools
     python2Packages.python python2Packages.marisa
     intltool glib pkgconfig
   ];

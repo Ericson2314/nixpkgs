@@ -4,7 +4,7 @@
 , gnome3
 , gtk3
 , wrapGAppsHook
-, gobject-introspection
+, gobject-introspection-tools
 , itstool
 , libxml2
 , python3
@@ -28,7 +28,7 @@
 
   nativeBuildInputs = [
     gettext
-    gobject-introspection # For setup hook
+    gobject-introspection-tools # For setup hook
     itstool
     libxml2
     pkgconfig

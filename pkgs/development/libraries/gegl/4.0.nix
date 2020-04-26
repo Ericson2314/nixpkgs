@@ -3,7 +3,7 @@
 , fetchpatch
 , pkgconfig
 , vala
-, gobject-introspection
+, gobject-introspection-tools
 , gtk-doc
 , docbook_xsl
 , docbook_xml_dtd_43
@@ -61,7 +61,7 @@ stdenv.mkDerivation rec {
     meson
     ninja
     vala
-    gobject-introspection
+    gobject-introspection-tools
     gtk-doc
     docbook_xsl
     docbook_xml_dtd_43

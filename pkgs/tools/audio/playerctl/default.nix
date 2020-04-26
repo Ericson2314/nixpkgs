@@ -1,4 +1,7 @@
-{ stdenv, meson, ninja, fetchFromGitHub, glib, pkgconfig, gtk-doc, docbook_xsl, gobject-introspection }:
+{ stdenv
+, meson, ninja, fetchFromGitHub, pkgconfig, gtk-doc, docbook_xsl, gobject-introspection-tools
+, glib
+}:
 
 stdenv.mkDerivation rec {
   pname = "playerctl";
@@ -11,7 +14,7 @@ stdenv.mkDerivation rec {
     sha256 = "03f3645ssqf8dpkyzj9rlglrzh0840sflalskx9s4i03bgq3v4r9";
   };
 
-  nativeBuildInputs = [ meson ninja pkgconfig gtk-doc docbook_xsl gobject-introspection ];
+  nativeBuildInputs = [ meson ninja pkgconfig gtk-doc docbook_xsl gobject-introspection-tools ];
   buildInputs = [ glib ];
 
   meta = with stdenv.lib; {

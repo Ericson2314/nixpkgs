@@ -5,7 +5,7 @@
 , ninja
 , pkgconfig
 , gettext
-, gobject-introspection
+, gobject-introspection-tools
 , bison
 , flex
 , python3
@@ -56,7 +56,7 @@ stdenv.mkDerivation rec {
     python3
     makeWrapper
     glib
-    gobject-introspection
+    gobject-introspection-tools
     bash-completion
 
     # documentation

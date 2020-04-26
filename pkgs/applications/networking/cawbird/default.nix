@@ -14,7 +14,7 @@
 , dconf
 , gst_all_1
 , wrapGAppsHook
-, gobject-introspection
+, gobject-introspection-tools
 , glib-networking
 , python3
 }:
@@ -37,7 +37,7 @@ stdenv.mkDerivation rec {
     pkgconfig
     wrapGAppsHook
     python3
-    gobject-introspection # for setup hook
+    gobject-introspection-tools # for setup hook
   ];
 
   buildInputs = [

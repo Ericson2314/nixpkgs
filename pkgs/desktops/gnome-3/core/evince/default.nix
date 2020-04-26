@@ -22,7 +22,7 @@
 , libsecret
 , wrapGAppsHook
 , librsvg
-, gobject-introspection
+, gobject-introspection-tools
 , yelp-tools
 , gspell
 , adwaita-icon-theme
@@ -62,7 +62,7 @@ stdenv.mkDerivation rec {
     docbook-xsl-nons
     docbook_xml_dtd_43
     gettext
-    gobject-introspection
+    gobject-introspection-tools
     gtk-doc
     itstool
     meson

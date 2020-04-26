@@ -13,7 +13,7 @@
 , docbook_xsl
 , docbook_xml_dtd_43
 , mobile-broadband-provider-info
-, gobject-introspection
+, gobject-introspection-tools
 , gtk3
 , withGnome ? true
 , gcr
@@ -42,7 +42,7 @@ stdenv.mkDerivation rec {
     ninja
     gettext
     pkg-config
-    gobject-introspection
+    gobject-introspection-tools
     gtk-doc
     docbook_xsl
     docbook_xml_dtd_43
