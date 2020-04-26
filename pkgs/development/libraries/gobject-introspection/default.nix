@@ -1,5 +1,6 @@
-{ stdenv, fetchurl, glib, flex, bison, meson, ninja, pkgconfig, libffi, python3
-, libintl, cctools, cairo, gnome3, glibcLocales
+{ stdenv
+, fetchurl, makeSetupHook, meson, pkgconfig, ninja, flex, bison, libintl, glibcLocales
+, python3, glib, libffi, cctools, cairo, gnome3
 , substituteAll, nixStoreDir ? builtins.storeDir
 , x11Support ? true
 }:
@@ -8,6 +9,13 @@
 # In that case its about 6MB which could be separated
 
 with stdenv.lib;
+
+let
+  setupHook = makeSetupHook {
+    name = "gobject-introspection-hook";
+  } ./setup-hook.sh;
+in
+
 stdenv.mkDerivation rec {
   pname = "gobject-introspection";
   version = "1.64.1";
@@ -17,13 +25,16 @@ stdenv.mkDerivation rec {
     sha256 = "19vz7vp10h0zj3f491yk72dp89bix6rgkzxg4qcm4d6151ksxgl0";
   };
 
-  outputs = [ "out" "dev" "man" ];
-  outputBin = "dev";
+  outputs = [ "out" "dev" "bin" "man" ];
+
+  # Do not propogate the "bin" output, as it refers to the dev output.
+  # Eventually, each of "bin" and "dev" should not refer to the other.
+  propagatedBuildOutputs = [ "out" ];
 
   LC_ALL = "en_US.UTF-8"; # for tests
 
-  nativeBuildInputs = [ meson ninja pkgconfig libintl glibcLocales ];
-  buildInputs = [ flex bison python3 setupHook/*move .gir*/ ]
+  nativeBuildInputs = [ meson ninja pkgconfig flex bison libintl glibcLocales setupHook ];
+  buildInputs = [ python3 /*move .gir*/ ]
     ++ stdenv.lib.optional stdenv.isDarwin cctools;
   propagatedBuildInputs = [ libffi glib ];
 
@@ -35,8 +46,6 @@ stdenv.mkDerivation rec {
 
   # outputs TODO: share/gobject-introspection-1.0/tests is needed during build
   # by pygobject3 (and maybe others), but it's only searched in $out
-
-  setupHook = ./setup-hook.sh;
 
   patches = [
     (substituteAll {
@@ -66,6 +75,21 @@ stdenv.mkDerivation rec {
 
   preInstall = ''
     rm $out/lib/libregress-1.0${stdenv.targetPlatform.extensions.sharedLibrary}
+  '';
+
+  postInstall = ''
+    mkdir -p "$bin/nix-support"
+    echo "${setupHook}" > "$bin/nix-support/propagated-build-inputs"
+  ''
+  # TODO(@Ericson2314): Replace this with wrapper script so for cross we can
+  # get the libs from the next stage, combined with tools from the previous
+  # stage.
+  + ''
+    echo "$dev" > "$bin/nix-support/propagated-target-target-deps"
+  ''
+  + ''
+    cp ${./setup-hook.sh} "$bin/nix-support/setup-hook"
+    sed -i -e '/bindir/d' $out/lib/pkgconfig/*.pc
   '';
 
   passthru = {

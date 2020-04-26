@@ -11950,6 +11950,8 @@ in
   gns3-gui = gns3Packages.guiStable;
   gns3-server = gns3Packages.serverStable;
 
+  gobject-introspection-tools = gobject-introspection.bin;
+
   gobject-introspection = callPackage ../development/libraries/gobject-introspection {
     nixStoreDir = config.nix.storeDir or builtins.storeDir;
     inherit (darwin) cctools;
