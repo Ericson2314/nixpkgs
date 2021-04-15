@@ -16,6 +16,7 @@ let
 
   defaultMakeFlags = [
     "-e"
+    "-m ${buildPackages.netbsd.makeRules}/share/mk"
   ];
 
   otherSplices = {
@@ -63,7 +64,7 @@ in lib.makeScopeWithSplicing
 
     nativeBuildInputs = with buildPackages.netbsd; [
       bsdSetupHook
-      makeMinimal
+      makeMinimal makeRules
       install tsort lorder mandoc groff statHook
     ];
     buildInputs = with self; compatIfNeeded;
@@ -140,12 +141,41 @@ in lib.makeScopeWithSplicing
 
       install -D nbmake $out/bin/nbmake
       ln -s $out/bin/nbmake $out/bin/make
-      mkdir -p $out/share
-      cp -r $BSDSRCDIR/share/mk $out/share/mk
 
       runHook postInstall
     '';
     extraPaths = with self; [ make.src ] ++ make.extraPaths;
+  };
+
+  makeRules = mkDerivation {
+    sha256 = "0w9x77cfnm6zwy40slradzi0ip9gz80x6lk7pvnlxzsr2m5ra5sy";
+    version = "9.2";
+
+    buildInputs = with netbsd; [];
+    nativeBuildInputs = with buildPackages.netbsd; [ bsdSetupHook netbsdSetupHook ];
+
+    makeFlags = [];
+
+    skipIncludesPhase = true;
+
+    postPatch = ''
+      substituteInPlace $sourceRoot/bsd.lib.mk \
+        --replace '_INSTRANLIB=''${empty(PRESERVE):?-a "''${RANLIB} -t":}' '_INSTRANLIB='
+      substituteInPlace $sourceRoot/bsd.kinc.mk \
+        --replace /bin/rm rm
+    '' + lib.optionalString stdenv.isDarwin ''
+      substituteInPlace $sourceRoot/bsd.sys.mk \
+        --replace '-Wl,--fatal-warnings' "" \
+        --replace '-Wl,--warn-shared-textrel' ""
+    '';
+
+    dontConfigure = true;
+    dontBuild = true;
+
+    installPhase = ''
+      mkdir -p $out/share
+      cp -r $sourceRoot $out/share/mk
+    '';
   };
 
   compat = mkDerivation (let
@@ -240,7 +270,7 @@ in lib.makeScopeWithSplicing
     extraPaths = with self; [ mtree.src make.src ];
     nativeBuildInputs = with buildPackages.netbsd; [
       bsdSetupHook
-      makeMinimal
+      makeMinimal makeRules
       mandoc groff
     ];
     skipIncludesPhase = true;
@@ -300,7 +330,7 @@ in lib.makeScopeWithSplicing
     sha256 = "18nqwlndfc34qbbgqx5nffil37jfq9aw663ippasfxd2hlyc106x";
     nativeBuildInputs = with buildPackages.netbsd; [
       bsdSetupHook
-      makeMinimal
+      makeMinimal makeRules
       install mandoc groff
     ];
   };
@@ -322,7 +352,7 @@ in lib.makeScopeWithSplicing
     sha256 = "1dqvf9gin29nnq3c4byxc7lfd062pg7m84843zdy6n0z63hnnwiq";
     nativeBuildInputs = with buildPackages.netbsd; [
       bsdSetupHook
-      makeMinimal
+      makeMinimal makeRules
       install mandoc groff
     ];
   };
@@ -333,7 +363,7 @@ in lib.makeScopeWithSplicing
     sha256 = "0rjf9blihhm0n699vr2bg88m4yjhkbxh6fxliaay3wxkgnydjwn2";
     nativeBuildInputs = with buildPackages.netbsd; [
       bsdSetupHook
-      makeMinimal
+      makeMinimal makeRules
       install mandoc groff
     ];
   };
@@ -351,22 +381,7 @@ in lib.makeScopeWithSplicing
     postPatch = ''
       # make needs this to pick up our sys make files
       export NIX_CFLAGS_COMPILE+=" -D_PATH_DEFSYSPATH=\"$out/share/mk\""
-
-      substituteInPlace $BSDSRCDIR/share/mk/bsd.lib.mk \
-        --replace '_INSTRANLIB=''${empty(PRESERVE):?-a "''${RANLIB} -t":}' '_INSTRANLIB='
-      substituteInPlace $BSDSRCDIR/share/mk/bsd.kinc.mk \
-        --replace /bin/rm rm
-    '' + lib.optionalString stdenv.isDarwin ''
-      substituteInPlace $BSDSRCDIR/share/mk/bsd.sys.mk \
-        --replace '-Wl,--fatal-warnings' "" \
-        --replace '-Wl,--warn-shared-textrel' ""
     '';
-    postInstall = ''
-      make -C $BSDSRCDIR/share/mk FILESDIR=$out/share/mk install
-    '';
-    extraPaths = [
-      (fetchNetBSD "share/mk" "9.2" "0w9x77cfnm6zwy40slradzi0ip9gz80x6lk7pvnlxzsr2m5ra5sy")
-    ];
   };
 
   mtree = mkDerivation {
@@ -435,7 +450,7 @@ in lib.makeScopeWithSplicing
     buildInputs = with self; compatIfNeeded;
     nativeBuildInputs = with buildPackages.netbsd; [
       bsdSetupHook
-      makeMinimal
+      makeMinimal makeRules
       install mandoc groff nbperf
     ];
     makeFlags = [ "TOOLDIR=$(out)" ];
@@ -485,7 +500,7 @@ in lib.makeScopeWithSplicing
     sha256 = "0nxnmj4c8s3hb9n3fpcmd0zl3l1nmhivqgi9a35sis943qvpgl9h";
     nativeBuildInputs = with buildPackages.netbsd; [
       bsdSetupHook
-      makeMinimal
+      makeMinimal makeRules
       install mandoc groff nbperf rpcgen
     ];
     extraPaths = with self; [ common ];
@@ -754,7 +769,7 @@ in lib.makeScopeWithSplicing
     meta.platforms = lib.platforms.netbsd;
     nativeBuildInputs = with buildPackages.netbsd; [
       bsdSetupHook
-      makeMinimal
+      makeMinimal makeRules
       install mandoc groff flex
       byacc genassym gencat lorder tsort statHook
     ];
@@ -792,7 +807,7 @@ in lib.makeScopeWithSplicing
     ];
     nativeBuildInputs = with buildPackages.netbsd; [
       bsdSetupHook
-      makeMinimal
+      makeMinimal makeRules
       install mandoc groff flex
       byacc genassym gencat lorder tsort statHook rpcgen
     ];
