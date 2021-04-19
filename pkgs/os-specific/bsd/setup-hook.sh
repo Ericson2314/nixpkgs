@@ -70,10 +70,7 @@ setBSDSourceDir() {
   export _SRC_TOP_=$BSDSRCDIR
   chmod -R u+w $sourceRoot
   for path in $extraPaths; do
-    cd $path
-    find . -type d -exec mkdir -p $sourceRoot/\{} \;
-    find . -type f -exec cp -pr \{} $sourceRoot/\{} \;
-    chmod -R u+w $sourceRoot
+    rsync -Er --chmod u+w $path/ $sourceRoot/
   done
 
   cd $sourceRoot
@@ -104,10 +101,8 @@ moveUsrDir() {
   if [ -d $prefix ]; then
     # Remove lingering /usr references
     if [ -d $prefix/usr ]; then
-      pushd $prefix/usr
-      find . -type d -exec mkdir -p $out/\{} \;
-      find . \( -type f -o -type l \) -exec mv \{} $out/\{} \;
-      popd
+      rsync --remove-source-files -Er $prefix/usr/ $out/
+      rm -r $prefix/usr
     fi
 
     find $prefix -type d -empty -delete
