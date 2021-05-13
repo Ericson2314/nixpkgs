@@ -82,6 +82,10 @@ in lib.makeScopeWithSplicing
     }.${stdenv'.hostPlatform.parsed.cpu.name}
       or stdenv'.hostPlatform.parsed.cpu.name;
 
+    # We build GCC separately, and don't want HAVE_GCC defined when using
+    # Clang.
+    MKGCC = "no";
+
     BSD_PATH = attrs.path;
 
     strictDeps = true;

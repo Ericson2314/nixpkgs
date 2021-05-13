@@ -276,6 +276,7 @@ rec {
     config = "x86_64-unknown-netbsd";
     libc = "nblibc";
     useLLVM = true;
+    linker = "bfd"; # There is currently an issue with lld
   };
 
   #
