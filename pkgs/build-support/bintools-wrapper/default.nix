@@ -38,7 +38,6 @@ let
   bintoolsVersion = lib.getVersion bintools;
   bintoolsName = lib.removePrefix targetPrefix (lib.getName bintools);
 
-  libc_bin = if libc == null then null else getBin libc;
   libc_lib = if libc == null then null else getLib libc;
   bintools_bin = if nativeTools then "" else getBin bintools;
   # The wrapper scripts use 'cat' and 'grep', so we may need coreutils.
@@ -82,7 +81,7 @@ stdenv.mkDerivation {
 
   preferLocalBuild = true;
 
-  inherit bintools_bin libc_bin libc_lib coreutils_bin;
+  inherit bintools_bin libc_lib coreutils_bin;
   shell = getBin shell + shell.shellPath or "";
   gnugrep_bin = if nativeTools then "" else gnugrep;
 
@@ -258,7 +257,7 @@ stdenv.mkDerivation {
     # install the wrapper, you get tools like objdump (same for any
     # binaries of libc).
     + optionalString (!nativeTools) ''
-      printWords ${bintools_bin} ${if libc == null then "" else libc_bin} > $out/nix-support/propagated-user-env-packages
+      printWords ${bintools_bin} > $out/nix-support/propagated-user-env-packages
     ''
 
     ##

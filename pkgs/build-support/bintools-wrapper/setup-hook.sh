@@ -41,11 +41,6 @@ if [ -n "@bintools_bin@" ]; then
 fi
 
 # shellcheck disable=SC2157
-if [ -n "@libc_bin@" ]; then
-    addToSearchPath _PATH @libc_bin@/bin
-fi
-
-# shellcheck disable=SC2157
 if [ -n "@coreutils_bin@" ]; then
     addToSearchPath _PATH @coreutils_bin@/bin
 fi
