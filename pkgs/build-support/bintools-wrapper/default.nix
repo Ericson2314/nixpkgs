@@ -39,7 +39,6 @@ let
   bintoolsName = lib.removePrefix targetPrefix (lib.getName bintools);
 
   libc_bin = if libc == null then null else getBin libc;
-  libc_dev = if libc == null then null else getDev libc;
   libc_lib = if libc == null then null else getLib libc;
   bintools_bin = if nativeTools then "" else getBin bintools;
   # The wrapper scripts use 'cat' and 'grep', so we may need coreutils.
@@ -83,7 +82,7 @@ stdenv.mkDerivation {
 
   preferLocalBuild = true;
 
-  inherit bintools_bin libc_bin libc_dev libc_lib coreutils_bin;
+  inherit bintools_bin libc_bin libc_lib coreutils_bin;
   shell = getBin shell + shell.shellPath or "";
   gnugrep_bin = if nativeTools then "" else gnugrep;
 
@@ -215,7 +214,6 @@ stdenv.mkDerivation {
       echo "-L${libc_lib}${libc.libdir or "/lib"}" >> $out/nix-support/libc-ldflags
 
       echo "${libc_lib}" > $out/nix-support/orig-libc
-      echo "${libc_dev}" > $out/nix-support/orig-libc-dev
     ''
 
     ##
