@@ -236,9 +236,10 @@ in lib.makeScopeWithSplicing
   # install’s -D option. No alternative seems to exist in BSD install.
   install = let binstall = writeScript "binstall" ''
     #!${runtimeShell}
-    for last in $@; do true; done
+    set -eu
+    for last in "$@"; do true; done
     mkdir -p $(dirname $last)
-    xinstall "$@"
+    @out@/bin/xinstall "$@"
   ''; in mkDerivation {
     path = "usr.bin/xinstall";
     version = "9.2";
@@ -257,6 +258,7 @@ in lib.makeScopeWithSplicing
       install -D install.1 $out/share/man/man1/install.1
       install -D xinstall $out/bin/xinstall
       install -D -m 0550 ${binstall} $out/bin/binstall
+      substituteInPlace $out/bin/binstall --subst-var out
       ln -s $out/bin/binstall $out/bin/install
 
       runHook postInstall

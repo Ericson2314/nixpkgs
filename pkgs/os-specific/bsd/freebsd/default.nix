@@ -1,7 +1,8 @@
 { stdenv, lib, stdenvNoCC
 , pkgsBuildBuild, pkgsBuildHost, pkgsBuildTarget, pkgsHostHost, pkgsTargetTarget
 , buildPackages, splicePackages, newScope
-, bsdSetupHook, makeSetupHook, fetchgit, fetchurl, coreutils, groff, mandoc, byacc, flex
+, bsdSetupHook, makeSetupHook
+, fetchgit, fetchurl, coreutils, groff, mandoc, byacc, flex, which
 , zlib, expat, libbsd, libmd
 , runCommand, writeScript, writeText, runtimeShell, symlinkJoin
 }:
@@ -27,6 +28,15 @@ let
     selfTargetTarget = pkgsTargetTarget.freebsd or {}; # might be missing
   };
 
+  mkBsdArch = stdenv':  {
+    x86_64 = "amd64";
+    aarch64 = "arm64";
+    i486 = "i386";
+    i586 = "i386";
+    i686 = "i386";
+  }.${stdenv'.hostPlatform.parsed.cpu.name}
+    or stdenv'.hostPlatform.parsed.cpu.name;
+
 in lib.makeScopeWithSplicing
   splicePackages
   newScope
@@ -36,6 +46,7 @@ in lib.makeScopeWithSplicing
   (self: let
     inherit (self) mkDerivation;
   in {
+  inherit freebsdSrc;
 
   # Why do we have splicing and yet do `nativeBuildInputs = with self; ...`?
   # See note in ../netbsd/default.nix.
@@ -79,14 +90,7 @@ in lib.makeScopeWithSplicing
     }.${stdenv'.hostPlatform.parsed.cpu.name}
       or stdenv'.hostPlatform.parsed.cpu.name;
 
-    MACHINE = {
-      x86_64 = "amd64";
-      aarch64 = "evbarm64";
-      i486 = "i386";
-      i586 = "i386";
-      i686 = "i386";
-    }.${stdenv'.hostPlatform.parsed.cpu.name}
-      or stdenv'.hostPlatform.parsed.cpu.name;
+    MACHINE = mkBsdArch stdenv';
 
     MACHINE_CPUARCH = MACHINE_ARCH;
 
@@ -146,52 +150,161 @@ in lib.makeScopeWithSplicing
       ln -s $out/bin/bmake $out/bin/make
       mkdir -p $out/share
       cp -r $BSDSRCDIR/share/mk $out/share/mk
+      find "$out/share/mk" -type f -print0 |
+        while IFS= read -r -d "" f; do
+          substituteInPlace "$f" --replace 'usr/' ""
+        done
 
       runHook postInstall
+    '';
+
+    postInstall = lib.optionalString (!stdenv.hostPlatform.isFreeBSD) ''
+      boot_mk=$BSDSRCDIR/tools/build/mk
+      cp $boot_mk/Makefile.boot* $out/share/mk
+      replaced_mk=$out/share/mk.orig
+      mkdir $replaced_mk
+      mv $out/share/mk/bsd.{lib,prog}.mk $replaced_mk
+      for m in bsd.{lib,prog}.mk; do
+        cp $boot_mk/$m $out/share/mk
+        substituteInPlace $out/share/mk/$m --replace '../../../share/mk' '../mk.orig'
+      done
     '';
 
     extraPaths = with self; make.extraPaths;
   };
 
   compat = mkDerivation rec {
-    pname = "freebsd-glue";
+    pname = "compat";
+    path = "tools/build";
+    extraPaths = [
+      "lib/libc/db"
+      "lib/libc/stdlib" # getopt
+      "lib/libc/gen" # getcap
+      "lib/libc/locale" # rpmatch
+    ] ++ lib.optionals stdenv.hostPlatform.isLinux [
+      "lib/libc/string" # strlcpy
+      "lib/libutil"
+    ] ++ [
+      "contrib/libc-pwcache"
+      "contrib/libc-vis"
+      "sys/libkern"
+      "sys/kern/subr_capability.c"
 
-    version = "0.2.22";
+	  # Take only individual headers, or else we will clobber native libc, etc.
 
-    src = fetchgit {
-      url = "https://salsa.debian.org/bsd-team/${pname}.git";
-      rev = "cf59995384ae04b3cd906772abf1f0f9dfaea0c1";
-      sha256 = "0aris7k6himp8gjdycj9w9s3lb1dc86d771yik28rd9a5iz9i8js";
-    };
+      "sys/rpc/types.h"
 
-    patches = [
-      ./compat-avoid-dpkg-architecture.patch
-      ./compat-define-__size_t.patch
+      # Listed in Makekfile as INC
+      "include/mpool.h"
+      "include/ndbm.h"
+      "include/err.h"
+      "include/stringlist.h"
+      "include/a.out.h"
+      "include/nlist.h"
+      "include/db.h"
+      "include/getopt.h"
+      "include/nl_types.h"
+      "include/elf.h"
+
+      # Listed in Makekfile as SYSINC
+
+      "sys/sys/capsicum.h"
+      "sys/sys/caprights.h"
+      "sys/sys/imgact_aout.h"
+      "sys/sys/nlist_aout.h"
+      "sys/sys/nv.h"
+      "sys/sys/dnv.h"
+      "sys/sys/cnv.h"
+
+      "sys/sys/elf32.h"
+      "sys/sys/elf64.h"
+      "sys/sys/elf_common.h"
+      "sys/sys/elf_generic.h"
+      "sys/${mkBsdArch stdenv}/include"
+    ] ++ lib.optionals stdenv.hostPlatform.isx86 [
+      "sys/x86/include"
+    ] ++ [
+
+	  "sys/sys/queue.h"
+	  "sys/sys/md5.h"
+	  "sys/sys/sbuf.h"
+	  "sys/sys/tree.h"
+	  "sys/sys/font.h"
+	  "sys/sys/consio.h"
+	  "sys/sys/fnv_hash.h"
+
+      "sys/crypto/chacha20/_chacha.h"
+      "sys/crypto/chacha20/chacha.h"
+      # included too, despite ".c"
+      "sys/crypto/chacha20/chacha.c"
+
+      "sys/fs"
+      "sys/ufs"
+      "sys/sys/disk"
+
+      "lib/libcapsicum"
+      "lib/libcasper"
     ];
 
-    #makeFlags = [ "MK_WERROR=no" ];
+    patches = [
+      ./compat-install-dirs.patch
+    ];
+
+    preBuild = ''
+      NIX_CFLAGS_COMPILE+=' -I../../include -I../../sys'
+
+      cp ../../sys/${mkBsdArch stdenv}/include/elf.h ../../sys/sys
+      cp ../../sys/${mkBsdArch stdenv}/include/elf.h ../../sys/sys/${mkBsdArch stdenv}
+    '' + lib.optionalString stdenv.hostPlatform.isx86 ''
+      cp ../../sys/x86/include/elf.h ../../sys/x86
+    '';
+
+    makeFlags = [
+      "MK_WERROR=no"
+      "HOST_INCLUDE_ROOT=${lib.getDev stdenv.cc.libc}/include"
+      "SRCTOP=../.."
+      "INSTALL=zinstall"
+    ];
 
     nativeBuildInputs = with buildPackages.freebsd; [
       bsdSetupHook
-      buildPackages.netbsd.makeMinimal # MK_WERROR=no isn't working
+      makeMinimal
       # Use NetBSD versions to break cycle
-      buildPackages.netbsd.tsort
-      buildPackages.netbsd.lorder
-      buildPackages.netbsd.install
+      #buildPackages.netbsd.tsort
+      #buildPackages.netbsd.lorder
+      (buildPackages.writeScriptBin "zinstall" ''
+        #!${stdenv.shell}
+
+        set -eu
+
+        args=()
+        while (( $# )); do
+          if (( $# == 1 )); then
+            #set -x
+            mkdir -p "$1"
+          fi
+          case $1 in
+            -C) ;;
+            -o | -g) shift ;;
+            *) args+=("$1") ;;
+          esac
+          shift
+        done
+
+        ${buildPackages.netbsd.install}/bin/xinstall "''${args[@]}"
+      '')
+
+      which
     ];
     buildInputs = [ expat zlib ];
-    propagatedBuildInputs = [ libbsd ];
 
-    #libbsd_out = libbsd.out;
-    #libbsd_dev = libbsd.dev;
-
-    #setupHooks = [
-    #  ../../../build-support/setup-hooks/role.bash
-    #  ./compat-setup-hook.sh
-    #];
-
-    postInstall = ''
-      cp --no-preserve=mode -r include $out/
+    preIncludes = ''
+      mkdir -p $out/include
+      cp --no-preserve=mode -r cross-build/include/common/* $out/include
+    '' + lib.optionalString stdenv.hostPlatform.isLinux ''
+      cp --no-preserve=mode -r cross-build/include/linux/* $out/include
+    '' + lib.optionalString stdenv.hostPlatform.isDarwin ''
+      cp --no-preserve=mode -r cross-build/include/darwin/* $out/include
     '';
   };
 
@@ -199,9 +312,10 @@ in lib.makeScopeWithSplicing
   # install’s -D option. No alternative seems to exist in BSD install.
   install = let binstall = writeScript "binstall" ''
     #!${runtimeShell}
-    for last in $@; do true; done
+    set -eu
+    for last in "$@"; do true; done
     mkdir -p $(dirname $last)
-    xinstall "$@"
+    @out@/bin/xinstall "$@"
   ''; in mkDerivation {
     path = "usr.bin/xinstall";
     extraPaths = with self; [ mtree.path ];
@@ -218,6 +332,7 @@ in lib.makeScopeWithSplicing
       install -D install.1 $out/share/man/man1/install.1
       install -D xinstall $out/bin/xinstall
       install -D -m 0550 ${binstall} $out/bin/binstall
+      substituteInPlace $out/bin/binstall --subst-var out
       ln -s $out/bin/binstall $out/bin/install
 
       runHook postInstall
@@ -317,8 +432,6 @@ in lib.makeScopeWithSplicing
       # make needs this to pick up our sys make files
       export NIX_CFLAGS_COMPILE+=" -D_PATH_DEFSYSPATH=\"$out/share/mk\""
 
-      substituteInPlace $BSDSRCDIR/share/mk/bsd.lib.mk \
-        --replace '_INSTRANLIB=''${empty(PRESERVE):?-a "''${RANLIB} -t":}' '_INSTRANLIB='
     '' + lib.optionalString stdenv.isDarwin ''
       substituteInPlace $BSDSRCDIR/share/mk/bsd.sys.mk \
         --replace '-Wl,--fatal-warnings' "" \
@@ -327,7 +440,8 @@ in lib.makeScopeWithSplicing
     postInstall = ''
       make -C $BSDSRCDIR/share/mk FILESDIR=$out/share/mk install
     '';
-    extraPaths = [ "share/mk" ];
+    extraPaths = [ "share/mk" ]
+      ++ lib.optional (!stdenv.hostPlatform.isFreeBSD) "tools/build/mk";
   };
   mtree = mkDerivation {
     path = "contrib/mtree";

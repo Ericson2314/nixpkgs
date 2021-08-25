@@ -51,8 +51,11 @@ addMakeFlags() {
   makeFlags="STRIP=$STRIP $makeFlags"
 
   makeFlags="BINDIR=${!outputBin}/bin $makeFlags"
+  makeFlags="SBINDIR=${!outputBin}/bin $makeFlags"
   makeFlags="LIBDIR=${!outputLib}/lib $makeFlags"
   makeFlags="SHLIBDIR=${!outputLib}/lib $makeFlags"
+  makeFlags="LIBEXECDIR=${!outputLib}/libexec $makeFlags"
+  makeFlags="INCLUDEDIR=${!outputDev}/include $makeFlags"
   makeFlags="MANDIR=${!outputMan}/share/man $makeFlags"
   makeFlags="INFODIR=${!outputInfo}/share/info $makeFlags"
   makeFlags="DOCDIR=${!outputDoc}/share/doc $makeFlags"
@@ -79,7 +82,7 @@ includesPhase() {
 
     local flagsArray=(
          $makeFlags ${makeFlagsArray+"${makeFlagsArray[@]}"}
-         DESTDIR=${!outputInclude} includes
+         includes
     )
 
     echoCmd 'includes flags' "${flagsArray[@]}"
