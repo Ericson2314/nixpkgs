@@ -302,24 +302,26 @@ in lib.makeScopeWithSplicing
       cp ../../sys/x86/include/elf.h ../../sys/x86
     '';
 
+    setupHooks = [
+      ../../../build-support/setup-hooks/role.bash
+      ./compat-setup-hook.sh
+    ];
+
+    nativeBuildInputs = with buildPackages.freebsd; [
+      bsdSetupHook
+      makeMinimal
+      boot-install
+
+      which
+    ];
+    buildInputs = [ expat zlib ];
+
     makeFlags = [
       "MK_WERROR=no"
       "HOST_INCLUDE_ROOT=${lib.getDev stdenv.cc.libc}/include"
       "SRCTOP=../.."
       "INSTALL=boot-install"
     ];
-
-    nativeBuildInputs = with buildPackages.freebsd; [
-      bsdSetupHook
-      makeMinimal
-      # Use NetBSD versions to break cycle
-      #buildPackages.netbsd.tsort
-      #buildPackages.netbsd.lorder
-      boot-install
-
-      which
-    ];
-    buildInputs = [ expat zlib ];
 
     preIncludes = ''
       mkdir -p $out/include
@@ -448,7 +450,6 @@ in lib.makeScopeWithSplicing
       bsdSetupHook
       makeMinimal install mandoc groff
     ];
-    buildInputs = [];
   };
 
   lorder = mkDerivation rec {

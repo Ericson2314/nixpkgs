@@ -275,7 +275,6 @@ rec {
 
   x86_64-freebsd = {
     config = "x86_64-unknown-freebsd";
-    libc = "freebsd";
     useLLVM = true;
   };
 
