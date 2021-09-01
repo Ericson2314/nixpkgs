@@ -83,6 +83,8 @@ in lib.makeScopeWithSplicing
 
     HOST_SH = stdenv'.shell;
 
+    makeFlags = lib.optional (!stdenv.hostPlatform.isFreeBSD) "MK_WERROR=no";
+
     MACHINE_ARCH = {
       i486 = "i386";
       i586 = "i386";
@@ -130,6 +132,8 @@ in lib.makeScopeWithSplicing
 
     skipIncludesPhase = true;
 
+    makeFlags = [];
+
     postPatch = ''
       patchShebangs configure
       ${self.make.postPatch}
@@ -172,6 +176,45 @@ in lib.makeScopeWithSplicing
 
     extraPaths = with self; make.extraPaths;
   };
+
+  # Wrap NetBSD's install
+  boot-install = buildPackages.writeScriptBin "boot-install" ''
+    #!${stdenv.shell}
+
+    set -eu
+
+    args=()
+    declare -i path_args=0
+
+    set -x
+    while (( $# )); do
+      if (( $# == 1 )); then
+        if (( $path_args > 1)) || [[ "$1" = */ ]]; then
+          mkdir -p "$1"
+        else
+          mkdir -p "$(dirname "$1")"
+        fi
+      fi
+      case $1 in
+        -C) ;;
+        strip) ;;
+        -o | -g) shift ;;
+        -m)
+          # handle next arg so not counted as path arg
+          args+=("$1" "$2")
+          shift
+          ;;
+        -*) args+=("$1") ;;
+        *)
+          path_args+=1
+          args+=("$1")
+          ;;
+      esac
+      shift
+    done
+
+    ${buildPackages.netbsd.install}/bin/xinstall "''${args[@]}"
+  '';
 
   compat = mkDerivation rec {
     pname = "compat";
@@ -248,6 +291,7 @@ in lib.makeScopeWithSplicing
 
     patches = [
       ./compat-install-dirs.patch
+      ./compat-fix-typedefs-locations.patch
     ];
 
     preBuild = ''
@@ -263,7 +307,7 @@ in lib.makeScopeWithSplicing
       "MK_WERROR=no"
       "HOST_INCLUDE_ROOT=${lib.getDev stdenv.cc.libc}/include"
       "SRCTOP=../.."
-      "INSTALL=zinstall"
+      "INSTALL=boot-install"
     ];
 
     nativeBuildInputs = with buildPackages.freebsd; [
@@ -272,27 +316,7 @@ in lib.makeScopeWithSplicing
       # Use NetBSD versions to break cycle
       #buildPackages.netbsd.tsort
       #buildPackages.netbsd.lorder
-      (buildPackages.writeScriptBin "zinstall" ''
-        #!${stdenv.shell}
-
-        set -eu
-
-        args=()
-        while (( $# )); do
-          if (( $# == 1 )); then
-            #set -x
-            mkdir -p "$1"
-          fi
-          case $1 in
-            -C) ;;
-            -o | -g) shift ;;
-            *) args+=("$1") ;;
-          esac
-          shift
-        done
-
-        ${buildPackages.netbsd.install}/bin/xinstall "''${args[@]}"
-      '')
+      boot-install
 
       which
     ];
@@ -306,6 +330,26 @@ in lib.makeScopeWithSplicing
     '' + lib.optionalString stdenv.hostPlatform.isDarwin ''
       cp --no-preserve=mode -r cross-build/include/darwin/* $out/include
     '';
+  };
+
+  libnetbsd = mkDerivation {
+    path = "lib/libnetbsd";
+    nativeBuildInputs = with buildPackages.freebsd; [
+      bsdSetupHook
+      makeMinimal mandoc groff
+      (if stdenv.hostPlatform == stdenv.buildPlatform
+       then boot-install
+       else install)
+    ];
+    patches = lib.optionals (!stdenv.hostPlatform.isFreeBSD) [
+      ./libnetbsd-do-install.patch
+      #./libnetbsd-define-__va_list.patch
+    ];
+    makeFlags = [
+      "MK_WERROR=no"
+      "SRCTOP=../.."
+    ] ++ lib.optional (stdenv.hostPlatform == stdenv.buildPlatform) "INSTALL=boot-install";
+    buildInputs = with self; compatIfNeeded;
   };
 
   # HACK: to ensure parent directories exist. This emulates GNU
@@ -322,31 +366,34 @@ in lib.makeScopeWithSplicing
     nativeBuildInputs = with buildPackages.freebsd; [
       bsdSetupHook
       makeMinimal mandoc groff
+      (if stdenv.hostPlatform == stdenv.buildPlatform
+       then boot-install
+       else install)
     ];
     skipIncludesPhase = true;
-    buildInputs = with self; compatIfNeeded ++ [ libmd ];
-    makeFlags = [ "SRCTOP=../.." ];
-    installPhase = ''
-      runHook preInstall
-
-      install -D install.1 $out/share/man/man1/install.1
-      install -D xinstall $out/bin/xinstall
+    buildInputs = with self; compatIfNeeded ++ [ libmd libnetbsd ];
+    makeFlags = [
+      "MK_WERROR=no"
+      "SRCTOP=../.."
+      "TESTSDIR=${builtins.placeholder "test"}"
+    ] ++ lib.optional (stdenv.hostPlatform == stdenv.buildPlatform) "INSTALL=boot-install";
+    postInstall = ''
       install -D -m 0550 ${binstall} $out/bin/binstall
       substituteInPlace $out/bin/binstall --subst-var out
-      ln -s $out/bin/binstall $out/bin/install
-
-      runHook postInstall
+      mv $out/bin/install $out/bin/xinstall
+      ln -s ./binstall $out/bin/install
     '';
+    outputs = [ "out" "man" "test" ];
   };
 
   fts = mkDerivation {
-    pname = "fts";
     path = "include/fts.h";
     nativeBuildInputs = with buildPackages.freebsd; [
       bsdSetupHook
     ];
     propagatedBuildInputs = with self; compatIfNeeded;
     extraPaths = with self; [
+      "include/fts.h"
       "lib/libc/gen/fts.c"
       "lib/libc/include/namespace.h"
       "lib/libc/include/un-namespace.h"
