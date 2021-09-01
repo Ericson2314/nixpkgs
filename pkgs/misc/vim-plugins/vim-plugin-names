@@ -193,6 +193,7 @@ google/vim-jsonnet
 google/vim-maktaba
 gorkunov/smartpairs.vim
 gotcha/vimelette
+gpanders/editorconfig.nvim
 gregsexton/gitv
 gruvbox-community/gruvbox as gruvbox-community
 gu-fan/riv.vim
@@ -572,6 +573,7 @@ Quramy/tsuquyomi
 racer-rust/vim-racer
 radenling/vim-dispatch-neovim
 rafamadriz/friendly-snippets@main
+rafamadriz/neon@main
 rafaqz/ranger.vim
 rafi/awesome-vim-colorschemes
 raghur/fruzzy

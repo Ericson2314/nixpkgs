@@ -477,6 +477,8 @@ in {
 
   anyascii = callPackage ../development/python-modules/anyascii { };
 
+  anybadge = callPackage ../development/python-modules/anybadge { };
+
   anyio = callPackage ../development/python-modules/anyio { };
 
   anyjson = callPackage ../development/python-modules/anyjson { };
@@ -2995,6 +2997,8 @@ in {
 
   google-cloud-asset = callPackage ../development/python-modules/google-cloud-asset { };
 
+  google-cloud-audit-log = callPackage ../development/python-modules/google-cloud-audit-log { };
+
   google-cloud-automl = callPackage ../development/python-modules/google-cloud-automl { };
 
   google-cloud-bigquery = callPackage ../development/python-modules/google-cloud-bigquery { };
@@ -3443,6 +3447,8 @@ in {
 
   hwi = callPackage ../development/python-modules/hwi { };
 
+  hy = callPackage ../development/python-modules/hy { };
+
   hydra = callPackage ../development/python-modules/hydra { };
 
   hydra-check = callPackage ../development/python-modules/hydra-check { };
@@ -3550,6 +3556,8 @@ in {
   imgsize = callPackage ../development/python-modules/imgsize { };
 
   iminuit = callPackage ../development/python-modules/iminuit { };
+
+  immutabledict = callPackage ../development/python-modules/immutabledict { };
 
   immutables = callPackage ../development/python-modules/immutables { };
 
@@ -4638,6 +4646,8 @@ in {
 
   mpi4py = callPackage ../development/python-modules/mpi4py { };
 
+  mpldatacursor = callPackage ../development/python-modules/mpldatacursor { };
+
   mplfinance = callPackage ../development/python-modules/mplfinance { };
 
   mplleaflet = callPackage ../development/python-modules/mplleaflet { };
@@ -4703,6 +4713,8 @@ in {
   mutatormath = callPackage ../development/python-modules/mutatormath { };
 
   mutesync = callPackage ../development/python-modules/mutesync { };
+
+  mutf8 = callPackage ../development/python-modules/mutf8 { };
 
   mwclient = callPackage ../development/python-modules/mwclient { };
 
@@ -5084,9 +5096,9 @@ in {
 
   openwrt-ubus-rpc = callPackage ../development/python-modules/openwrt-ubus-rpc { };
 
-  opt-einsum = callPackage ../development/python-modules/opt-einsum { };
-
   opsdroid_get_image_size = callPackage ../development/python-modules/opsdroid_get_image_size { };
+
+  opt-einsum = callPackage ../development/python-modules/opt-einsum { };
 
   optuna = callPackage ../development/python-modules/optuna { };
 
@@ -5661,7 +5673,7 @@ in {
 
   progress = callPackage ../development/python-modules/progress { };
 
-  prometheus_client = callPackage ../development/python-modules/prometheus_client { };
+  prometheus-client = callPackage ../development/python-modules/prometheus-client { };
 
   prometheus-flask-exporter = callPackage ../development/python-modules/prometheus-flask-exporter { };
 
@@ -5974,6 +5986,8 @@ in {
   pydicom = callPackage ../development/python-modules/pydicom { };
 
   pydispatcher = callPackage ../development/python-modules/pydispatcher { };
+
+  pydmd = callPackage ../development/python-modules/pydmd { };
 
   pydns = callPackage ../development/python-modules/py3dns { };
 
@@ -7627,6 +7641,8 @@ in {
 
   relatorio = callPackage ../development/python-modules/relatorio { };
 
+  remarshal = callPackage ../development/python-modules/remarshal { };
+
   rencode = callPackage ../development/python-modules/rencode { };
 
   reparser = callPackage ../development/python-modules/reparser { };
@@ -8632,6 +8648,8 @@ in {
   tempora = callPackage ../development/python-modules/tempora { };
 
   tenacity = callPackage ../development/python-modules/tenacity { };
+
+  tensorboard-data-server = callPackage ../development/python-modules/tensorboard-data-server { };
 
   tensorboard-plugin-profile = callPackage ../development/python-modules/tensorboard-plugin-profile { };
 
@@ -9667,6 +9685,8 @@ in {
   zipp = callPackage ../development/python-modules/zipp { };
 
   zipstream = callPackage ../development/python-modules/zipstream { };
+
+  zipstream-new = callPackage ../development/python-modules/zipstream-new { };
 
   zm-py = callPackage ../development/python-modules/zm-py { };
 

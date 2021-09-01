@@ -4,11 +4,11 @@ cups, vivaldi-ffmpeg-codecs, libpulseaudio, at-spi2-core, libxkbcommon, mesa }:
 
 stdenv.mkDerivation rec {
   pname = "exodus";
-  version = "21.5.25";
+  version = "21.8.19";
 
   src = fetchurl {
     url = "https://downloads.exodus.io/releases/${pname}-linux-x64-${version}.zip";
-    sha256 = "sha256-2EIElhQGA0UprPF2pdIfYM9SWYIteD+kH+rupjxCiz4=";
+    sha256 = "1ssacadx5hdxq0cljb869ds3d11i4fyy3qd5hzh8wk5mlpdnba6k";
   };
 
   sourceRoot = ".";
@@ -24,7 +24,7 @@ stdenv.mkDerivation rec {
     ln -s $out/bin/Exodus $out/bin/exodus
     ln -s $out/exodus.desktop $out/share/applications
     substituteInPlace $out/share/applications/exodus.desktop \
-          --replace 'Exec=bash -c "cd `dirname %k` && ./Exodus"' "Exec=Exodus"
+          --replace 'Exec=bash -c "cd \`dirname %k\` && ./Exodus %u"' "Exec=Exodus %u"
   '';
 
   dontPatchELF = true;
@@ -49,6 +49,7 @@ stdenv.mkDerivation rec {
       xorg.libXfixes
       xorg.libXi
       xorg.libXrender
+      xorg.libxshmfence
       xorg.libXtst
       xorg_sys_opengl
       util-linux

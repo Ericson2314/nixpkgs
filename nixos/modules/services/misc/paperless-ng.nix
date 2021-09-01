@@ -29,6 +29,7 @@ let
       "-/etc/nsswitch.conf"
       "-/etc/hosts"
       "-/etc/localtime"
+      "-/run/postgresql"
     ];
     BindPaths = [
       cfg.consumptionDir
@@ -60,7 +61,7 @@ let
     ProtectKernelModules = true;
     ProtectKernelTunables = true;
     ProtectProc = "invisible";
-    RestrictAddressFamilies = [ "AF_INET" "AF_INET6" ];
+    RestrictAddressFamilies = [ "AF_UNIX" "AF_INET" "AF_INET6" ];
     RestrictNamespaces = true;
     RestrictRealtime = true;
     RestrictSUIDSGID = true;
@@ -283,6 +284,9 @@ in
         PATH = mkForce cfg.package.path;
         PYTHONPATH = "${cfg.package.pythonPath}:${cfg.package}/lib/paperless-ng/src";
       };
+      # Allow the web interface to access the private /tmp directory of the server.
+      # This is required to support uploading files via the web interface.
+      unitConfig.JoinsNamespaceOf = "paperless-ng-server.service";
       # Bind to `paperless-ng-server` so that the web server never runs
       # during migrations
       bindsTo = [ "paperless-ng-server.service" ];
