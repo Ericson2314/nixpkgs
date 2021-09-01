@@ -83,7 +83,9 @@ in lib.makeScopeWithSplicing
 
     HOST_SH = stdenv'.shell;
 
-    makeFlags = lib.optional (!stdenv.hostPlatform.isFreeBSD) "MK_WERROR=no";
+    makeFlags = [
+      "STRIP=-s" # flag to install, not command
+    ] ++ lib.optional (!stdenv.hostPlatform.isFreeBSD) "MK_WERROR=no";
 
     MACHINE_ARCH = {
       i486 = "i386";
@@ -196,8 +198,8 @@ in lib.makeScopeWithSplicing
       fi
       case $1 in
         -C) ;;
-        strip) ;;
         -o | -g) shift ;;
+        -s) ;;
         -m)
           # handle next arg so not counted as path arg
           args+=("$1" "$2")
@@ -317,19 +319,20 @@ in lib.makeScopeWithSplicing
     buildInputs = [ expat zlib ];
 
     makeFlags = [
+      "STRIP=-s" # flag to install, not command
       "MK_WERROR=no"
-      "HOST_INCLUDE_ROOT=${lib.getDev stdenv.cc.libc}/include"
       "SRCTOP=../.."
+      "HOST_INCLUDE_ROOT=${lib.getDev stdenv.cc.libc}/include"
       "INSTALL=boot-install"
     ];
 
     preIncludes = ''
-      mkdir -p $out/include
-      cp --no-preserve=mode -r cross-build/include/common/* $out/include
+      mkdir -p $out/include0
+      cp --no-preserve=mode -r cross-build/include/common/* $out/include0
     '' + lib.optionalString stdenv.hostPlatform.isLinux ''
-      cp --no-preserve=mode -r cross-build/include/linux/* $out/include
+      cp --no-preserve=mode -r cross-build/include/linux/* $out/include0
     '' + lib.optionalString stdenv.hostPlatform.isDarwin ''
-      cp --no-preserve=mode -r cross-build/include/darwin/* $out/include
+      cp --no-preserve=mode -r cross-build/include/darwin/* $out/include0
     '';
   };
 
@@ -347,6 +350,7 @@ in lib.makeScopeWithSplicing
       #./libnetbsd-define-__va_list.patch
     ];
     makeFlags = [
+      "STRIP=-s" # flag to install, not command
       "MK_WERROR=no"
       "SRCTOP=../.."
     ] ++ lib.optional (stdenv.hostPlatform == stdenv.buildPlatform) "INSTALL=boot-install";
@@ -358,9 +362,31 @@ in lib.makeScopeWithSplicing
   install = let binstall = writeScript "binstall" ''
     #!${runtimeShell}
     set -eu
-    for last in "$@"; do true; done
-    mkdir -p $(dirname $last)
-    @out@/bin/xinstall "$@"
+    while (( $# )); do
+      if (( $# == 1 )); then
+        if (( $path_args > 1)) || [[ "$1" = */ ]]; then
+          mkdir -p "$1"
+        else
+          mkdir -p "$(dirname "$1")"
+        fi
+      fi
+      case $1 in
+        -o | -g) shift ;;
+        -s) ;;
+        -m)
+          # handle next arg so not counted as path arg
+          args+=("$1" "$2")
+          shift
+          ;;
+        -*) args+=("$1") ;;
+        *)
+          path_args+=1
+          args+=("$1")
+          ;;
+      esac
+      shift
+    done
+    @out@/bin/xinstall "''${args[@]}"
   ''; in mkDerivation {
     path = "usr.bin/xinstall";
     extraPaths = with self; [ mtree.path ];
@@ -374,6 +400,7 @@ in lib.makeScopeWithSplicing
     skipIncludesPhase = true;
     buildInputs = with self; compatIfNeeded ++ [ libmd libnetbsd ];
     makeFlags = [
+      "STRIP=-s" # flag to install, not command
       "MK_WERROR=no"
       "SRCTOP=../.."
       "TESTSDIR=${builtins.placeholder "test"}"
