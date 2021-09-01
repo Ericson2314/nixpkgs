@@ -186,7 +186,6 @@ in lib.makeScopeWithSplicing
     args=()
     declare -i path_args=0
 
-    set -x
     while (( $# )); do
       if (( $# == 1 )); then
         if (( $path_args > 1)) || [[ "$1" = */ ]]; then
