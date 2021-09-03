@@ -16,6 +16,10 @@ let
     tag = "netbsd-${lib.replaceStrings ["."] ["-"] version}-RELEASE";
   };
 
+  netbsdSetupHook = makeSetupHook {
+    name = "netbsd-setup-hook";
+  } ./setup-hook.sh;
+
   otherSplices = {
     selfBuildBuild = pkgsBuildBuild.netbsd;
     selfBuildHost = pkgsBuildHost.netbsd;
@@ -60,7 +64,7 @@ in lib.makeScopeWithSplicing
     extraPaths = [ ];
 
     nativeBuildInputs = with buildPackages.netbsd; [
-      bsdSetupHook
+      bsdSetupHook netbsdSetupHook
       makeMinimal
       install tsort lorder mandoc groff statHook rsync
     ];
@@ -118,7 +122,7 @@ in lib.makeScopeWithSplicing
     version = "9.2";
 
     buildInputs = with self; [];
-    nativeBuildInputs = with buildPackages.netbsd; [ bsdSetupHook rsync ];
+    nativeBuildInputs = with buildPackages.netbsd; [ bsdSetupHook netbsdSetupHook rsync ];
 
     skipIncludesPhase = true;
 
@@ -126,6 +130,7 @@ in lib.makeScopeWithSplicing
       patchShebangs configure
       ${self.make.postPatch}
     '';
+
     buildPhase = ''
       runHook preBuild
 
@@ -133,6 +138,7 @@ in lib.makeScopeWithSplicing
 
       runHook postBuild
     '';
+
     installPhase = ''
       runHook preInstall
 
@@ -143,6 +149,7 @@ in lib.makeScopeWithSplicing
 
       runHook postInstall
     '';
+
     extraPaths = with self; [ make.src ] ++ make.extraPaths;
   };
 
@@ -159,13 +166,17 @@ in lib.makeScopeWithSplicing
       ./compat-setup-hook.sh
     ];
 
-    # the build system re-runs `./configure` with `HOST_CC` (which is their
-    # name for Build CC) as a compiler to make `defs.mk`, which is installed
-    depsBuildBuild = [ buildPackages.stdenv.cc ] ++ commonDeps;
-    HOST_CC = "${buildPackages.stdenv.cc.targetPrefix}cc";
+    preConfigure = ''
+      make include/.stamp configure nbtool_config.h.in defs.mk.in
+    '';
+
+    configurePlatforms = [ "build" "host" ];
+    configureFlags = [
+      "--cache-file=config.cache"
+    ];
 
     nativeBuildInputs = with buildPackages.netbsd; commonDeps ++ [
-      bsdSetupHook
+      bsdSetupHook netbsdSetupHook
       makeMinimal
       rsync
     ];
@@ -176,16 +187,26 @@ in lib.makeScopeWithSplicing
     # bsdinstall will be built later
     makeFlags = [
       "INSTALL=${buildPackages.coreutils}/bin/install"
-      "TOOLDIR=$(out)"
+      "DATADIR=$(out)/share"
+      # Can't sort object files yet
+      "LORDER=echo"
+      "TSORT=cat"
     ];
     RENAME = "-D";
 
-    patches = [ ./compat.patch ];
+    patches = [
+      ./compat-cxx-safe-header.patch
+      ./compat-dont-configure-twice.patch
+      ./compat-no-force-native.patch
+    ];
+
+    preInstall = ''
+      makeFlagsArray+=('INSTALL_FILE=''${INSTALL} ''${COPY} ''${PRESERVE} ''${RENAME}')
+      makeFlagsArray+=('INSTALL_DIR=''${INSTALL} -d')
+      makeFlagsArray+=('INSTALL_SYMLINK=''${INSTALL} ''${SYMLINK} ''${RENAME}')
+    '';
 
     postInstall = ''
-      mv $out/include/compat/* $out/include
-      rmdir $out/include/compat
-
       # why aren't these installed by netbsd?
       install -D compat_defs.h $out/include/compat_defs.h
       install -D $BSDSRCDIR/include/cdbw.h $out/include/cdbw.h
@@ -238,7 +259,7 @@ in lib.makeScopeWithSplicing
     sha256 = "1f6pbz3qv1qcrchdxif8p5lbmnwl8b9nq615hsd3cyl4avd5bfqj";
     extraPaths = with self; [ mtree.src make.src ];
     nativeBuildInputs = with buildPackages.netbsd; [
-      bsdSetupHook
+      bsdSetupHook netbsdSetupHook
       makeMinimal
       mandoc groff rsync
     ];
@@ -254,6 +275,7 @@ in lib.makeScopeWithSplicing
 
       runHook postInstall
     '';
+    setupHook = ./install-setup-hook.sh;
   };
 
   fts = mkDerivation {
@@ -262,7 +284,7 @@ in lib.makeScopeWithSplicing
     sha256 = "01d4fpxvz1pgzfk5xznz5dcm0x0gdzwcsfm1h3d0xc9kc6hj2q77";
     version = "9.2";
     nativeBuildInputs = with buildPackages.netbsd; [
-      bsdSetupHook rsync
+      bsdSetupHook netbsdSetupHook rsync
     ];
     propagatedBuildInputs = with self; compatIfNeeded;
     extraPaths = with self; [
@@ -298,7 +320,7 @@ in lib.makeScopeWithSplicing
     version = "9.2";
     sha256 = "18nqwlndfc34qbbgqx5nffil37jfq9aw663ippasfxd2hlyc106x";
     nativeBuildInputs = with buildPackages.netbsd; [
-      bsdSetupHook
+      bsdSetupHook netbsdSetupHook
       makeMinimal
       install mandoc groff rsync
     ];
@@ -320,7 +342,7 @@ in lib.makeScopeWithSplicing
     version = "9.2";
     sha256 = "1dqvf9gin29nnq3c4byxc7lfd062pg7m84843zdy6n0z63hnnwiq";
     nativeBuildInputs = with buildPackages.netbsd; [
-      bsdSetupHook
+      bsdSetupHook netbsdSetupHook
       makeMinimal
       install mandoc groff rsync
     ];
@@ -331,7 +353,7 @@ in lib.makeScopeWithSplicing
     version = "9.2";
     sha256 = "0rjf9blihhm0n699vr2bg88m4yjhkbxh6fxliaay3wxkgnydjwn2";
     nativeBuildInputs = with buildPackages.netbsd; [
-      bsdSetupHook
+      bsdSetupHook netbsdSetupHook
       makeMinimal
       install mandoc groff rsync
     ];
@@ -347,7 +369,41 @@ in lib.makeScopeWithSplicing
     path = "usr.bin/make";
     sha256 = "0vi73yicbmbp522qzqvd979cx6zm5jakhy77xh73c1kygf8klccs";
     version = "9.2";
-    postPatch = ''
+
+   postPatch = ''
+     substituteInPlace $BSDSRCDIR/share/mk/bsd.doc.mk \
+       --replace '-o ''${DOCOWN}' "" \
+       --replace '-g ''${DOCGRP}' ""
+     for mk in $BSDSRCDIR/share/mk/bsd.inc.mk $BSDSRCDIR/share/mk/bsd.kinc.mk; do
+       substituteInPlace $mk \
+         --replace '-o ''${BINOWN}' "" \
+         --replace '-g ''${BINGRP}' ""
+     done
+     substituteInPlace $BSDSRCDIR/share/mk/bsd.kmodule.mk \
+       --replace '-o ''${KMODULEOWN}' "" \
+       --replace '-g ''${KMODULEGRP}' ""
+     substituteInPlace $BSDSRCDIR/share/mk/bsd.lib.mk \
+       --replace '-o ''${LIBOWN}' "" \
+       --replace '-g ''${LIBGRP}' "" \
+       --replace '-o ''${DEBUGOWN}' "" \
+       --replace '-g ''${DEBUGGRP}' ""
+     substituteInPlace $BSDSRCDIR/share/mk/bsd.lua.mk \
+       --replace '-o ''${LIBOWN}' "" \
+       --replace '-g ''${LIBGRP}' ""
+     substituteInPlace $BSDSRCDIR/share/mk/bsd.man.mk \
+       --replace '-o ''${MANOWN}' "" \
+       --replace '-g ''${MANGRP}' ""
+     substituteInPlace $BSDSRCDIR/share/mk/bsd.nls.mk \
+       --replace '-o ''${NLSOWN}' "" \
+       --replace '-g ''${NLSGRP}' ""
+     substituteInPlace $BSDSRCDIR/share/mk/bsd.prog.mk \
+       --replace '-o ''${BINOWN}' "" \
+       --replace '-g ''${BINGRP}' "" \
+       --replace '-o ''${RUMPBINOWN}' "" \
+       --replace '-g ''${RUMPBINGRP}' "" \
+       --replace '-o ''${DEBUGOWN}' "" \
+       --replace '-g ''${DEBUGGRP}' ""
+
       # make needs this to pick up our sys make files
       export NIX_CFLAGS_COMPILE+=" -D_PATH_DEFSYSPATH=\"$out/share/mk\""
 
@@ -433,7 +489,7 @@ in lib.makeScopeWithSplicing
     HOSTPROG = "tic";
     buildInputs = with self; compatIfNeeded;
     nativeBuildInputs = with buildPackages.netbsd; [
-      bsdSetupHook
+      bsdSetupHook netbsdSetupHook
       makeMinimal
       install mandoc groff nbperf
     ];
@@ -465,7 +521,7 @@ in lib.makeScopeWithSplicing
     sha256 = "1yz3n4hncdkk6kp595fh2q5lg150vpqg8iw2dccydkyw4y3hgsjj";
     NIX_CFLAGS_COMPILE = [ "-DMAKE_BOOTSTRAP" ];
     nativeBuildInputs = with buildPackages.netbsd; [
-      bsdSetupHook
+      bsdSetupHook netbsdSetupHook
       makeMinimal install mandoc byacc flex rsync
     ];
     buildInputs = with self; compatIfNeeded;
@@ -483,10 +539,26 @@ in lib.makeScopeWithSplicing
     version = "9.2";
     sha256 = "0nxnmj4c8s3hb9n3fpcmd0zl3l1nmhivqgi9a35sis943qvpgl9h";
     nativeBuildInputs = with buildPackages.netbsd; [
-      bsdSetupHook
+      bsdSetupHook netbsdSetupHook
       makeMinimal
       install mandoc groff rsync nbperf rpcgen
     ];
+
+    # The makefiles define INCSDIR per subdirectory, so we have to set
+    # something else on the command line so those definitions aren't
+    # overridden.
+    postPatch = ''
+      find "$BSDSRCDIR" -name Makefile -exec \
+        sed -i -E \
+          -e 's_/usr/include_''${INCSDIR0}_' \
+          {} \;
+    '';
+
+    # multiple header dirs, see above
+    postConfigure = ''
+      makeFlags=''${makeFlags/INCSDIR/INCSDIR0}
+    '';
+
     extraPaths = with self; [ common ];
     headersOnly = true;
     noCC = true;
@@ -502,15 +574,23 @@ in lib.makeScopeWithSplicing
     version = "9.2";
     sha256 = "03s18q8d9giipf05bx199fajc2qwikji0djz7hw63d2lya6bfnpj";
 
-    # Fix this error when building bootia32.efi and bootx64.efi:
-    # error: PHDR segment not covered by LOAD segment
-    patches = [ ./no-dynamic-linker.patch ];
+    patches = [
+      # Fix this error when building bootia32.efi and bootx64.efi:
+      # error: PHDR segment not covered by LOAD segment
+      ./no-dynamic-linker.patch
+
+      # multiple header dirs, see above
+      ./sys-headers-incsdir.patch
+    ];
+
+    # multiple header dirs, see above
+    inherit (self.include) postPatch;
 
     CONFIG = "GENERIC";
 
     propagatedBuildInputs = with self; [ include ];
     nativeBuildInputs = with buildPackages.netbsd; [
-      bsdSetupHook
+      bsdSetupHook netbsdSetupHook
       makeMinimal install tsort lorder statHook rsync uudecode config genassym
     ];
 
@@ -518,7 +598,9 @@ in lib.makeScopeWithSplicing
       pushd arch/$MACHINE/conf
       config $CONFIG
       popd
-    '';
+    ''
+      # multiple header dirs, see above
+      + self.include.postConfigure;
 
     makeFlags = [ "FIRMWAREDIR=$(out)/libdata/firmware" ];
     hardeningDisable = [ "pic" ];
@@ -573,7 +655,7 @@ in lib.makeScopeWithSplicing
     sha256 = "02gm5a5zhh8qp5r5q5r7x8x6x50ir1i0ncgsnfwh1vnrz6mxbq7z";
     extraPaths = with self; [ common libc.src sys.src ];
     nativeBuildInputs = with buildPackages.netbsd; [
-      bsdSetupHook
+      bsdSetupHook netbsdSetupHook
       makeMinimal
       byacc install tsort lorder mandoc statHook
     ];
@@ -607,7 +689,7 @@ in lib.makeScopeWithSplicing
     version = "9.2";
     sha256 = "0pq05k3dj0dfsczv07frnnji92mazmy2qqngqbx2zgqc1x251414";
     nativeBuildInputs = with buildPackages.netbsd; [
-      bsdSetupHook
+      bsdSetupHook netbsdSetupHook
       makeMinimal install tsort lorder mandoc statHook nbperf tic
     ];
     buildInputs = with self; compatIfNeeded;
@@ -670,7 +752,7 @@ in lib.makeScopeWithSplicing
     makeFlags = [ "INCSDIR=$(out)/include/rpcsvc" ];
     meta.platforms = lib.platforms.netbsd;
     nativeBuildInputs = with buildPackages.netbsd; [
-      bsdSetupHook
+      bsdSetupHook netbsdSetupHook
       makeMinimal
       install tsort lorder rpcgen statHook
     ];
@@ -748,7 +830,7 @@ in lib.makeScopeWithSplicing
     sha256 = "0al5jfazvhlzn9hvmnrbchx4d0gm282hq5gp4xs2zmj9ycmf6d03";
     meta.platforms = lib.platforms.netbsd;
     nativeBuildInputs = with buildPackages.netbsd; [
-      bsdSetupHook
+      bsdSetupHook netbsdSetupHook
       makeMinimal
       install mandoc groff flex
       byacc genassym gencat lorder tsort statHook rsync
@@ -786,7 +868,7 @@ in lib.makeScopeWithSplicing
       (fetchNetBSD "external/bsd/jemalloc" "9.2" "0cq704swa0h2yxv4gc79z2lwxibk9k7pxh3q5qfs7axx3jx3n8kb")
     ];
     nativeBuildInputs = with buildPackages.netbsd; [
-      bsdSetupHook
+      bsdSetupHook netbsdSetupHook
       makeMinimal
       install mandoc groff flex
       byacc genassym gencat lorder tsort statHook rsync rpcgen
