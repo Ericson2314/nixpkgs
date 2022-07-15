@@ -2,7 +2,7 @@ diff --git a/CMakeLists.txt b/CMakeLists.txt
 index fec956091cd5..5a766f5c5d7c 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -303,6 +303,9 @@ set(LLVM_EXAMPLES_INSTALL_DIR "examples" CACHE STRING
+@@ -334,6 +334,9 @@ set(LLVM_EXAMPLES_INSTALL_DIR "examples" CACHE STRING
      "Path for examples subdirectory (enabled by LLVM_BUILD_EXAMPLES=ON) (defaults to 'examples')")
  mark_as_advanced(LLVM_EXAMPLES_INSTALL_DIR)
  
@@ -16,7 +16,7 @@ diff --git a/cmake/modules/AddLLVM.cmake b/cmake/modules/AddLLVM.cmake
 index fed1fec7d72e..4baed19b9e98 100644
 --- a/cmake/modules/AddLLVM.cmake
 +++ b/cmake/modules/AddLLVM.cmake
-@@ -838,8 +838,8 @@ macro(add_llvm_library name)
+@@ -844,8 +844,8 @@ macro(add_llvm_library name)
        get_target_export_arg(${name} LLVM export_to_llvmexports ${umbrella})
        install(TARGETS ${name}
                ${export_to_llvmexports}
@@ -27,7 +27,7 @@ index fed1fec7d72e..4baed19b9e98 100644
                RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT ${name})
  
        if (NOT LLVM_ENABLE_IDE)
-@@ -1056,7 +1056,7 @@ function(process_llvm_pass_plugins)
+@@ -1096,7 +1096,7 @@ function(process_llvm_pass_plugins)
            "set(LLVM_STATIC_EXTENSIONS ${LLVM_STATIC_EXTENSIONS})")
        install(FILES
            ${llvm_cmake_builddir}/LLVMConfigExtensions.cmake
@@ -36,7 +36,7 @@ index fed1fec7d72e..4baed19b9e98 100644
            COMPONENT cmake-exports)
  
        set(ExtensionDef "${LLVM_BINARY_DIR}/include/llvm/Support/Extension.def")
-@@ -1902,7 +1902,7 @@ function(llvm_install_library_symlink name dest type)
+@@ -2004,7 +2004,7 @@ function(llvm_install_library_symlink name dest type)
    set(full_name ${CMAKE_${type}_LIBRARY_PREFIX}${name}${CMAKE_${type}_LIBRARY_SUFFIX})
    set(full_dest ${CMAKE_${type}_LIBRARY_PREFIX}${dest}${CMAKE_${type}_LIBRARY_SUFFIX})
  
@@ -45,31 +45,31 @@ index fed1fec7d72e..4baed19b9e98 100644
    if(WIN32 AND "${type}" STREQUAL "SHARED")
      set(output_dir bin)
    endif()
-@@ -1913,7 +1913,7 @@ function(llvm_install_library_symlink name dest type)
+@@ -2015,7 +2015,7 @@ function(llvm_install_symlink name dest)
  
  endfunction()
  
--function(llvm_install_symlink name dest)
-+function(llvm_install_symlink name dest output_dir)
-   cmake_parse_arguments(ARG "ALWAYS_GENERATE" "COMPONENT" "" ${ARGN})
-   foreach(path ${CMAKE_MODULE_PATH})
-     if(EXISTS ${path}/LLVMInstallSymlink.cmake)
-@@ -1936,7 +1936,7 @@ function(llvm_install_symlink name dest)
-   set(full_dest ${dest}${CMAKE_EXECUTABLE_SUFFIX})
+-function(llvm_install_symlink project name dest)
++function(llvm_install_symlink project name dest output_dir)
+   get_property(LLVM_DRIVER_TOOLS GLOBAL PROPERTY LLVM_DRIVER_TOOLS)
+   if(LLVM_TOOL_LLVM_DRIVER_BUILD AND ${dest} IN_LIST LLVM_DRIVER_TOOLS)
+     set_property(GLOBAL APPEND PROPERTY LLVM_DRIVER_TOOL_SYMLINKS ${name})
+@@ -2046,7 +2046,7 @@ function(llvm_install_symlink name dest)
+   endif()
  
    install(SCRIPT ${INSTALL_SYMLINK}
--          CODE "install_symlink(${full_name} ${full_dest} ${LLVM_TOOLS_INSTALL_DIR})"
+-          CODE "install_symlink(${full_name} ${full_dest} ${${project}_TOOLS_INSTALL_DIR})"
 +          CODE "install_symlink(${full_name} ${full_dest} ${output_dir})"
            COMPONENT ${component})
  
    if (NOT LLVM_ENABLE_IDE AND NOT ARG_ALWAYS_GENERATE)
-@@ -2019,7 +2019,8 @@ function(add_llvm_tool_symlink link_name target)
+@@ -2139,7 +2139,8 @@ function(add_llvm_tool_symlink link_name target)
      endif()
  
      if ((TOOL_IS_TOOLCHAIN OR NOT LLVM_INSTALL_TOOLCHAIN_ONLY) AND LLVM_BUILD_TOOLS)
--      llvm_install_symlink(${link_name} ${target})
+-      llvm_install_symlink("${project}" ${link_name} ${target})
 +      GNUInstallDirs_get_absolute_install_dir(output_dir LLVM_TOOLS_INSTALL_DIR)
-+      llvm_install_symlink(${link_name} ${target} ${output_dir})
++      llvm_install_symlink("${project}" ${link_name} ${target} ${output_dir})
      endif()
    endif()
  endfunction()
