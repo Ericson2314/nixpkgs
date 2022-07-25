@@ -13873,7 +13873,9 @@ with pkgs;
     stdenv = gcc7Stdenv;
   }));
 
-  llvmPackages_latest = recurseIntoAttrs (callPackage ../development/compilers/llvm/git ({
+  llvmPackages_latest = llvmPackages_13;
+
+  llvmPackages_git = recurseIntoAttrs (callPackage ../development/compilers/llvm/git ({
     inherit (stdenvAdapters) overrideCC;
     buildLlvmTools = buildPackages.llvmPackages_git.tools;
     targetLlvmLibraries = targetPackages.llvmPackages_git.libraries or llvmPackages_git.libraries;
