@@ -1631,13 +1631,6 @@ mapAliases ({
 
   inherit (stdenv.hostPlatform) system; # Added 2021-10-22
 
-  # LLVM packages for (integration) testing that should not be used inside Nixpkgs:
-  llvmPackages_git = recurseIntoAttrs (callPackage ../development/compilers/llvm/git {
-    inherit (stdenvAdapters) overrideCC;
-    buildLlvmTools = buildPackages.llvmPackages_git.tools;
-    targetLlvmLibraries = targetPackages.llvmPackages_git.libraries;
-  });
-
   # Added 2022-01-28
   zeroc-ice-36 = throw "Unmaintained, doesn't build w/glibc-2.34";
 

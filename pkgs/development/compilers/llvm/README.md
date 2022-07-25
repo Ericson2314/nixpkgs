@@ -1,13 +1,13 @@
 ## How to upgrade llvm_git
 - Run `update-git.py`. This will set the github revision and sha256 for
-  `llvmPackages_latest.llvm` to whatever the latest chromium build is using. For
+  `llvmPackages_git.llvm` to whatever the latest chromium build is using. For
   a more recent, commit run `nix-prefetch-github` and change the rev and sha256
   accordingly.
 - That was the easy part. The hard part is updating the patch files. The general
   process is:
-  1. try to build `llvmPackages_latest.llvm` and associated packages such as
+  1. try to build `llvmPackages_git.llvm` and associated packages such as
      `clang` and `compiler-rt`. You can use the `-L` and `--keep-failed` flags to make
-     debugging patch errors easy, e.g., `nix build .#llvmpackages_llvm -L --keep-failed`
+     debugging patch errors easy, e.g., `nix build .#llvmPackages_git.clang -L --keep-failed`
   2. The build will error out with something similar to this:
      ```sh
      ...
