@@ -71,7 +71,7 @@ index 891c9e6d618c..8d963f3b0069 100644
    list(APPEND ocaml_flags "-ldopt" "-Wl,-rpath,${ocaml_rpath}")
  
 diff --git a/cmake/modules/CMakeLists.txt b/cmake/modules/CMakeLists.txt
-index 93f61712b0e4..4a529739ad58 100644
+index d4b0ab959148..26ed981fd09f 100644
 --- a/cmake/modules/CMakeLists.txt
 +++ b/cmake/modules/CMakeLists.txt
 @@ -128,7 +128,7 @@ set(LLVM_CONFIG_INCLUDE_DIRS
@@ -83,16 +83,8 @@ index 93f61712b0e4..4a529739ad58 100644
  set(LLVM_CONFIG_LIBRARY_DIRS
    "${LLVM_CONFIG_LIBRARY_DIR}"
    # FIXME: Should there be other entries here?
-@@ -137,6 +137,7 @@ list(REMOVE_DUPLICATES LLVM_CONFIG_LIBRARY_DIRS)
- 
- set(LLVM_CONFIG_BINARY_DIR "\${LLVM_INSTALL_PREFIX}")
- extend_path(LLVM_CONFIG_CMAKE_DIR "\${LLVM_INSTALL_PREFIX}" "${LLVM_INSTALL_PACKAGE_DIR}")
-+extend_path(LLVM_CONFIG_TOOLS_BINARY_DIR "\${LLVM_INSTALL_PREFIX}" "${LLVM_TOOLS_INSTALL_DIR}")
- 
- # Generate a default location for lit
- if (LLVM_INSTALL_UTILS AND LLVM_BUILD_UTILS)
 diff --git a/docs/CMake.rst b/docs/CMake.rst
-index d16bf78df8d5..9c31d14e8950 100644
+index 879b7b231d4c..9c31d14e8950 100644
 --- a/docs/CMake.rst
 +++ b/docs/CMake.rst
 @@ -250,7 +250,7 @@ description is in `LLVM-related variables`_ below.
@@ -115,55 +107,32 @@ index d16bf78df8d5..9c31d14e8950 100644
  **CMAKE_INSTALL_INCLUDEDIR**:PATH
    The path to install header files, relative to the *CMAKE_INSTALL_PREFIX*.
    Defaults to "include".
-@@ -941,9 +945,11 @@ the ``cmake`` command or by setting it directly in ``ccmake`` or ``cmake-gui``).
- 
- This file is available in two different locations.
- 
--* ``<INSTALL_PREFIX>/lib/cmake/llvm/LLVMConfig.cmake`` where
--  ``<INSTALL_PREFIX>`` is the install prefix of an installed version of LLVM.
--  On Linux typically this is ``/usr/lib/cmake/llvm/LLVMConfig.cmake``.
-+* ``<LLVM_INSTALL_PACKAGE_DIR>/LLVMConfig.cmake`` where
-+  ``<LLVM_INSTALL_PACKAGE_DIR>`` is the location where LLVM CMake modules are
-+  installed as part of an installed version of LLVM. This is typically
-+  ``cmake/llvm/`` within the lib directory. On Linux, this is typically
-+  ``/usr/lib/cmake/llvm/LLVMConfig.cmake``.
- 
- * ``<LLVM_BUILD_ROOT>/lib/cmake/llvm/LLVMConfig.cmake`` where
-   ``<LLVM_BUILD_ROOT>`` is the root of the LLVM build tree. **Note: this is only
 diff --git a/tools/llvm-config/BuildVariables.inc.in b/tools/llvm-config/BuildVariables.inc.in
-index abbb8a450da6..7e790bc52111 100644
+index 370005cd8d7d..7e790bc52111 100644
 --- a/tools/llvm-config/BuildVariables.inc.in
 +++ b/tools/llvm-config/BuildVariables.inc.in
-@@ -23,7 +23,9 @@
+@@ -23,6 +23,7 @@
  #define LLVM_CXXFLAGS "@LLVM_CXXFLAGS@"
  #define LLVM_BUILDMODE "@LLVM_BUILDMODE@"
  #define LLVM_LIBDIR_SUFFIX "@LLVM_LIBDIR_SUFFIX@"
 +#define LLVM_INSTALL_LIBDIR "@CMAKE_INSTALL_LIBDIR@"
  #define LLVM_INSTALL_INCLUDEDIR "@CMAKE_INSTALL_INCLUDEDIR@"
-+#define LLVM_INSTALL_PACKAGE_DIR "@LLVM_INSTALL_PACKAGE_DIR@"
+ #define LLVM_INSTALL_PACKAGE_DIR "@LLVM_INSTALL_PACKAGE_DIR@"
  #define LLVM_TARGETS_BUILT "@LLVM_TARGETS_BUILT@"
- #define LLVM_SYSTEM_LIBS "@LLVM_SYSTEM_LIBS@"
- #define LLVM_BUILD_SYSTEM "@LLVM_BUILD_SYSTEM@"
 diff --git a/tools/llvm-config/llvm-config.cpp b/tools/llvm-config/llvm-config.cpp
-index e9fa7bd2c388..f6d2068a0827 100644
+index 2c6c55f89d38..f6d2068a0827 100644
 --- a/tools/llvm-config/llvm-config.cpp
 +++ b/tools/llvm-config/llvm-config.cpp
-@@ -369,8 +369,16 @@ int main(int argc, char **argv) {
+@@ -369,7 +369,11 @@ int main(int argc, char **argv) {
        sys::fs::make_absolute(ActivePrefix, Path);
        ActiveBinDir = std::string(Path.str());
      }
 -    ActiveLibDir = ActivePrefix + "/lib" + LLVM_LIBDIR_SUFFIX;
--    ActiveCMakeDir = ActiveLibDir + "/cmake/llvm";
 +    {
 +      SmallString<256> Path(LLVM_INSTALL_LIBDIR LLVM_LIBDIR_SUFFIX);
 +      sys::fs::make_absolute(ActivePrefix, Path);
 +      ActiveLibDir = std::string(Path.str());
 +    }
-+    {
-+      SmallString<256> Path(LLVM_INSTALL_PACKAGE_DIR);
-+      sys::fs::make_absolute(ActivePrefix, Path);
-+      ActiveCMakeDir = std::string(Path.str());
-+    }
-     ActiveIncludeOption = "-I" + ActiveIncludeDir;
-   }
- 
+     {
+       SmallString<256> Path(LLVM_INSTALL_PACKAGE_DIR);
+       sys::fs::make_absolute(ActivePrefix, Path);

@@ -1,23 +1,8 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 4530281aff26..311ab1d50e7f 100644
+index b6ddbe90516d..311ab1d50e7f 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -1,7 +1,12 @@
- cmake_minimum_required(VERSION 3.13.4)
- 
--# Add cmake directory to search for custom cmake functions.
--set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake ${CMAKE_MODULE_PATH})
-+set(LLVM_COMMON_CMAKE_UTILS ${CMAKE_CURRENT_SOURCE_DIR}/../cmake)
-+
-+# Add path for custom modules
-+list(INSERT CMAKE_MODULE_PATH 0
-+  "${CMAKE_CURRENT_SOURCE_DIR}/cmake"
-+  "${LLVM_COMMON_CMAKE_UTILS}/Modules"
-+  )
- 
- # llvm/runtimes/ will set OPENMP_STANDALONE_BUILD.
- if (OPENMP_STANDALONE_BUILD OR "${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}")
-@@ -24,7 +29,7 @@ if (OPENMP_STANDALONE_BUILD)
+@@ -29,7 +29,7 @@ if (OPENMP_STANDALONE_BUILD)
    set(OPENMP_LIBDIR_SUFFIX "" CACHE STRING
      "Suffix of lib installation directory, e.g. 64 => lib64")
    # Do not use OPENMP_LIBDIR_SUFFIX directly, use OPENMP_INSTALL_LIBDIR.
@@ -26,7 +11,7 @@ index 4530281aff26..311ab1d50e7f 100644
  
    # Group test settings.
    set(OPENMP_TEST_C_COMPILER ${CMAKE_C_COMPILER} CACHE STRING
-@@ -35,7 +40,7 @@ if (OPENMP_STANDALONE_BUILD)
+@@ -40,7 +40,7 @@ if (OPENMP_STANDALONE_BUILD)
  else()
    set(OPENMP_ENABLE_WERROR ${LLVM_ENABLE_WERROR})
    # If building in tree, we honor the same install suffix LLVM uses.
@@ -35,52 +20,3 @@ index 4530281aff26..311ab1d50e7f 100644
  
    if (NOT MSVC)
      set(OPENMP_TEST_C_COMPILER ${LLVM_RUNTIME_OUTPUT_INTDIR}/clang)
-diff --git a/runtime/src/CMakeLists.txt b/runtime/src/CMakeLists.txt
-index 4068a5862b4a..02f65aac0d40 100644
---- a/runtime/src/CMakeLists.txt
-+++ b/runtime/src/CMakeLists.txt
-@@ -8,6 +8,8 @@
- #//===----------------------------------------------------------------------===//
- #
- 
-+include(ExtendPath)
-+
- # Configure omp.h, kmp_config.h and omp-tools.h if necessary
- configure_file(${LIBOMP_INC_DIR}/omp.h.var omp.h @ONLY)
- configure_file(kmp_config.h.cmake kmp_config.h @ONLY)
-@@ -347,8 +349,8 @@ endif()
- add_dependencies(libomp-micro-tests libomp-test-deps)
- 
- # Install rules
--# We want to install libomp in DESTDIR/CMAKE_INSTALL_PREFIX/lib
--# We want to install headers in DESTDIR/CMAKE_INSTALL_PREFIX/include
-+# We want to install libomp in ${DESTDIR}/${CMAKE_INSTALL_FULL_LIBDIR}
-+# We want to install headers in ${DESTDIR}/${CMAKE_INSTALL_FULL_INCLUDEDIR}
- if(${OPENMP_STANDALONE_BUILD})
-   set(LIBOMP_HEADERS_INSTALL_PATH "${CMAKE_INSTALL_INCLUDEDIR}")
- else()
-@@ -362,9 +364,10 @@ if(WIN32)
-   set(LIBOMP_ALIASES "libiomp5md")
-   foreach(alias IN LISTS LIBOMP_ALIASES)
-     install(CODE "execute_process(COMMAND \"\${CMAKE_COMMAND}\" -E copy \"${LIBOMP_LIB_FILE}\"
--      \"${alias}${LIBOMP_LIBRARY_SUFFIX}\" WORKING_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}\")")
-+      \"${alias}${LIBOMP_LIBRARY_SUFFIX}\" WORKING_DIRECTORY \"${CMAKE_INSTALL_FULL_BINDIR}\")")
-+    extend_path(outdir "${CMAKE_INSTALL_PREFIX}" "${OPENMP_INSTALL_LIBDIR}")
-     install(CODE "execute_process(COMMAND \"\${CMAKE_COMMAND}\" -E copy \"${LIBOMP_IMP_LIB_FILE}\"
--      \"${alias}${CMAKE_STATIC_LIBRARY_SUFFIX}\" WORKING_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${OPENMP_INSTALL_LIBDIR}\")")
-+      \"${alias}${CMAKE_STATIC_LIBRARY_SUFFIX}\" WORKING_DIRECTORY \"${outdir}\")")
-   endforeach()
- else()
- 
-@@ -374,9 +377,10 @@ else()
-     # Create aliases (symlinks) of the library for backwards compatibility
-     set(LIBOMP_ALIASES "libgomp;libiomp5")
-     foreach(alias IN LISTS LIBOMP_ALIASES)
-+      extend_path(outdir "${CMAKE_INSTALL_PREFIX}" "${OPENMP_INSTALL_LIBDIR}")
-       install(CODE "execute_process(COMMAND \"\${CMAKE_COMMAND}\" -E create_symlink \"${LIBOMP_LIB_FILE}\"
-         \"${alias}${LIBOMP_LIBRARY_SUFFIX}\" WORKING_DIRECTORY
--        \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${OPENMP_INSTALL_LIBDIR}\")")
-+        \"\$ENV{DESTDIR}\${outdir}\")")
-     endforeach()
-   endif()
- endif()
