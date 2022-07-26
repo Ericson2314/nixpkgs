@@ -21,7 +21,7 @@ let
   release_version = "15.0.0";
   candidate = ""; # empty or "rcN"
   dash-candidate = lib.optionalString (candidate != "") "-${candidate}";
-  rev = "b2b993a6ae675955b1112473c035ae6b4e3932a0"; # When using a Git commit
+  rev = "7f9e6f6fa6547b9c5648d96fd96920467c8b3e84"; # When using a Git commit
   rev-version = "unstable-2022-25-07"; # When using a Git commit
   version = if rev != "" then rev-version else "${release_version}${dash-candidate}";
   targetConfig = stdenv.targetPlatform.config;
@@ -30,7 +30,7 @@ let
     owner = "llvm";
     repo = "llvm-project";
     rev = if rev != "" then rev else "llvmorg-${version}";
-    sha256 = "fRsI81zSVZPzTlMfWYYq1+m5bVXqdsg7pnH3yd0XAIs=";
+    sha256 = "1016lzjdz25jgh656szjz13hw8hghxmlqyl2fbq3awvm2qr7kl7a";
   };
 
   llvm_meta = {
@@ -158,16 +158,17 @@ let
       ] ++ lib.optionals (!stdenv.targetPlatform.isWasm) [
         targetLlvmLibraries.libunwind
       ];
-      extraBuildCommands = ''
-        echo "-rtlib=compiler-rt -Wno-unused-command-line-argument" >> $out/nix-support/cc-cflags
-        echo "-B${targetLlvmLibraries.compiler-rt}/lib" >> $out/nix-support/cc-cflags
-      '' + lib.optionalString (!stdenv.targetPlatform.isWasm) ''
-        echo "--unwindlib=libunwind" >> $out/nix-support/cc-cflags
-      '' + lib.optionalString (!stdenv.targetPlatform.isWasm && stdenv.targetPlatform.useLLVM or false) ''
-        echo "-lunwind" >> $out/nix-support/cc-ldflags
-      '' + lib.optionalString stdenv.targetPlatform.isWasm ''
-        echo "-fno-exceptions" >> $out/nix-support/cc-cflags
-      '' + mkExtraBuildCommands cc;
+      extraBuildCommands = mkExtraBuildCommands cc;
+      nixSupport.cc-cflags =
+        [ "-rtlib=compiler-rt"
+          "-Wno-unused-command-line-argument"
+          "-B${targetLlvmLibraries.compiler-rt}/lib"
+        ]
+        ++ lib.optional (!stdenv.targetPlatform.isWasm) "--unwindlib=libunwind"
+        ++ lib.optional
+          (!stdenv.targetPlatform.isWasm && stdenv.targetPlatform.useLLVM or false)
+          "-lunwind"
+        ++ lib.optional stdenv.targetPlatform.isWasm "-fno-exceptions";
     };
 
     clangNoLibcxx = wrapCCWith rec {
@@ -177,11 +178,12 @@ let
       extraPackages = [
         targetLlvmLibraries.compiler-rt
       ];
-      extraBuildCommands = ''
-        echo "-rtlib=compiler-rt" >> $out/nix-support/cc-cflags
-        echo "-B${targetLlvmLibraries.compiler-rt}/lib" >> $out/nix-support/cc-cflags
-        echo "-nostdlib++" >> $out/nix-support/cc-cflags
-      '' + mkExtraBuildCommands cc;
+      extraBuildCommands = mkExtraBuildCommands cc;
+      nixSupport.cc-cflags = [
+        "-rtlib=compiler-rt"
+        "-B${targetLlvmLibraries.compiler-rt}/lib"
+        "-nostdlib++"
+      ];
     };
 
     clangNoLibc = wrapCCWith rec {
@@ -191,10 +193,11 @@ let
       extraPackages = [
         targetLlvmLibraries.compiler-rt
       ];
-      extraBuildCommands = ''
-        echo "-rtlib=compiler-rt" >> $out/nix-support/cc-cflags
-        echo "-B${targetLlvmLibraries.compiler-rt}/lib" >> $out/nix-support/cc-cflags
-      '' + mkExtraBuildCommands cc;
+      extraBuildCommands = mkExtraBuildCommands cc;
+      nixSupport.cc-cflags = [
+        "-rtlib=compiler-rt"
+        "-B${targetLlvmLibraries.compiler-rt}/lib"
+      ];
     };
 
     clangNoCompilerRt = wrapCCWith rec {
@@ -202,9 +205,8 @@ let
       libcxx = null;
       bintools = bintoolsNoLibc';
       extraPackages = [ ];
-      extraBuildCommands = ''
-        echo "-nostartfiles" >> $out/nix-support/cc-cflags
-      '' + mkExtraBuildCommands0 cc;
+      extraBuildCommands = mkExtraBuildCommands0 cc;
+      nixSupport.cc-cflags = [ "-nostartfiles" ];
     };
 
     clangNoCompilerRtWithLibc = wrapCCWith rec {

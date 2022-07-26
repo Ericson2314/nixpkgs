@@ -48,10 +48,14 @@
 ## gnu-install-dirs patches
 
 ### What
-TODO
 
-### Why 
-TODO
+https://github.com/Ericson2314/llvm-project branches `split-prefix`
+
+### Why
+
+Multiple outputs support, understanding of output dirs being absolute path not within prefix dir.
 
 ### The plan
-TODO
+
+Upstream it all!
+Just a little is left.
