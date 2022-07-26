@@ -25,10 +25,6 @@ stdenv.mkDerivation rec {
 
   patches = [
     ./gnu-install-dirs.patch
-    # On Darwin the llvm-config is perhaps not working fine as the
-    # LLVM_MAIN_SRC_DIR is not getting set correctly, and the build fails as
-    # the include path is not correct.
-    ./fix-root-src-dir.patch
   ];
 
   nativeBuildInputs = [ cmake ];
