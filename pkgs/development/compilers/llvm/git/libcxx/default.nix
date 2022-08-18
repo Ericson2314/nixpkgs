@@ -29,9 +29,16 @@ stdenv.mkDerivation rec {
     mkdir -p "$out/llvm"
     cp -r ${monorepoSrc}/llvm/cmake "$out/llvm"
     cp -r ${monorepoSrc}/llvm/utils "$out/llvm"
+    mkdir -p "$out/runtimes"
+    cp -r ${monorepoSrc}/runtimes "$out/runtimes"
   '';
 
+  #cp -r ${monorepoSrc}/llvm/runtimes "$out/llvm"
+
   sourceRoot = "${src.name}/${basename}";
+
+  #src = monorepoSrc;
+  #sourceRoot = "${src.name}/runtimes";
 
   outputs = [ "out" ] ++ lib.optional (!headersOnly) "dev";
 
