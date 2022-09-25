@@ -323,7 +323,6 @@ in lib.makeScopeWithSplicing
     makeFlags = [
       "STRIP=-s" # flag to install, not command
       "MK_WERROR=no"
-      "SRCTOP=../.."
       "HOST_INCLUDE_ROOT=${lib.getDev stdenv.cc.libc}/include"
       "INSTALL=boot-install"
     ];
@@ -354,7 +353,6 @@ in lib.makeScopeWithSplicing
     makeFlags = [
       "STRIP=-s" # flag to install, not command
       "MK_WERROR=no"
-      "SRCTOP=../.."
     ] ++ lib.optional (stdenv.hostPlatform == stdenv.buildPlatform) "INSTALL=boot-install";
     buildInputs = with self; compatIfNeeded;
   };
@@ -404,7 +402,6 @@ in lib.makeScopeWithSplicing
     makeFlags = [
       "STRIP=-s" # flag to install, not command
       "MK_WERROR=no"
-      "SRCTOP=../.."
       "TESTSDIR=${builtins.placeholder "test"}"
     ] ++ lib.optional (stdenv.hostPlatform == stdenv.buildPlatform) "INSTALL=boot-install";
     postInstall = ''
@@ -515,7 +512,7 @@ in lib.makeScopeWithSplicing
     '';
 
     makeFlags = [
-      "SRCTOP=../.."
+      #"-B"
     ];
 
     MK_SYMVER = "yes";
