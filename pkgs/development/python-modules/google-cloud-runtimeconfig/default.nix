@@ -9,11 +9,11 @@
 
 buildPythonPackage rec {
   pname = "google-cloud-runtimeconfig";
-  version = "0.32.4";
+  version = "0.33.2";
 
   src = fetchPypi {
     inherit pname version;
-    sha256 = "ee239455a5393b51018071678ec0f4cc58ddf0904390e9f317f704f158ab16ab";
+    sha256 = "sha256-MPmyvm2FSrUzb1y5i4xl5Cqea6sxixLoZ7V1hxNi7hw=";
   };
 
   propagatedBuildInputs = [ google-api-core google-cloud-core ];

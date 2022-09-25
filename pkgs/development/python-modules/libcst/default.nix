@@ -1,45 +1,68 @@
 { lib
-, black
+, stdenv
 , buildPythonPackage
-, dataclasses
 , fetchFromGitHub
 , hypothesis
-, isort
-, pytest
+, libiconv
+, pytestCheckHook
 , python
 , pythonOlder
 , pyyaml
+, rustPlatform
+, setuptools-rust
+, setuptools-scm
 , typing-extensions
 , typing-inspect
 }:
 
 buildPythonPackage rec {
   pname = "libcst";
-  version = "0.3.19";
-  disabled = pythonOlder "3.6";
+  version = "0.4.7";
+  format = "pyproject";
 
-  # Some files for tests missing from PyPi
-  # https://github.com/Instagram/LibCST/issues/331
+  disabled = pythonOlder "3.7";
+
   src = fetchFromGitHub {
     owner = "instagram";
     repo = pname;
-    rev = "v${version}";
-    sha256 = "012g1hyaj015k2sf38a7jnpzjic0f8j97ar84d0f00w2ifzwx4ma";
+    rev = "refs/tags/v${version}";
+    sha256 = "sha256-YrGajxs8t8PU4XRkFlhwtxoa9pzpKPXq8ZvN/uqftlE=";
   };
 
+  cargoDeps = rustPlatform.fetchCargoTarball {
+    inherit src;
+    sourceRoot = "source/${cargoRoot}";
+    name = "${pname}-${version}";
+    hash = "sha256-V/WHZVvh8HtD8IUNk3V4e8/E2A8DebqY5i/lS1X6x3o=";
+  };
+
+  cargoRoot = "native";
+
+  postPatch = ''
+    # test try to format files, which isn't necessary when consuming releases
+    sed -i libcst/codegen/generate.py \
+      -e '/ufmt/c\        pass'
+  '';
+
+  SETUPTOOLS_SCM_PRETEND_VERSION = version;
+
+  nativeBuildInputs = [
+    setuptools-rust
+    setuptools-scm
+    rustPlatform.cargoSetupHook
+  ] ++ (with rustPlatform; [ rust.cargo rust.rustc ]);
+
+  buildInputs = lib.optionals stdenv.isDarwin [ libiconv ];
+
   propagatedBuildInputs = [
-    hypothesis
     typing-extensions
     typing-inspect
     pyyaml
-  ] ++ lib.optional (pythonOlder "3.7") [
-    dataclasses
   ];
 
   checkInputs = [
-    black
-    isort
-    pytest
+    hypothesis
+    pytestCheckHook
   ];
 
   preCheck = ''
@@ -54,12 +77,14 @@ buildPythonPackage rec {
     "test_codemod_formatter_error_input"
   ];
 
-  pythonImportsCheck = [ "libcst" ];
+  pythonImportsCheck = [
+    "libcst"
+  ];
 
   meta = with lib; {
     description = "Concrete Syntax Tree (CST) parser and serializer library for Python";
     homepage = "https://github.com/Instagram/libcst";
     license = with licenses; [ mit asl20 psfl ];
-    maintainers = with maintainers; [ ruuda SuperSandro2000 ];
+    maintainers = with maintainers; [ SuperSandro2000 ];
   };
 }

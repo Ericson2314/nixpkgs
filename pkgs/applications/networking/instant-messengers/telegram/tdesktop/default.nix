@@ -1,5 +1,4 @@
-{ mkDerivation
-, lib
+{ lib
 , fetchFromGitHub
 , callPackage
 , pkg-config
@@ -10,9 +9,11 @@
 , wrapQtAppsHook
 , extra-cmake-modules
 , qtbase
+, qtwayland
+, qtsvg
 , qtimageformats
+, qt5compat
 , gtk3
-, kwayland
 , libdbusmenu
 , lz4
 , xxHash
@@ -22,6 +23,7 @@
 , libopus
 , alsa-lib
 , libpulseaudio
+, pipewire
 , range-v3
 , tl-expected
 , hunspell
@@ -29,14 +31,17 @@
 , webkitgtk
 , jemalloc
 , rnnoise
+, abseil-cpp
+, kcoreaddons
   # Transitive dependencies:
 , util-linuxMinimal
 , pcre
 , libpthreadstubs
+, libXdamage
 , libXdmcp
 , libselinux
 , libsepol
-, epoxy
+, libepoxy
 , at-spi2-core
 , libXtst
 , libthai
@@ -45,6 +50,10 @@
 , libsysprof-capture
 , libpsl
 , brotli
+, microsoft_gsl
+, rlottie
+, stdenv
+, gcc10Stdenv
 }:
 
 # Main reference:
@@ -55,11 +64,17 @@
 # - https://github.com/void-linux/void-packages/blob/master/srcpkgs/telegram-desktop/template
 
 let
-  tg_owt = callPackage ./tg_owt.nix { };
+  tg_owt = callPackage ./tg_owt.nix {
+    abseil-cpp = abseil-cpp.override {
+      cxxStandard = "17";
+    };
+  };
+  # Aarch64 default gcc9 will cause ICE. For reference #108305
+  env = if stdenv.isAarch64 then gcc10Stdenv else stdenv;
 in
-mkDerivation rec {
+env.mkDerivation rec {
   pname = "telegram-desktop";
-  version = "2.9.3";
+  version = "4.2.0";
   # Note: Update via pkgs/applications/networking/instant-messengers/telegram/tdesktop/update.py
 
   # Telegram-Desktop with submodules
@@ -68,7 +83,7 @@ mkDerivation rec {
     repo = "tdesktop";
     rev = "v${version}";
     fetchSubmodules = true;
-    sha256 = "sha256-ZmhgBL5nbgrNLRmCHocqVNC3KtaLm4LUY1f4Xl8CvB4=";
+    sha256 = "1wpqn79pbarz48kmrh6gciw4a9y5hiki5qczlvj8smvx9is6yrf8";
   };
 
   postPatch = ''
@@ -81,6 +96,8 @@ mkDerivation rec {
       --replace '"libasound.so.2"' '"${alsa-lib}/lib/libasound.so.2"'
     substituteInPlace Telegram/ThirdParty/libtgvoip/os/linux/AudioPulse.cpp \
       --replace '"libpulse.so.0"' '"${libpulseaudio}/lib/libpulse.so.0"'
+    substituteInPlace Telegram/lib_webview/webview/platform/linux/webview_linux_webkit_gtk.cpp \
+      --replace '"libwebkit2gtk-4.0.so.37"' '"${webkitgtk}/lib/libwebkit2gtk-4.0.so.37"'
   '';
 
   # We want to run wrapProgram manually (with additional parameters)
@@ -99,9 +116,11 @@ mkDerivation rec {
 
   buildInputs = [
     qtbase
+    qtwayland
+    qtsvg
     qtimageformats
+    qt5compat
     gtk3
-    kwayland
     libdbusmenu
     lz4
     xxHash
@@ -111,6 +130,7 @@ mkDerivation rec {
     libopus
     alsa-lib
     libpulseaudio
+    pipewire
     range-v3
     tl-expected
     hunspell
@@ -119,14 +139,16 @@ mkDerivation rec {
     jemalloc
     rnnoise
     tg_owt
+    kcoreaddons
     # Transitive dependencies:
     util-linuxMinimal # Required for libmount thus not nativeBuildInputs.
     pcre
     libpthreadstubs
+    libXdamage
     libXdmcp
     libselinux
     libsepol
-    epoxy
+    libepoxy
     at-spi2-core
     libXtst
     libthai
@@ -134,6 +156,8 @@ mkDerivation rec {
     libsysprof-capture
     libpsl
     brotli
+    microsoft_gsl
+    rlottie
   ];
 
   cmakeFlags = [
@@ -151,7 +175,7 @@ mkDerivation rec {
     wrapProgram $out/bin/telegram-desktop \
       "''${gappsWrapperArgs[@]}" \
       "''${qtWrapperArgs[@]}" \
-      --prefix PATH : ${lib.makeBinPath [ xdg-utils]} \
+      --suffix PATH : ${lib.makeBinPath [ xdg-utils]} \
       --set XDG_RUNTIME_DIR "XDG-RUNTIME-DIR"
     sed -i $out/bin/telegram-desktop \
       -e "s,'XDG-RUNTIME-DIR',\"\''${XDG_RUNTIME_DIR:-/run/user/\$(id --user)}\","
@@ -172,6 +196,6 @@ mkDerivation rec {
     platforms = platforms.linux;
     homepage = "https://desktop.telegram.org/";
     changelog = "https://github.com/telegramdesktop/tdesktop/releases/tag/v${version}";
-    maintainers = with maintainers; [ oxalica primeos ];
+    maintainers = with maintainers; [ nickcao ];
   };
 }

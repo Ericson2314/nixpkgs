@@ -17,16 +17,19 @@ let
   shas =
     if enableUnfree
     then {
-      x86_64-linux = "sha256-5qv4fbFpLf6aduD7wyxXQ6FsCeUqrszRisNBx44vbMY=";
-      x86_64-darwin = "sha256-7H+Xpo8qF1ZZMkR5n92PVplEN4JsBEYar91zHQhE+Lo=";
+      x86_64-linux  = "35e50e05fba0240aa5b138bc1c81f67addaf557701f8df41c682b5bc708f7455";
+      x86_64-darwin = "698b6000788e123b647c988993f710c6d9bc44eb8c8e6f97d6b18a695a61f0a6";
+      aarch64-linux = "69694856fde11836eb1613bf3a2ba31fbdc933f58c8527b6180f6122c8bb528b";
     }
     else {
-      x86_64-linux = "sha256-jiV2yGPwPgZ5plo3ftImVDLSOsk/XBzFkeeALSObLhU=";
-      x86_64-darwin = "sha256-UYG+GGr23eAc2GgNX/mXaGU0WKMjiQMPpD1wUvAVz0A=";
+      x86_64-linux  = "3a2da2e63bc08ee1886db29c80103c669d3ed6960290b8b97d771232769f282e";
+      x86_64-darwin = "655ab873e16257827f884f67b66d62c4da40a895d06206faa435615ad0a56796";
+      aarch64-linux = "235cf57afb619801808d5fe1bff7e01a4a9b29f77723566e5371b5f3b2bf8fad";
     };
   this = stdenv.mkDerivation rec {
     version = elk7Version;
     pname = "logstash${optionalString (!enableUnfree) "-oss"}";
+
 
     src = fetchurl {
       url = "https://artifacts.elastic.co/downloads/logstash/${pname}-${version}-${plat}-${arch}.tar.gz";
@@ -38,8 +41,11 @@ let
     dontStrip = true;
     dontPatchShebangs = true;
 
-    buildInputs = [
+    nativeBuildInputs = [
       makeWrapper
+    ];
+
+    buildInputs = [
       jre
     ];
 
@@ -62,6 +68,11 @@ let
     meta = with lib; {
       description = "Logstash is a data pipeline that helps you process logs and other event data from a variety of systems";
       homepage = "https://www.elastic.co/products/logstash";
+      sourceProvenance = with sourceTypes; [
+        fromSource
+        binaryBytecode  # source bundles dependencies as jars
+        binaryNativeCode  # bundled jruby includes native code
+      ];
       license = if enableUnfree then licenses.elastic else licenses.asl20;
       platforms = platforms.unix;
       maintainers = with maintainers; [ wjlroe offline basvandijk ];

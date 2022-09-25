@@ -8,44 +8,41 @@
 , pkg-config
 , gnome
 , libsysprof-capture
+, gobject-introspection
+, vala
+, libpsl
+, brotli
 , gnomeSupport ? true
 , sqlite
 , glib-networking
-, gobject-introspection
-, withIntrospection ? stdenv.buildPlatform == stdenv.hostPlatform
-, vala
-, withVala ? stdenv.buildPlatform == stdenv.hostPlatform
-, libpsl
-, python3
-, brotli
-, fetchpatch
 }:
 
 stdenv.mkDerivation rec {
   pname = "libsoup";
-  version = "2.72.0";
-
-  src = fetchurl {
-    url = "mirror://gnome/sources/${pname}/${lib.versions.majorMinor version}/${pname}-${version}.tar.xz";
-    sha256 = "11skbyw2pw32178q3h8pi7xqa41b2x4k6q4k9f75zxmh8s23y30p";
-  };
-
-  patches = [
-    (fetchpatch {
-      # https://gitlab.gnome.org/GNOME/libsoup/-/issues/222
-      url = "https://gitlab.gnome.org/GNOME/libsoup/commit/b5e4f15a09d197b6a9b4b2d78b33779f27d828af.patch";
-      sha256 = "1hqk8lqzc200hi0nwbwq9qm6f03z296cnd79d4ql30683s80xqws";
-    })
-  ];
-
-  postPatch = ''
-    patchShebangs libsoup/
-  '';
+  version = "2.74.2";
 
   outputs = [ "out" "dev" ];
 
+  src = fetchurl {
+    url = "mirror://gnome/sources/${pname}/${lib.versions.majorMinor version}/${pname}-${version}.tar.xz";
+    sha256 = "sha256-8KQnZW5f4Z4d9xwQfojfobLmc8JcVHt4I7YBi0DQEVk=";
+  };
+
+  depsBuildBuild = [
+    pkg-config
+  ];
+
+  nativeBuildInputs = [
+    meson
+    ninja
+    pkg-config
+    glib
+    gobject-introspection
+    vala
+  ];
+
   buildInputs = [
-    python3
+    gobject-introspection
     sqlite
     libpsl
     glib.out
@@ -53,31 +50,43 @@ stdenv.mkDerivation rec {
   ] ++ lib.optionals stdenv.isLinux [
     libsysprof-capture
   ];
-  nativeBuildInputs = [ meson ninja pkg-config glib ]
-    ++ lib.optional withIntrospection gobject-introspection
-    ++ lib.optional withVala vala;
-  propagatedBuildInputs = [ glib libxml2 ];
 
-  NIX_CFLAGS_COMPILE = [ "-lpthread" ];
+  propagatedBuildInputs = [
+    glib
+    libxml2
+  ];
 
   mesonFlags = [
     "-Dtls_check=false" # glib-networking is a runtime dependency, not a compile-time dependency
     "-Dgssapi=disabled"
-    "-Dvapi=${if withVala then "enabled" else "disabled"}"
-    "-Dintrospection=${if withIntrospection then "enabled" else "disabled"}"
     "-Dgnome=${lib.boolToString gnomeSupport}"
     "-Dntlm=disabled"
   ] ++ lib.optionals (!stdenv.isLinux) [
     "-Dsysprof=disabled"
   ];
 
+  NIX_CFLAGS_COMPILE = "-lpthread";
+
   doCheck = false; # ERROR:../tests/socket-test.c:37:do_unconnected_socket_test: assertion failed (res == SOUP_STATUS_OK): (2 == 200)
 
+  postPatch = ''
+    # fixes finding vapigen when cross-compiling
+    # the commit is in 3.0.6
+    # https://gitlab.gnome.org/GNOME/libsoup/-/commit/5280e936d0a76f94dbc5d8489cfbdc0a06343f65
+    substituteInPlace meson.build \
+      --replace "required: vapi_opt)" "required: vapi_opt, native: false)"
+
+    patchShebangs libsoup/
+  '';
+
   passthru = {
-    propagatedUserEnvPackages = [ glib-networking.out ];
+    propagatedUserEnvPackages = [
+      glib-networking.out
+    ];
     updateScript = gnome.updateScript {
       packageName = pname;
       versionPolicy = "odd-unstable";
+      freeze = true;
     };
   };
 

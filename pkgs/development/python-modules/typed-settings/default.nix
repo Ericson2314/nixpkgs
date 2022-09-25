@@ -1,36 +1,48 @@
 { lib
 , buildPythonPackage
+, pythonOlder
 , fetchPypi
 , setuptoolsBuildHook
 , attrs
+, cattrs
 , toml
 , pytestCheckHook
 , click
+, click-option-group
 }:
 
 buildPythonPackage rec {
   pname = "typed-settings";
-  version = "0.10.0";
+  version = "1.1.0";
   format = "pyproject";
+  disabled = pythonOlder "3.7";
 
   src = fetchPypi {
     inherit pname version;
-    sha256 = "1fr6qkq3ldlp5i5l4b891w9ail9lfhaxlar3yij912slq5w0s8aw";
+    sha256 = "sha256-Ja2ZLqzJSSvK5hIMhayMztJta/Jc3tmb2tzdlxageAs=";
   };
 
   nativeBuildInputs = [
     setuptoolsBuildHook
-    pytestCheckHook
   ];
 
   propagatedBuildInputs = [
     attrs
+    cattrs
+    click-option-group
     toml
+  ];
+
+  pytestFlagsArray = [
+    "tests"
   ];
 
   checkInputs = [
     click
+    pytestCheckHook
   ];
+
+  pythonImportsCheck = [ "typed_settings" ];
 
   meta = {
     description = "Typed settings based on attrs classes";

@@ -1,24 +1,55 @@
-{ stdenv, lib, callPackage, fetchurl, fetchpatch, nixosTests }:
-
-let
-  common = opts: callPackage (import ../../browsers/firefox/common.nix opts) {
-    webrtcSupport = false;
-    geolocationSupport = false;
-  };
-in
+{ stdenv, lib, buildMozillaMach, callPackage, fetchurl, fetchpatch, nixosTests }:
 
 rec {
-  thunderbird = common rec {
+  thunderbird = thunderbird-102;
+  thunderbird-91 = (buildMozillaMach rec {
     pname = "thunderbird";
-    version = "91.0.3";
+    version = "91.13.1";
     application = "comm/mail";
+    applicationName = "Mozilla Thunderbird";
     binaryName = pname;
     src = fetchurl {
       url = "mirror://mozilla/thunderbird/releases/${version}/source/thunderbird-${version}.source.tar.xz";
-      sha512 = "1c7b4c11066ab64ee1baa9f07bc6bd4478c2ece0bcf8ac381c2f0774582bb781b8151b54326cd38742d039c5de718022649d804dfceaf142863249b1edb68e1e";
+      sha512 = "ca1bf821e6ca010c554fc111157af60e627ace7a0d43785ba39b260cd0606480dd5736c188c49ef6c3f1bda4b4c6870767b75e483241e7fd5a4290d689017e73";
     };
-    patches = [
-      ./no-buildconfig-90.patch
+    extraPatches = [
+      # The file to be patched is different from firefox's `no-buildconfig-ffx90.patch`.
+      ./no-buildconfig.patch
+    ];
+
+    meta = with lib; {
+      description = "A full-featured e-mail client";
+      homepage = "https://thunderbird.net/";
+      maintainers = with maintainers; [ eelco lovesegfault pierron vcunat ];
+      platforms = platforms.unix;
+      badPlatforms = platforms.darwin;
+      broken = stdenv.buildPlatform.is32bit; # since Firefox 60, build on 32-bit platforms fails with "out of memory".
+                                             # not in `badPlatforms` because cross-compilation on 64-bit machine might work.
+      license = licenses.mpl20;
+    };
+    updateScript = callPackage ./update.nix {
+      attrPath = "thunderbird-91-unwrapped";
+      versionPrefix = "91";
+    };
+  }).override {
+    geolocationSupport = false;
+    webrtcSupport = false;
+
+    pgoSupport = false; # console.warn: feeds: "downloadFeed: network connection unavailable"
+  };
+  thunderbird-102 = (buildMozillaMach rec {
+    pname = "thunderbird";
+    version = "102.3.0";
+    application = "comm/mail";
+    applicationName = "Mozilla Thunderbird";
+    binaryName = pname;
+    src = fetchurl {
+      url = "mirror://mozilla/thunderbird/releases/${version}/source/thunderbird-${version}.source.tar.xz";
+      sha512 = "9b9908d9f7b1281df5b2c74a25211973e25d9b780f05b9550c89e5aeb8b39070c517a1a33d0d84a33ed26dbcef99058308b76c056bd4e34987c32f0600e3882e";
+    };
+    extraPatches = [
+      # The file to be patched is different from firefox's `no-buildconfig-ffx90.patch`.
+      ./no-buildconfig.patch
     ];
 
     meta = with lib; {
@@ -33,34 +64,12 @@ rec {
     };
     updateScript = callPackage ./update.nix {
       attrPath = "thunderbird-unwrapped";
+      versionPrefix = "102";
     };
-  };
+  }).override {
+    geolocationSupport = false;
+    webrtcSupport = false;
 
-  thunderbird-78 = common rec {
-    pname = "thunderbird";
-    version = "78.13.0";
-    application = "comm/mail";
-    binaryName = pname;
-    src = fetchurl {
-      url = "mirror://mozilla/thunderbird/releases/${version}/source/thunderbird-${version}.source.tar.xz";
-      sha512 = "daee9ea9e57bdfce231a35029807f279a06f8790d71efc8998c78eb42d99a93cf98623170947df99202da038f949ba9111a7ff7adbd43c161794deb6791370a0";
-    };
-    patches = [
-      ./no-buildconfig-78.patch
-    ];
-
-    meta = with lib; {
-      description = "A full-featured e-mail client";
-      homepage = "https://thunderbird.net/";
-      maintainers = with maintainers; [ eelco lovesegfault pierron vcunat ];
-      platforms = platforms.unix;
-      badPlatforms = platforms.darwin;
-      broken = stdenv.buildPlatform.is32bit; # since Firefox 60, build on 32-bit platforms fails with "out of memory".
-                                             # not in `badPlatforms` because cross-compilation on 64-bit machine might work.
-      license = licenses.mpl20;
-    };
-    updateScript = callPackage ./update.nix {
-      attrPath = "thunderbird-78-unwrapped";
-    };
+    pgoSupport = false; # console.warn: feeds: "downloadFeed: network connection unavailable"
   };
 }

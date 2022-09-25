@@ -13,7 +13,7 @@
 
 buildPythonPackage rec {
   pname = "nbxmpp";
-  version = "2.0.3";
+  version = "3.2.1";
 
   disabled = pythonOlder "3.7";
 
@@ -21,9 +21,14 @@ buildPythonPackage rec {
     domain = "dev.gajim.org";
     owner = "gajim";
     repo = "python-nbxmpp";
-    rev = "nbxmpp-${version}";
-    sha256 = "0gzyd25sja7n49f1ihyg6gch1b0r409r0p3qpwn8w8xy7jgn6ysc";
+    rev = version;
+    sha256 = "sha256-BBDCk/vWm9Y2oGw0aujqlueaB+ww7F2YP2cw5VqIzfQ=";
   };
+
+  nativeBuildInputs = [
+    # required for pythonImportsCheck otherwise libsoup cannot be found
+    gobject-introspection
+  ];
 
   buildInputs = [
     precis-i18n

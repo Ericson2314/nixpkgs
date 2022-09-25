@@ -7,13 +7,13 @@
 buildPythonApplication rec {
 
   pname = "catcli";
-  version = "0.7.0";
+  version = "0.8.2";
 
   src = fetchFromGitHub {
     owner = "deadc0de6";
     repo = pname;
-    rev = "v${version}";
-    sha256 = "1r30345wzpg8yk542fmgh3khdb91s4sr9hnqxh1s71ifjsrgmpph";
+    rev = "refs/tags/v${version}";
+    sha256 = "sha256-IHHlxF/7U7C+wO6YicesZPFV6BSBmdkPWaZn7awplNk=";
   };
 
   propagatedBuildInputs = [ docopt anytree ];
@@ -23,7 +23,7 @@ buildPythonApplication rec {
   meta = with lib; {
     description = "The command line catalog tool for your offline data";
     homepage = "https://github.com/deadc0de6/catcli";
-    license = licenses.gpl3;
+    license = licenses.gpl3Only;
     maintainers = with maintainers; [ petersjt014 ];
     platforms = platforms.all;
   };

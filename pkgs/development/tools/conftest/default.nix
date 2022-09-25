@@ -1,19 +1,16 @@
-{ lib, buildGoModule, fetchFromGitHub }:
+{ lib, buildGoModule, fetchFromGitHub, installShellFiles }:
 
 buildGoModule rec {
   pname = "conftest";
-  version = "0.27.0";
+  version = "0.34.0";
 
   src = fetchFromGitHub {
     owner = "open-policy-agent";
     repo = "conftest";
     rev = "v${version}";
-    sha256 = "sha256-Yc/aejGLMbAqpIRTVQQ3lv7/oyr7tVAy41Gx6198Eos=";
+    sha256 = "sha256-w9rqfmNEvp6yYXBl5CVeifgrP35dL+pYBgRs3vP1W4I=";
   };
-
-  vendorSha256 = "sha256-jI5bX6S2C0ckiiieVlaRNEsLS/5gGkC3o/xauDtCOjA=";
-
-  doCheck = false;
+  vendorSha256 = "sha256-NcizXQ4wQnA1ZdT74tVbuIbFwgEp5qJfoGnHmMC7kkI=";
 
   ldflags = [
     "-s"
@@ -21,8 +18,30 @@ buildGoModule rec {
     "-X github.com/open-policy-agent/conftest/internal/commands.version=${version}"
   ];
 
+  nativeBuildInputs = [ installShellFiles ];
+
+  preCheck = ''
+    export HOME="$(mktemp -d)"
+  '';
+
+  postInstall = ''
+    installShellCompletion --cmd conftest \
+      --bash <($out/bin/conftest completion bash) \
+      --fish <($out/bin/conftest completion fish) \
+      --zsh <($out/bin/conftest completion zsh)
+  '';
+
+  doInstallCheck = true;
+  installCheckPhase = ''
+    export HOME="$(mktemp -d)"
+    $out/bin/conftest --version | grep ${version} > /dev/null
+  '';
+
   meta = with lib; {
     description = "Write tests against structured configuration data";
+    downloadPage = "https://github.com/open-policy-agent/conftest";
+    homepage = "https://www.conftest.dev";
+    license = licenses.asl20;
     longDescription = ''
       Conftest helps you write tests against structured configuration data.
       Using Conftest you can write tests for your Kubernetes configuration,
@@ -33,8 +52,6 @@ buildGoModule rec {
       assertions. You can read more about Rego in 'How do I write policies' in
       the Open Policy Agent documentation.
     '';
-    inherit (src.meta) homepage;
-    license = licenses.asl20;
-    maintainers = with maintainers; [ yurrriq jk ];
+    maintainers = with maintainers; [ jk yurrriq ];
   };
 }

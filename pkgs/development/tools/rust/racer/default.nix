@@ -1,17 +1,15 @@
-{ lib, stdenv, fetchFromGitHub, rustPlatform, makeWrapper, substituteAll, Security }:
+{ lib, rustPlatform, fetchCrate, makeWrapper, stdenv, Security }:
 
 rustPlatform.buildRustPackage rec {
   pname = "racer";
-  version = "2.1.46";
+  version = "2.2.1";
 
-  src = fetchFromGitHub {
-    owner = "racer-rust";
-    repo = "racer";
-    rev = "v${version}";
-    sha256 = "sha256-7h1w5Yyt5VN6+pYuTTbdM1Nrd8aDEhPLusxuIsdS+mQ=";
+  src = fetchCrate {
+    inherit pname version;
+    sha256 = "sha256-uAVtJwOyhe1lPz+MUUFCgHJPVGuIk/lNUkQWiNdOZ5Y=";
   };
 
-  cargoSha256 = "sha256-fllhB+so6H36b+joW0l+NBtz3PefOKdj6C8qKQPuJpk=";
+  cargoSha256 = "sha256-U2mI1y6t8CwxW/iPcPzxAafu61GNm/XLCKVGuyybV/4=";
 
   nativeBuildInputs = [ makeWrapper ];
   buildInputs = lib.optional stdenv.isDarwin Security;
@@ -33,6 +31,10 @@ rustPlatform.buildRustPackage rec {
     "--skip follows_rand_crate --skip get_completion_in_example_dir"
     "--skip test_resolve_global_path_in_modules"
   ];
+
+  # [2022-04-06] Its test suite contains two function calls with the
+  # wrong number of arguments, breaking its build.
+  doCheck = false;
 
   doInstallCheck = true;
   installCheckPhase = ''

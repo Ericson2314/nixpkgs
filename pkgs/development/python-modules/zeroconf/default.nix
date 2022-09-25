@@ -1,5 +1,6 @@
-{ stdenv
-, lib
+{ lib
+, stdenv
+, async-timeout
 , buildPythonPackage
 , fetchFromGitHub
 , ifaddr
@@ -10,19 +11,20 @@
 
 buildPythonPackage rec {
   pname = "zeroconf";
-  version = "0.36.2";
+  version = "0.39.1";
   format = "setuptools";
-  disabled = pythonOlder "3.6";
 
-  # no tests in pypi sdist
+  disabled = pythonOlder "3.7";
+
   src = fetchFromGitHub {
     owner = "jstasiak";
     repo = "python-zeroconf";
-    rev = version;
-    sha256 = "sha256-3QRrGfyMXiSas70IL19/DQAPf7I6vdg/itiZlD4/pvg=";
+    rev = "refs/tags/${version}";
+    hash = "sha256-fIp1RLf6qpo9s5fdgFt7yid6M/Sf3hmm8MZikjCiCu0=";
   };
 
   propagatedBuildInputs = [
+    async-timeout
     ifaddr
   ];
 
@@ -39,6 +41,8 @@ buildPythonPackage rec {
     "test_launch_and_close_v4_v6"
     "test_launch_and_close_v6_only"
     "test_integration_with_listener_ipv6"
+    # Starting with 0.39.0: AssertionError: assert [('add', '_ht..._tcp.local.')]
+    "test_service_browser_expire_callbacks"
   ] ++ lib.optionals stdenv.isDarwin [
     "test_lots_of_names"
   ];

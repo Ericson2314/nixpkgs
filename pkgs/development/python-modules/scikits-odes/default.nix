@@ -1,7 +1,6 @@
 { lib
 , buildPythonPackage
 , fetchPypi
-, fetchurl
 , cython
 , enum34
 , gfortran
@@ -16,13 +15,13 @@
 
 buildPythonPackage rec {
   pname = "scikits.odes";
-  version = "2.6.1";
+  version = "2.6.4";
 
   disabled = isPy27;
 
   src = fetchPypi {
     inherit pname version;
-    sha256 = "0kbf2n16h9s35x6pavlx6sff0pqr68i0x0609z92a4vadni32n6b";
+    sha256 = "sha256-fS9E0kO+ZEcGjiWQPAQHa52zOz9RafNSBPNKypm0GhA=";
   };
 
   nativeBuildInputs = [

@@ -6,7 +6,7 @@
 , buildDunePackage
 , yojson
 , csexp
-, result
+, merlin-lib
 , dot-merlin-reader
 , jq
 , menhir
@@ -15,11 +15,12 @@
 }:
 
 let
-  merlinVersion = "4.1";
+  merlinVersion = "4.6";
 
   hashes = {
-    "4.1-411" = "9e2e6fc799c93ce1f2c7181645eafa37f64e43ace062b69218e1c29ac459937d";
-    "4.1-412" = "fb4caede73bdb8393bd60e31792af74b901ae2d319ac2f2a2252c694d2069d8d";
+    "4.6-412" = "sha256-isiurLeWminJQQR4oHpJPCzVk6cEmtQdX4+n3Pdka5c=";
+    "4.6-413" = "sha256-8903H4TE6F/v2Kw1XpcpdXEiLIdb9llYgt42zSR9kO4=";
+    "4.6-414" = "sha256-AuvXCjx32JQBY9vkxAd0pEjtFF6oTgrT1f9TJEEDk84=";
   };
 
   ocamlVersionShorthand = lib.concatStrings
@@ -37,7 +38,7 @@ buildDunePackage {
   inherit version;
 
   src = fetchurl {
-    url = "https://github.com/ocaml/merlin/releases/download/v${version}/merlin-v${version}.tbz";
+    url = "https://github.com/ocaml/merlin/releases/download/v${version}/merlin-${version}.tbz";
     sha256 = hashes."${version}";
   };
 
@@ -49,13 +50,20 @@ buildDunePackage {
     })
   ];
 
-  useDune2 = true;
+  strictDeps = true;
 
+  nativeBuildInputs = [
+    menhir
+    jq
+  ];
   buildInputs = [
     dot-merlin-reader
     yojson
-    csexp
-    result
+    (if lib.versionAtLeast version "4.6-414"
+     then merlin-lib
+     else csexp)
+    menhirSdk
+    menhirLib
   ];
 
   doCheck = true;
@@ -65,12 +73,6 @@ buildDunePackage {
     dune runtest # filtering with -p disables tests
     runHook postCheck
   '';
-  checkInputs = [
-    jq
-    menhir
-    menhirLib
-    menhirSdk
-  ];
 
   meta = with lib; {
     description = "An editor-independent tool to ease the development of programs in OCaml";

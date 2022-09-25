@@ -6,29 +6,31 @@ let
 in
 {
   options.services.fluidd = {
-    enable = mkEnableOption "Fluidd, a Klipper web interface for managing your 3d printer";
+    enable = mkEnableOption (lib.mdDoc "Fluidd, a Klipper web interface for managing your 3d printer");
 
     package = mkOption {
       type = types.package;
-      description = "Fluidd package to be used in the module";
+      description = lib.mdDoc "Fluidd package to be used in the module";
       default = pkgs.fluidd;
-      defaultText = "pkgs.fluidd";
+      defaultText = literalExpression "pkgs.fluidd";
     };
 
     hostName = mkOption {
       type = types.str;
       default = "localhost";
-      description = "Hostname to serve fluidd on";
+      description = lib.mdDoc "Hostname to serve fluidd on";
     };
 
     nginx = mkOption {
       type = types.submodule
         (import ../web-servers/nginx/vhost-options.nix { inherit config lib; });
       default = { };
-      example = {
-        serverAliases = [ "fluidd.\${config.networking.domain}" ];
-      };
-      description = "Extra configuration for the nginx virtual host of fluidd.";
+      example = literalExpression ''
+        {
+          serverAliases = [ "fluidd.''${config.networking.domain}" ];
+        }
+      '';
+      description = lib.mdDoc "Extra configuration for the nginx virtual host of fluidd.";
     };
   };
 

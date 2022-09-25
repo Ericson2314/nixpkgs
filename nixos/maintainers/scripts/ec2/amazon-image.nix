@@ -4,6 +4,7 @@ with lib;
 
 let
   cfg = config.amazonImage;
+  amiBootMode = if config.ec2.efi then "uefi" else "legacy-bios";
 
 in {
 
@@ -22,19 +23,19 @@ in {
   options.amazonImage = {
     name = mkOption {
       type = types.str;
-      description = "The name of the generated derivation";
+      description = lib.mdDoc "The name of the generated derivation";
       default = "nixos-amazon-image-${config.system.nixos.label}-${pkgs.stdenv.hostPlatform.system}";
     };
 
     contents = mkOption {
-      example = literalExample ''
+      example = literalExpression ''
         [ { source = pkgs.memtest86 + "/memtest.bin";
             target = "boot/memtest.bin";
           }
         ]
       '';
       default = [];
-      description = ''
+      description = lib.mdDoc ''
         This option lists files to be copied to fixed locations in the
         generated image. Glob patterns work.
       '';
@@ -44,13 +45,13 @@ in {
       type = with types; either (enum [ "auto" ]) int;
       default = if config.ec2.hvm then 2048 else 8192;
       example = 8192;
-      description = "The size in MB of the image";
+      description = lib.mdDoc "The size in MB of the image";
     };
 
     format = mkOption {
       type = types.enum [ "raw" "qcow2" "vpc" ];
       default = "vpc";
-      description = "The image format to output";
+      description = lib.mdDoc "The image format to output";
     };
   };
 
@@ -72,7 +73,7 @@ in {
         }
       '';
 
-    zfsBuilder = import ../../../lib/make-zfs-image.nix {
+    zfsBuilder = import ../../../lib/make-multi-disk-zfs-image.nix {
       inherit lib config configFile;
       inherit (cfg) contents format name;
       pkgs = import ../../../.. { inherit (pkgs) system; }; # ensure we use the regular qemu-kvm package
@@ -104,12 +105,14 @@ in {
        ${pkgs.jq}/bin/jq -n \
          --arg system_label ${lib.escapeShellArg config.system.nixos.label} \
          --arg system ${lib.escapeShellArg pkgs.stdenv.hostPlatform.system} \
-         --arg root_logical_bytes "$(${pkgs.qemu}/bin/qemu-img info --output json "$bootDisk" | ${pkgs.jq}/bin/jq '."virtual-size"')" \
-         --arg boot_logical_bytes "$(${pkgs.qemu}/bin/qemu-img info --output json "$rootDisk" | ${pkgs.jq}/bin/jq '."virtual-size"')" \
+         --arg root_logical_bytes "$(${pkgs.qemu}/bin/qemu-img info --output json "$rootDisk" | ${pkgs.jq}/bin/jq '."virtual-size"')" \
+         --arg boot_logical_bytes "$(${pkgs.qemu}/bin/qemu-img info --output json "$bootDisk" | ${pkgs.jq}/bin/jq '."virtual-size"')" \
+         --arg boot_mode "${amiBootMode}" \
          --arg root "$rootDisk" \
          --arg boot "$bootDisk" \
         '{}
           | .label = $system_label
+          | .boot_mode = $boot_mode
           | .system = $system
           | .disks.boot.logical_bytes = $boot_logical_bytes
           | .disks.boot.file = $boot
@@ -145,9 +148,11 @@ in {
          --arg system_label ${lib.escapeShellArg config.system.nixos.label} \
          --arg system ${lib.escapeShellArg pkgs.stdenv.hostPlatform.system} \
          --arg logical_bytes "$(${pkgs.qemu}/bin/qemu-img info --output json "$diskImage" | ${pkgs.jq}/bin/jq '."virtual-size"')" \
+         --arg boot_mode "${amiBootMode}" \
          --arg file "$diskImage" \
           '{}
           | .label = $system_label
+          | .boot_mode = $boot_mode
           | .system = $system
           | .logical_bytes = $logical_bytes
           | .file = $file

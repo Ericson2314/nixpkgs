@@ -7,15 +7,16 @@
 
 beamPackages.mixRelease rec {
   pname = "pleroma";
-  version = "2.4.0";
+  version = "2.4.3";
 
   src = fetchFromGitLab {
     domain = "git.pleroma.social";
     owner = "pleroma";
     repo = "pleroma";
     rev = "v${version}";
-    sha256 = "sha256-1zp/qVk2K3q8AtkfXab0MBAHaQnY5enVtfdu64FFPhg=";
+    sha256 = "sha256-x8j/2Eot/EEHsedgZntB5MPxlYMNDlFyZtmiMdhcS7U=";
   };
+  stripDebug = false;
 
   mixNixDeps = import ./mix.nix {
     inherit beamPackages lib;
@@ -118,13 +119,11 @@ beamPackages.mixRelease rec {
         name = "crypt";
         version = "0.4.3";
 
-        src = fetchFromGitLab {
-          domain = "git.pleroma.social";
-          group = "pleroma";
-          owner = "elixir-libraries";
+        src = fetchFromGitHub {
+          owner = "msantos";
           repo = "crypt";
-          rev = "cf2aa3f11632e8b0634810a15b3e612c7526f6a3";
-          sha256 = "0fnzljxy9pwabh1nzx0vawn131d5pdfb0p98kvpkqs441jr0ii73";
+          rev = "f75cd55325e33cbea198fb41fe41871392f8fb76";
+          sha256 = "sha256-ZYhZTe7cTITkl8DZ4z2IOlxTX5gnbJImu/lVJ2ZjR1o=";
         };
 
         postInstall = "mv $out/lib/erlang/lib/crypt-${version}/priv/{source,crypt}.so";
@@ -204,9 +203,9 @@ beamPackages.mixRelease rec {
 
   meta = with lib; {
     description = "ActivityPub microblogging server";
-    homepage = https://git.pleroma.social/pleroma/pleroma;
+    homepage = "https://git.pleroma.social/pleroma/pleroma";
     license = licenses.agpl3;
-    maintainers = with maintainers; [ petabyteboy ninjatrappeur yuka ];
-    platforms = [ "x86_64-linux" "aarch64-linux" ];
+    maintainers = with maintainers; [ ninjatrappeur yuka kloenk ];
+    platforms = platforms.unix;
   };
 }

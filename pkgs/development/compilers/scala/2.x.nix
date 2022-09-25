@@ -20,14 +20,14 @@ let
     };
 
     "2.12" = {
-      version = "2.12.14";
-      sha256 = "/X4+QDIogBOinAoUR8WX+vew5Jl2LA2YHbIQmel4BCY=";
+      version = "2.12.15";
+      sha256 = "F5RePKlHjQaoQ2BWqsa5r99g3q/cPjgsbAi2A5IberY=";
       pname = "scala_2_12";
     };
 
     "2.13" = {
-      version = "2.13.6";
-      sha256 = "Sd+SUDzRHMPGSWg9s2jlh4t+eS5AFW0jd+UjJuk17UM=";
+      version = "2.13.8";
+      sha256 = "LLMdhGnGUYOfDpyDehqwZVDQMXJnUvVJBr4bneATFM8=";
       pname = "scala_2_13";
     };
   };

@@ -8,18 +8,21 @@
 , pytest-vcr
 , pytest-asyncio
 , requests
-, six
+, pythonOlder
 }:
 
 buildPythonPackage rec {
   pname = "pubnub";
-  version = "5.1.4";
+  version = "7.0.0";
+  format = "setuptools";
+
+  disabled = pythonOlder "3.7";
 
   src = fetchFromGitHub {
     owner = pname;
     repo = "python";
-    rev = "v${version}";
-    sha256 = "sha256-aDmmF3T5v6NX3kut7cydEJNRw4mkrGt4X0+WOm/ZCVo=";
+    rev = "refs/tags/${version}";
+    hash = "sha256-+uW6fsYsn/3PGK4wTQLKcoq+NFNI8SjJ9cL6Q3Fh2uQ=";
   };
 
   propagatedBuildInputs = [
@@ -27,22 +30,24 @@ buildPythonPackage rec {
     cbor2
     pycryptodomex
     requests
-    six
   ];
 
   checkInputs = [
     pytest-asyncio
-    pytestCheckHook
     pytest-vcr
+    pytestCheckHook
   ];
 
-  # Some tests don't pass with recent releases of twisted
   disabledTestPaths = [
+    # Tests require network access
     "tests/integrational"
-    "tests/manual/asyncio"
+    "tests/manual"
+    "tests/functional/push"
   ];
 
-  pythonImportsCheck = [ "pubnub" ];
+  pythonImportsCheck = [
+    "pubnub"
+  ];
 
   meta = with lib; {
     description = "Python-based APIs for PubNub";

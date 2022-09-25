@@ -1,4 +1,5 @@
-{ lib
+{ stdenv
+, lib
 , aiodns
 , aiohttp
 , boto3
@@ -20,14 +21,16 @@
 
 buildPythonPackage rec {
   pname = "slack-sdk";
-  version = "3.10.0";
+  version = "3.18.3";
+  format = "setuptools";
+
   disabled = pythonOlder "3.6";
 
   src = fetchFromGitHub {
     owner = "slackapi";
     repo = "python-slack-sdk";
-    rev = "v${version}";
-    sha256 = "sha256-FOpUO9bXrEOgYGmRmAhHnovzBafu6D2ZSLcgw0+0uzs=";
+    rev = "refs/tags/v${version}";
+    sha256 = "sha256-Up3W0NkN9BY6C9KWD6EPZ2sy+55f4eNFl2cP4IdcIcs=";
   };
 
   propagatedBuildInputs = [
@@ -66,9 +69,12 @@ buildPythonPackage rec {
     "test_interactions"
   ];
 
-  pythonImportsCheck = [ "slack_sdk" ];
+  pythonImportsCheck = [
+    "slack_sdk"
+  ];
 
   meta = with lib; {
+    broken = stdenv.isDarwin;
     description = "Slack Developer Kit for Python";
     homepage = "https://slack.dev/python-slack-sdk/";
     license = with licenses; [ mit ];

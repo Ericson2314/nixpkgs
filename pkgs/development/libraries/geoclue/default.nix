@@ -4,6 +4,7 @@
 , fetchpatch
 , intltool
 , meson
+, mesonEmulatorHook
 , ninja
 , pkg-config
 , gtk-doc
@@ -26,30 +27,19 @@
 
 stdenv.mkDerivation rec {
   pname = "geoclue";
-  version = "2.5.7";
+  version = "2.6.0";
 
   outputs = [ "out" "dev" "devdoc" ];
 
   src = fetchFromGitLab {
     domain = "gitlab.freedesktop.org";
-    owner = pname;
-    repo = pname;
+    owner = "geoclue";
+    repo = "geoclue";
     rev = version;
-    sha256 = "1mv1vs4q94bqkmgkj53jcsw1x31kczwydyy3r27a7fycgzmii1pj";
+    hash = "sha256-TbuO9wpyjtvyvqaCryaTOunR0hVVlJuqENWQQpcMcz4=";
   };
 
   patches = [
-    # Make the Mozilla API key configurable
-    # https://gitlab.freedesktop.org/geoclue/geoclue/merge_requests/54 (only partially backported)
-    (fetchpatch {
-      url = "https://gitlab.freedesktop.org/geoclue/geoclue/commit/95c9ad4dc176860c85a07d0db4cb4179929bdb54.patch";
-      sha256 = "/lq/dLBJl2vf16tt7emYoTtXY6iUw+4s2XcABUHp3Kc=";
-    })
-    (fetchpatch {
-      url = "https://gitlab.freedesktop.org/geoclue/geoclue/commit/1a00809a0d89b0849a57647c878d192354247a33.patch";
-      sha256 = "6FuiukgFWg2cEKt8LlKP4E0rfSH/ZQgk6Ip1mGJpNFQ=";
-    })
-
     ./add-option-for-installation-sysconfdir.patch
   ];
 
@@ -66,6 +56,8 @@ stdenv.mkDerivation rec {
     gtk-doc
     docbook-xsl-nons
     docbook_xml_dtd_412
+  ] ++ lib.optionals (!stdenv.buildPlatform.canExecute stdenv.hostPlatform) [
+    mesonEmulatorHook
   ];
 
   buildInputs = [
@@ -73,6 +65,7 @@ stdenv.mkDerivation rec {
     json-glib
     libsoup
     avahi
+    gobject-introspection
   ] ++ lib.optionals withDemoAgent [
     libnotify gdk-pixbuf
   ] ++ lib.optionals (!stdenv.isDarwin) [
@@ -105,10 +98,11 @@ stdenv.mkDerivation rec {
   '';
 
   meta = with lib; {
+    broken = stdenv.isDarwin && withDemoAgent;
     description = "Geolocation framework and some data providers";
     homepage = "https://gitlab.freedesktop.org/geoclue/geoclue/wikis/home";
     maintainers = with maintainers; [ raskin ];
     platforms = with platforms; linux ++ darwin;
-    license = licenses.lgpl2;
+    license = licenses.lgpl2Plus;
   };
 }

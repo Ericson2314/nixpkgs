@@ -1,4 +1,5 @@
-{ lib
+{ stdenv
+, lib
 , buildPythonPackage
 , fetchPypi
 , cython
@@ -8,6 +9,7 @@
 , numpy
 , osqp
 , pandas
+, setuptools-scm
 , scikit-learn
 , scipy
 , pytestCheckHook
@@ -15,15 +17,16 @@
 
 buildPythonPackage rec {
   pname = "scikit-survival";
-  version = "0.15.0.post0";
+  version = "0.18.0";
 
   src = fetchPypi {
     inherit pname version;
-    sha256 = "572c3ac6818a9d0944fc4b8176eb948051654de857e28419ecc5060bcc6fbf37";
+    sha256 = "sha256-LfQESmKxSJ4tWlp3EZTBajOxZC3IEOUtJmX8A5ROpmU=";
   };
 
   nativeBuildInputs = [
     cython
+    setuptools-scm
   ];
 
   propagatedBuildInputs = [
@@ -62,6 +65,7 @@ buildPythonPackage rec {
   ];
 
   meta = with lib; {
+    broken = (stdenv.isLinux && stdenv.isAarch64);
     description = "Survival analysis built on top of scikit-learn";
     homepage = "https://github.com/sebp/scikit-survival";
     license = licenses.gpl3Only;

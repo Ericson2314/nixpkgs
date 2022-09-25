@@ -7,12 +7,12 @@ with builtins;
 
 stdenv.mkDerivation rec {
   pname = "ttyd";
-  version = "1.6.3";
+  version = "1.7.1";
   src = fetchFromGitHub {
     owner = "tsl0922";
     repo = pname;
     rev = "refs/tags/${version}";
-    sha256 = "ErWd99js2EldkRNWFdgZw/X3DIz266kM3lLlC34Deno=";
+    sha256 = "sha256-eUddAo9gGL/Uzf9r54U4AKW49Otr8gr+YQXwJS60Eo8=";
   };
 
   nativeBuildInputs = [ pkg-config cmake xxd ];
@@ -25,6 +25,6 @@ stdenv.mkDerivation rec {
     homepage    = "https://github.com/tsl0922/ttyd";
     license     = lib.licenses.mit;
     maintainers = [ lib.maintainers.thoughtpolice ];
-    platforms   = lib.platforms.linux;
+    platforms   = lib.platforms.all;
   };
 }

@@ -8,12 +8,10 @@
 { bash
 , buildFHSUserEnv
 , cacert
-, coreutils
 , git
 , runCommand
 , stdenv
 , lib
-, fetchurl
 , alsa-lib
 , dbus
 , expat
@@ -33,6 +31,8 @@
 , nspr
 , nss
 , systemd
+, which
+, callPackage
 }:
 let
   drvName = "flutter-${version}";
@@ -61,7 +61,7 @@ let
                  # path is relative otherwise it's replaced by /build/flutter
 
       pushd "$FLUTTER_TOOLS_DIR"
-      ${dart}/bin/pub get --offline
+      ${dart}/bin/dart pub get --offline
       popd
 
       local revision="$(cd "$FLUTTER_ROOT"; git rev-parse HEAD)"
@@ -74,10 +74,27 @@ let
     '';
 
     installPhase = ''
+      runHook preInstall
+
       mkdir -p $out
       cp -r . $out
       mkdir -p $out/bin/cache/
       ln -sf ${dart} $out/bin/cache/dart-sdk
+
+      runHook postInstall
+    '';
+
+    doInstallCheck = true;
+    installCheckInputs = [ which ];
+    installCheckPhase = ''
+      runHook preInstallCheck
+
+      export HOME="$(mktemp -d)"
+      $out/bin/flutter config --android-studio-dir $HOME
+      $out/bin/flutter config --android-sdk $HOME
+      $out/bin/flutter --version | fgrep -q '${version}'
+
+      runHook postInstallCheck
     '';
   };
 
@@ -130,6 +147,8 @@ let
   };
 
 in
+let
+self = (self:
 runCommand drvName
 {
   startScript = ''
@@ -140,7 +159,13 @@ runCommand drvName
   '';
   preferLocalBuild = true;
   allowSubstitutes = false;
-  passthru = { unwrapped = flutter; };
+  passthru = {
+    unwrapped = flutter;
+    inherit dart;
+    mkFlutterApp = callPackage ../../../build-support/flutter {
+      flutter = self;
+    };
+  };
   meta = with lib; {
     description = "Flutter is Google's SDK for building mobile, web and desktop with Dart";
     longDescription = ''
@@ -150,11 +175,16 @@ runCommand drvName
     homepage = "https://flutter.dev";
     license = licenses.bsd3;
     platforms = [ "x86_64-linux" ];
-    maintainers = with maintainers; [ babariviere ericdallo thiagokokada ];
+    maintainers = with maintainers; [ babariviere ericdallo ];
   };
 } ''
   mkdir -p $out/bin
 
+  mkdir -p $out/bin/cache/
+  ln -sf ${dart} $out/bin/cache/dart-sdk
+
   echo -n "$startScript" > $out/bin/${pname}
   chmod +x $out/bin/${pname}
-''
+'') self;
+in
+self

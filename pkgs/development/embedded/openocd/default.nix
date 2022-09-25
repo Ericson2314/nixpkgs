@@ -1,10 +1,12 @@
 { stdenv
 , lib
+, fetchpatch
 , fetchurl
 , pkg-config
 , hidapi
 , libftdi1
 , libusb1
+, libgpiod
 }:
 
 stdenv.mkDerivation rec {
@@ -17,9 +19,20 @@ stdenv.mkDerivation rec {
 
   nativeBuildInputs = [ pkg-config ];
 
-  buildInputs = [ hidapi libftdi1 libusb1 ];
+  buildInputs = [ hidapi libftdi1 libusb1 ]
+    ++ lib.optional stdenv.isLinux libgpiod;
+
+  patches = [
+    # Patch is upstream, so can be removed when OpenOCD 0.12.0 or later is released.
+    (fetchpatch
+      {
+        url = "https://github.com/openocd-org/openocd/commit/cff0e417da58adef1ceef9a63a99412c2cc87ff3.patch";
+        sha256 = "Xxzf5miWy4S34sbQq8VQdAbY/oqGyhL/AJxiEPRuj3Q=";
+      })
+  ];
 
   configureFlags = [
+    "--disable-werror"
     "--enable-jtag_vpi"
     "--enable-usb_blaster_libftdi"
     (lib.enableFeature (! stdenv.isDarwin) "amtjtagaccel")
@@ -29,6 +42,7 @@ stdenv.mkDerivation rec {
     (lib.enableFeature (! stdenv.isDarwin) "oocd_trace")
     "--enable-buspirate"
     (lib.enableFeature stdenv.isLinux "sysfsgpio")
+    (lib.enableFeature stdenv.isLinux "linuxgpiod")
     "--enable-remote-bitbang"
   ];
 

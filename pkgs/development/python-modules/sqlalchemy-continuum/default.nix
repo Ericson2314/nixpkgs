@@ -3,7 +3,7 @@
 , buildPythonPackage
 , flask
 , flask_login
-, flask_sqlalchemy
+, flask-sqlalchemy
 , flexmock
 , pytestCheckHook
 , sqlalchemy
@@ -13,11 +13,11 @@
 
 buildPythonPackage rec {
   pname = "SQLAlchemy-Continuum";
-  version = "1.3.11";
+  version = "1.3.13";
 
   src = fetchPypi {
     inherit pname version;
-    sha256 = "1c9yd9s98crqgs39rc2ld2r0nchgyjrfbjdlqb99y4hhc6lv04xw";
+    sha256 = "sha256-JTqlHQmaVH2qKz7CFyCqpous3ecOpoFrxVlzasbc21I=";
   };
 
   propagatedBuildInputs = [
@@ -33,7 +33,7 @@ buildPythonPackage rec {
     sqlalchemy-i18n
     flask
     flask_login
-    flask_sqlalchemy
+    flask-sqlalchemy
     flexmock
   ];
 

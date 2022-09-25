@@ -1,9 +1,10 @@
-{ stdenv, lib, elixir, erlang, findutils, hex, rebar, rebar3, fetchMixDeps, makeWrapper, git, ripgrep }:
+{ stdenv, lib, elixir, erlang, findutils, hex, rebar, rebar3, fetchMixDeps, makeWrapper, git, ripgrep }@inputs:
 
 { pname
 , version
 , src
 , nativeBuildInputs ? [ ]
+, buildInputs ? [ ]
 , meta ? { }
 , enableDebugInfo ? false
 , mixEnv ? "prod"
@@ -15,6 +16,9 @@
   # each dependency needs to have a setup hook to add the lib path to $ERL_LIBS
   # this is how mix will find dependencies
 , mixNixDeps ? { }
+, elixir ? inputs.elixir
+, hex ? inputs.hex.override { inherit elixir; }
+, stripDebug ? true
 , ...
 }@attrs:
 let
@@ -22,10 +26,12 @@ let
   overridable = builtins.removeAttrs attrs [ "compileFlags" "mixNixDeps" ];
 in
 assert mixNixDeps != { } -> mixFodDeps == null;
+assert stripDebug -> !enableDebugInfo;
+
 stdenv.mkDerivation (overridable // {
   # rg is used as a better grep to search for erlang references in the final release
   nativeBuildInputs = nativeBuildInputs ++ [ erlang hex elixir makeWrapper git ripgrep ];
-  buildInputs = builtins.attrValues mixNixDeps;
+  buildInputs = buildInputs ++ builtins.attrValues mixNixDeps;
 
   MIX_ENV = mixEnv;
   MIX_DEBUG = if enableDebugInfo then 1 else 0;
@@ -104,11 +110,19 @@ stdenv.mkDerivation (overridable // {
     if [ -e $out/erts-* ]; then
       echo "ERTS found in $out - removing references to erlang to reduce closure size"
       # there is a link in $out/erts-*/bin/start always
+      # TODO:
       # sometimes there are links in dependencies like bcrypt compiled binaries
-      for file in $(rg "${erlang}/lib/erlang" "$out" --text --files-with-matches); do
+      # at the moment those are not removed since substituteInPlace will
+      # error on binaries
+      for file in $(rg "${erlang}/lib/erlang" "$out" --files-with-matches); do
+        echo "removing reference to erlang in $file"
         substituteInPlace "$file" --replace "${erlang}/lib/erlang" "$out"
       done
     fi
+  '' + lib.optionalString stripDebug ''
+    # strip debug symbols to avoid hardreferences to "foreign" closures actually
+    # not needed at runtime, while at the same time reduce size of BEAM files.
+    erl -noinput -eval 'lists:foreach(fun(F) -> io:format("Stripping ~p.~n", [F]), beam_lib:strip(F) end, filelib:wildcard("'"$out"'/**/*.beam"))' -s init stop
   '';
 
   # TODO investigate why the resulting closure still has

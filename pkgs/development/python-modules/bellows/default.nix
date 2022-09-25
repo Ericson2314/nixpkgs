@@ -17,13 +17,14 @@
 
 buildPythonPackage rec {
   pname = "bellows";
-  version = "0.26.0";
+  version = "0.33.1";
+  format = "setuptools";
 
   src = fetchFromGitHub {
     owner = "zigpy";
     repo = "bellows";
-    rev = version;
-    sha256 = "0qbsk5iv3vrpwz7kfmjdbc66rfkg788p6wwxbf6jzfarfhcgrh3k";
+    rev = "refs/tags/${version}";
+    sha256 = "sha256-cpWQdsuW3CA/8HowhMoVV++rrDnjFQcgp+A5CCElj6o=";
   };
 
   propagatedBuildInputs = [
@@ -45,13 +46,6 @@ buildPythonPackage rec {
     asynctest
   ];
 
-  disabledTests = [
-    # RuntimeError: coroutine 'test_remigrate_forcibly_downgraded_v4' was never awaited
-    #"test_remigrate_forcibly_downgraded_v4"
-    # RuntimeError: Event loop is closed
-    "test_thread_already_stopped"
-  ];
-
   pythonImportsCheck = [
     "bellows"
   ];
@@ -60,6 +54,6 @@ buildPythonPackage rec {
     description = "Python module to implement EZSP for EmberZNet devices";
     homepage = "https://github.com/zigpy/bellows";
     license = licenses.gpl3Plus;
-    maintainers = with maintainers; [ etu mvnetbiz ];
+    maintainers = with maintainers; [ mvnetbiz ];
   };
 }

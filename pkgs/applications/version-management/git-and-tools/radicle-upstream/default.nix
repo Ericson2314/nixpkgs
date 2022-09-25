@@ -1,18 +1,18 @@
-{ lib, stdenv, appimageTools, gsettings-desktop-schemas, gtk3, autoPatchelfHook, zlib, fetchurl, undmg }:
+{ lib, stdenv, appimageTools, autoPatchelfHook, zlib, fetchurl, undmg }:
 
 let
   pname = "radicle-upstream";
-  version = "0.2.9";
+  version = "0.3.0";
   name = "${pname}-${version}";
 
   srcs = {
     x86_64-linux = fetchurl {
       url = "https://releases.radicle.xyz/radicle-upstream-${version}.AppImage";
-      sha256 = "sha256-chju3ZEFFLOzE9FakUK2izm/5ejELdL/iWMtM3bRpWY=";
+      sha256 = "sha256-Y7V89G+nXRtknOukvBN8Q+sNx91YNPDT0p5hrFYe/Sk=";
     };
     x86_64-darwin = fetchurl {
       url = "https://releases.radicle.xyz/radicle-upstream-${version}.dmg";
-      sha256 = "sha256-OOqe4diRcJWHHOa6jBpljPoA3FQOKlghMhKGQ242GnM=";
+      sha256 = "sha256-EuWGbn6qggi8/9Rci8iaXfuVKE+QXb1BHEYDvotR/q4=";
     };
   };
   src = srcs.${stdenv.hostPlatform.system};
@@ -38,10 +38,6 @@ let
   # this time. See this PR for discussion: https://github.com/NixOS/nixpkgs/pull/105674
   linux = appimageTools.wrapType2 {
     inherit name src meta;
-
-    profile = ''
-      export XDG_DATA_DIRS=${gsettings-desktop-schemas}/share/gsettings-schemas/${gsettings-desktop-schemas.name}:${gtk3}/share/gsettings-schemas/${gtk3.name}:$XDG_DATA_DIRS
-    '';
 
     extraInstallCommands = ''
       mv $out/bin/${name} $out/bin/${pname}

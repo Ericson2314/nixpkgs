@@ -1,6 +1,5 @@
 { atk
 , cacert
-, fetchpatch
 , dbus
 , cinnamon-control-center
 , cinnamon-desktop
@@ -8,11 +7,14 @@
 , cinnamon-session
 , cinnamon-translations
 , cjs
+, clutter
 , fetchFromGitHub
 , gdk-pixbuf
+, gettext
 , libgnomekbd
 , glib
 , gobject-introspection
+, gsound
 , gtk3
 , intltool
 , json-glib
@@ -25,7 +27,8 @@
 , networkmanager
 , pkg-config
 , polkit
-, lib, stdenv
+, lib
+, stdenv
 , wrapGAppsHook
 , libxml2
 , gtk-doc
@@ -33,7 +36,7 @@
 , python3
 , keybinder3
 , cairo
-, xapps
+, xapp
 , upower
 , nemo
 , libnotify
@@ -46,17 +49,18 @@
 , meson
 , ninja
 , gst_all_1
+, perl
 }:
 
 stdenv.mkDerivation rec {
   pname = "cinnamon-common";
-  version = "4.8.6";
+  version = "5.4.12";
 
   src = fetchFromGitHub {
     owner = "linuxmint";
     repo = "cinnamon";
     rev = version;
-    hash = "sha256-4DMXQYH1/RjLhgrn55I7Vkk6+gGsR+OVmiwxVHUIyro=";
+    hash = "sha256-uyQZXri3V3dKnowB97QlPWboZz1neblyvCuSacsPROg=";
   };
 
   patches = [
@@ -65,20 +69,34 @@ stdenv.mkDerivation rec {
   ];
 
   buildInputs = [
-    # TODO: review if we really need this all
-    (python3.withPackages (pp: with pp; [ dbus-python setproctitle pygobject3 pycairo xapp pillow pytz tinycss2 python-pam pexpect distro ]))
+    (python3.withPackages (pp: with pp; [
+      dbus-python
+      setproctitle
+      pygobject3
+      pycairo
+      python3.pkgs.xapp # The scope prefix is required
+      pillow
+      pytz
+      tinycss2
+      python-pam
+      pexpect
+      distro
+      requests
+    ]))
     atk
     cacert
     cinnamon-control-center
     cinnamon-desktop
     cinnamon-menus
     cjs
+    clutter
     dbus
     gdk-pixbuf
     glib
+    gsound
     gtk3
     json-glib
-    libsoup
+    libsoup # referenced in js/ui/environment.js
     libstartup_notification
     libXtst
     libXdamage
@@ -95,7 +113,7 @@ stdenv.mkDerivation rec {
     gnome.caribou
     keybinder3
     upower
-    xapps
+    xapp
     timezonemap
     nemo
     libnotify
@@ -114,6 +132,8 @@ stdenv.mkDerivation rec {
     wrapGAppsHook
     intltool
     gtk-doc
+    perl
+    python3.pkgs.wrapPython
   ];
 
   # use locales from cinnamon-translations (not using --localedir because datadir is used)
@@ -129,8 +149,8 @@ stdenv.mkDerivation rec {
 
     sed "s|/usr/share/sounds|/run/current-system/sw/share/sounds|g" -i ./files/usr/share/cinnamon/cinnamon-settings/bin/SettingsWidgets.py
 
-    sed "s|/usr/bin/upload-system-info|${xapps}/bin/upload-system-info|g" -i ./files/usr/share/cinnamon/cinnamon-settings/modules/cs_info.py
-    sed "s|upload-system-info|${xapps}/bin/upload-system-info|g" -i ./files/usr/share/cinnamon/cinnamon-settings/modules/cs_info.py
+    sed "s|/usr/bin/upload-system-info|${xapp}/bin/upload-system-info|g" -i ./files/usr/share/cinnamon/cinnamon-settings/modules/cs_info.py
+    sed "s|\"upload-system-info\"|\"${xapp}/bin/upload-system-info\"|g" -i ./files/usr/share/cinnamon/cinnamon-settings/modules/cs_info.py
 
     sed "s|/usr/bin/cinnamon-control-center|${cinnamon-control-center}/bin/cinnamon-control-center|g" -i ./files/usr/bin/cinnamon-settings
     # this one really IS optional
@@ -145,10 +165,25 @@ stdenv.mkDerivation rec {
 
     sed "s| cinnamon-session| ${cinnamon-session}/bin/cinnamon-session|g" -i ./files/usr/bin/cinnamon-session-cinnamon  -i ./files/usr/bin/cinnamon-session-cinnamon2d
     sed "s|/usr/bin|$out/bin|g" -i ./files/usr/share/xsessions/cinnamon.desktop ./files/usr/share/xsessions/cinnamon2d.desktop
+
+    sed "s|msgfmt|${gettext}/bin/msgfmt|g" -i ./files/usr/share/cinnamon/cinnamon-settings/bin/Spices.py
+
+    patchShebangs src/data-to-c.pl
+  '';
+
+  preFixup = ''
+    # https://github.com/NixOS/nixpkgs/issues/101881
+    gappsWrapperArgs+=(
+      --prefix XDG_DATA_DIRS : "${gnome.caribou}/share"
+    )
+
+    # https://github.com/NixOS/nixpkgs/issues/129946
+    buildPythonPath "${python3.pkgs.xapp}"
+    patchPythonScript $out/share/cinnamon/cinnamon-desktop-editor/cinnamon-desktop-editor.py
   '';
 
   passthru = {
-    providedSessions = ["cinnamon" "cinnamon2d"];
+    providedSessions = [ "cinnamon" "cinnamon2d" ];
   };
 
   meta = with lib; {

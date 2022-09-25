@@ -30,6 +30,9 @@ let
       HaltCommand = "/run/current-system/systemd/bin/systemctl poweroff";
       RebootCommand = "/run/current-system/systemd/bin/systemctl reboot";
       Numlock = if cfg.autoNumlock then "on" else "none"; # on, off none
+
+      # Implementation is done via pkgs/applications/display-managers/sddm/sddm-default-session.patch
+      DefaultSession = optionalString (dmcfg.defaultSession != null) "${dmcfg.defaultSession}.desktop";
     };
 
     Theme = {
@@ -97,7 +100,7 @@ in
       enable = mkOption {
         type = types.bool;
         default = false;
-        description = ''
+        description = lib.mdDoc ''
           Whether to enable sddm as the display manager.
         '';
       };
@@ -105,7 +108,7 @@ in
       enableHidpi = mkOption {
         type = types.bool;
         default = true;
-        description = ''
+        description = lib.mdDoc ''
           Whether to enable automatic HiDPI mode.
         '';
       };
@@ -113,15 +116,13 @@ in
       settings = mkOption {
         type = iniFmt.type;
         default = { };
-        example = ''
-          {
-            Autologin = {
-              User = "john";
-              Session = "plasma.desktop";
-            };
-          }
-        '';
-        description = ''
+        example = {
+          Autologin = {
+            User = "john";
+            Session = "plasma.desktop";
+          };
+        };
+        description = lib.mdDoc ''
           Extra settings merged in and overwritting defaults in sddm.conf.
         '';
       };
@@ -129,7 +130,7 @@ in
       theme = mkOption {
         type = types.str;
         default = "";
-        description = ''
+        description = lib.mdDoc ''
           Greeter theme to use.
         '';
       };
@@ -137,7 +138,7 @@ in
       autoNumlock = mkOption {
         type = types.bool;
         default = false;
-        description = ''
+        description = lib.mdDoc ''
           Enable numlock at login.
         '';
       };
@@ -150,16 +151,16 @@ in
           xrandr --setprovideroutputsource modesetting NVIDIA-0
           xrandr --auto
         '';
-        description = ''
+        description = lib.mdDoc ''
           A script to execute when starting the display server. DEPRECATED, please
-          use <option>services.xserver.displayManager.setupCommands</option>.
+          use {option}`services.xserver.displayManager.setupCommands`.
         '';
       };
 
       stopScript = mkOption {
         type = types.str;
         default = "";
-        description = ''
+        description = lib.mdDoc ''
           A script to execute when stopping the display server.
         '';
       };
@@ -169,7 +170,7 @@ in
         relogin = mkOption {
           type = types.bool;
           default = false;
-          description = ''
+          description = lib.mdDoc ''
             If true automatic login will kick in again on session exit (logout), otherwise it
             will only log in automatically when the display-manager is started.
           '';
@@ -178,7 +179,7 @@ in
         minimumUid = mkOption {
           type = types.ints.u16;
           default = 1000;
-          description = ''
+          description = lib.mdDoc ''
             Minimum user ID for auto-login user.
           '';
         };
@@ -230,7 +231,7 @@ in
 
         session  required       pam_succeed_if.so audit quiet_success user = sddm
         session  required       pam_env.so conffile=/etc/pam/environment readenv=0
-        session  optional       ${pkgs.systemd}/lib/security/pam_systemd.so
+        session  optional       ${config.systemd.package}/lib/security/pam_systemd.so
         session  optional       pam_keyinit.so force revoke
         session  optional       pam_permit.so
       '';

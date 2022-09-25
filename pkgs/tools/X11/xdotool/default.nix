@@ -2,13 +2,13 @@
 
 stdenv.mkDerivation rec {
   pname = "xdotool";
-  version = "3.20210804.2";
+  version = "3.20211022.1";
 
   src = fetchFromGitHub {
     owner = "jordansissel";
     repo = pname;
     rev = "v${version}";
-    sha256 = "sha256-7N5f/BFtq/m5MsXe7ZCTUTc1yp+JDJNRF1P9qB2l554=";
+    sha256 = "sha256-XFiaiHHtUSNFw+xhUR29+2RUHOa+Eyj1HHfjCUjwd9k=";
   };
 
   nativeBuildInputs = [ pkg-config perl ];

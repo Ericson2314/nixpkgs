@@ -8,17 +8,18 @@
 
 crystal.buildCrystalPackage rec {
   pname = "oq";
-  version = "1.2.1";
+  version = "1.3.4";
 
   src = fetchFromGitHub {
     owner = "Blacksmoke16";
     repo = pname;
     rev = "v${version}";
-    sha256 = "sha256-RJVAEbNLlYNnOL/RDG0R9f8fHhNWtR+IMnnjtLK4e34=";
+    sha256 = "sha256-W0iGE1yVOphooiab689AFT3rhGGdXqEFyYIhrx11RTE=";
   };
 
   nativeBuildInputs = [ makeWrapper ];
-  buildInputs = [ jq libxml2 ];
+  buildInputs = [ libxml2 ];
+  checkInputs = [ jq ];
 
   format = "shards";
 

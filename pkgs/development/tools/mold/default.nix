@@ -1,47 +1,54 @@
-{ stdenv
+{ lib
+, stdenv
 , fetchFromGitHub
-, fetchpatch
-, lib
-, autoPatchelfHook
 , cmake
-, llvmPackages_latest
-, xxHash
-, zlib
+, mimalloc
+, ninja
 , openssl
+, zlib
+, testers
+, mold
 }:
 
 stdenv.mkDerivation rec {
   pname = "mold";
-  version = "0.9.3";
+  version = "1.4.2";
 
   src = fetchFromGitHub {
     owner = "rui314";
     repo = pname;
     rev = "v${version}";
-    sha256 = "sha256:1z9i8nvdl9h0zydh1gd9244q96n9x1gh5y90m71bghnh7nws0zmd";
+    hash = "sha256-omi4vx8KDpgZ/y3MvE5c/9MxSLXIA4IHJAMue3XpfD8=";
   };
 
-  patches = [
-    # Intercept all invocations of ld, ld.gold or ld.lld
-    (fetchpatch {
-      url = "https://github.com/rui314/mold/commit/d25c2553ad3cfa39d99043927db1af2c028b5acf.patch";
-      sha256 = "1ic1dyvjcrj6834n6mw9id50l6nymrfn6hws6pjpy8gjk6mqfvnk";
-    })
-  ];
+  nativeBuildInputs = [ cmake ninja ];
 
-  buildInputs = [ zlib openssl ];
-  nativeBuildInputs = [ autoPatchelfHook cmake xxHash ];
+  buildInputs = [ openssl zlib ]
+    ++ lib.optionals (!stdenv.isDarwin) [ mimalloc ];
 
-  dontUseCmakeConfigure = true;
-  EXTRA_LDFLAGS = "-fuse-ld=${llvmPackages_latest.lld}/bin/ld.lld";
-  LTO = 1;
-  makeFlags = [ "PREFIX=${placeholder "out"}" ];
+  postPatch = ''
+    sed -i CMakeLists.txt -e '/.*set(DEST\ .*/d'
+  '';
+
+  cmakeFlags = [ "-DMOLD_USE_SYSTEM_MIMALLOC:BOOL=ON" ];
+
+  NIX_CFLAGS_COMPILE = lib.optionals stdenv.isDarwin [ "-faligned-allocation" ];
+
+  passthru.tests.version = testers.testVersion { package = mold; };
 
   meta = with lib; {
-    description = "A high performance drop-in replacement for existing unix linkers";
+    description = "A faster drop-in replacement for existing Unix linkers";
+    longDescription = ''
+      mold is a faster drop-in replacement for existing Unix linkers. It is
+      several times faster than the LLVM lld linker. mold is designed to
+      increase developer productivity by reducing build time, especially in
+      rapid debug-edit-rebuild cycles.
+    '';
     homepage = "https://github.com/rui314/mold";
-    license = lib.licenses.agpl3Plus;
-    maintainers = with maintainers; [ nitsky ];
-    broken = stdenv.isAarch64;
+    license = licenses.agpl3Plus;
+    maintainers = with maintainers; [ azahi nitsky ];
+    platforms = platforms.unix;
+    # https://github.com/NixOS/nixpkgs/pull/189712#issuecomment-1237791234
+    broken = (stdenv.isLinux && stdenv.isAarch64);
   };
 }

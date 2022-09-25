@@ -6,7 +6,8 @@ with lib;
     gtk.iconCache.enable = mkOption {
       type = types.bool;
       default = config.services.xserver.enable;
-      description = ''
+      defaultText = literalExpression "config.services.xserver.enable";
+      description = lib.mdDoc ''
         Whether to build icon theme caches for GTK applications.
       '';
     };

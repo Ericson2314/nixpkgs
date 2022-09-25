@@ -1,50 +1,54 @@
 { fetchFromGitHub, lib, python3Packages }:
 
-let
-  python3Packages2 = python3Packages.override {
-    overrides = self: super: {
-      arrow = self.callPackage ../../python-modules/arrow/2.nix { };
-    };
-  };
-in
-let
-  python3Packages = python3Packages2; # two separate let … in to avoid infinite recursion
-in
 python3Packages.buildPythonApplication rec {
   pname = "backblaze-b2";
-  version = "3.0.1";
+  version = "3.6.0";
 
   src = python3Packages.fetchPypi {
     inherit version;
     pname = "b2";
-    sha256 = "sha256-Zr+5J6MCjfth+5fOSfHXpT/CAgD754ZpS1b1NqeGid8=";
+    sha256 = "sha256-qHnnUTSLY1yncqIjG+IMLoNauvgwU04qsvH7dZZ8AlI=";
   };
 
   postPatch = ''
     substituteInPlace requirements.txt \
-      --replace 'docutils==0.16' 'docutils'
+      --replace 'tabulate==0.8.10' 'tabulate'
     substituteInPlace setup.py \
       --replace 'setuptools_scm<6.0' 'setuptools_scm'
   '';
-
-  propagatedBuildInputs = with python3Packages; [
-    b2sdk
-    class-registry
-    phx-class-registry
-    setuptools
-    docutils
-    rst2ansi
-  ];
 
   nativeBuildInputs = with python3Packages; [
     setuptools-scm
   ];
 
-  checkInputs = with python3Packages; [ pytestCheckHook ];
+  propagatedBuildInputs = with python3Packages; [
+    b2sdk
+    phx-class-registry
+    setuptools
+    docutils
+    rst2ansi
+    tabulate
+  ];
+
+  checkInputs = with python3Packages; [
+    backoff
+    more-itertools
+    pytestCheckHook
+  ];
+
+  preCheck = ''
+    export HOME=$(mktemp -d)
+  '';
 
   disabledTests = [
+    # require network
     "test_files_headers"
     "test_integration"
+  ];
+
+  disabledTestPaths = [
+    # requires network
+    "test/integration/test_b2_command_line.py"
   ];
 
   postInstall = ''
@@ -60,7 +64,6 @@ python3Packages.buildPythonApplication rec {
     description = "Command-line tool for accessing the Backblaze B2 storage service";
     homepage = "https://github.com/Backblaze/B2_Command_Line_Tool";
     license = licenses.mit;
-    maintainers = with maintainers; [ hrdinka kevincox ];
-    platforms = platforms.unix;
+    maintainers = with maintainers; [ hrdinka kevincox tomhoule ];
   };
 }

@@ -2,16 +2,22 @@
 
 rustPlatform.buildRustPackage rec {
   pname = "mcfly";
-  version = "0.5.9";
+  version = "0.6.1";
 
   src = fetchFromGitHub {
     owner = "cantino";
     repo = "mcfly";
     rev = "v${version}";
-    sha256 = "0i3qjgq1b8h3bzc7rxa60kq1yc2im9m6dgzrvial086a1zk8s81r";
+    sha256 = "sha256-rim2ndXjoqIn5P60D5+FFuq0CDAOf29xCJ7rfemMzVU=";
   };
 
-  cargoSha256 = "084v4fsdi25ahz068ssq29z7d5d3k3jh3s8b07irwybdsy18c629";
+  postPatch = ''
+    substituteInPlace mcfly.bash --replace '$(command which mcfly)' '${placeholder "out"}/bin/mcfly'
+    substituteInPlace mcfly.zsh  --replace '$(command which mcfly)' '${placeholder "out"}/bin/mcfly'
+    substituteInPlace mcfly.fish --replace '(command which mcfly)'  '${placeholder "out"}/bin/mcfly'
+  '';
+
+  cargoSha256 = "sha256-W1SPunH4fgam1JDI+JnLoAKCwx1RLY2JotNSyZAQoSY=";
 
   meta = with lib; {
     homepage = "https://github.com/cantino/mcfly";

@@ -7,7 +7,7 @@
 let
 
   qt5Deps = pkgs: with pkgs.qt5; [ qtbase qtmultimedia ];
-  gnomeDeps = pkgs: with pkgs; [ gnome.zenity gtksourceview gnome.gnome-desktop gnome.libgnome-keyring webkitgtk ];
+  gnomeDeps = pkgs: with pkgs; [ gnome.zenity gtksourceview gnome-desktop gnome.libgnome-keyring webkitgtk ];
   xorgDeps = pkgs: with pkgs.xorg; [
     libX11 libXrender libXrandr libxcb libXmu libpthreadstubs libXext libXdmcp
     libXxf86vm libXinerama libSM libXv libXaw libXi libXcursor libXcomposite
@@ -67,8 +67,6 @@ in buildFHSUserEnv {
 
     # Redream // "redream is not available for the x86_64 architecture"
 
-    # ResidualVM
-    flac
 
     # rpcs3 // TODO: "error while loading shared libraries: libz.so.1..."
     llvm
@@ -76,8 +74,11 @@ in buildFHSUserEnv {
     # ScummVM
     nasm sndio
 
+    # ResidualVM is now merged with ScummVM and therefore does not exist anymore
+    flac
+
     # Snes9x
-    epoxy minizip
+    libepoxy minizip
 
     # Vice
     bison flex
@@ -121,4 +122,16 @@ in buildFHSUserEnv {
     ln -sf ${lutris-unwrapped}/share/applications $out/share
     ln -sf ${lutris-unwrapped}/share/icons $out/share
   '';
+
+  meta = {
+    inherit (lutris-unwrapped.meta)
+      homepage
+      description
+      platforms
+      license
+      maintainers
+      broken;
+
+    mainProgram = "lutris";
+  };
 }

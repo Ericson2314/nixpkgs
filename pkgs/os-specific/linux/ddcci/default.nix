@@ -2,14 +2,14 @@
 
 stdenv.mkDerivation rec {
   pname = "ddcci-driver";
-  version = "0.3.3";
+  version = "0.4.2";
   name = "${pname}-${kernel.version}-${version}";
 
   src = fetchFromGitLab {
     owner = "${pname}-linux";
     repo = "${pname}-linux";
     rev = "v${version}";
-    sha256 = "0vkkja3ykjil783zjpwp0vz7jy2fp9ccazzi3afd4fjk8gldin7f";
+    sha256 = "sSmL8PqxqHHQiume62si/Kc9El58/b4wkB93iG0dnNM=";
   };
 
   hardeningDisable = [ "pic" ];
@@ -35,8 +35,9 @@ stdenv.mkDerivation rec {
   meta = with lib; {
     description = "Kernel module driver for DDC/CI monitors";
     homepage = "https://gitlab.com/ddcci-driver-linux/ddcci-driver-linux";
-    license = licenses.gpl2;
-    maintainers = with maintainers; [ bricewge ];
+    license = licenses.gpl2Plus;
+    maintainers = with maintainers; [ ];
     platforms = platforms.linux;
+    broken = kernel.kernelOlder "5.1";
   };
 }

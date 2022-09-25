@@ -1,20 +1,31 @@
-{ lib, stdenv, fetchFromGitHub, kernel, bc }:
+{ lib
+, stdenv
+, fetchFromGitHub
+, fetchpatch
+, kernel
+, bc
+}:
 
 stdenv.mkDerivation rec {
   pname = "rtl8821ce";
-  version = "${kernel.version}-unstable-2021-05-28";
+  version = "${kernel.version}-unstable-2022-06-01";
 
   src = fetchFromGitHub {
     owner = "tomaspinho";
     repo = "rtl8821ce";
-    rev = "f93db734666f75ebf65e44ceb943c19b598b1647";
-    sha256 = "sha256-cqXV52U+6Jl9Jje1nEOYDvmH4rgA1QdrwNCfYeul3hU=";
+    rev = "be733dc86781c68571650b395dd0fa6b53c0a039";
+    sha256 = "sha256-4PgISOjCSSGymz96VwE4jzcUiOEO+Ocuk2kJVIA+TQM=";
+  };
+
+  patches = fetchpatch {
+    url = "https://github.com/tomaspinho/rtl8821ce/pull/291.patch";
+    sha256 = "sha256-GCZ/iPtzF7PP0ZgagBev6r7IVQ2VenPoLKL9GnPSt+U=";
   };
 
   hardeningDisable = [ "pic" ];
 
-  nativeBuildInputs = [ bc ];
-  buildInputs = kernel.moduleBuildDependencies;
+  nativeBuildInputs = [ bc ] ++ kernel.moduleBuildDependencies;
+  makeFlags = kernel.makeFlags;
 
   prePatch = ''
     substituteInPlace ./Makefile \
@@ -35,7 +46,7 @@ stdenv.mkDerivation rec {
     homepage = "https://github.com/tomaspinho/rtl8821ce";
     license = licenses.gpl2Only;
     platforms = platforms.linux;
-    broken = stdenv.isAarch64;
-    maintainers = with maintainers; [ hhm ];
+    maintainers = with maintainers; [ hhm ivar ];
+    broken = stdenv.isAarch64 || ((lib.versions.majorMinor kernel.version) == "5.4" && kernel.isHardened);
   };
 }

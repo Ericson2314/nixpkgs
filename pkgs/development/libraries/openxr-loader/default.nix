@@ -1,20 +1,20 @@
-{ lib, stdenv, fetchFromGitHub, cmake, python3, libX11, libXxf86vm, libXrandr, vulkan-headers, libGL }:
+{ lib, stdenv, fetchFromGitHub, cmake, python3, libX11, libXxf86vm, libXrandr, vulkan-headers, libGL, vulkan-loader, wayland, pkg-config }:
 
 stdenv.mkDerivation rec {
   pname = "openxr-loader";
-  version = "1.0.19";
+  version = "1.0.25";
 
   src = fetchFromGitHub {
     owner = "KhronosGroup";
     repo = "OpenXR-SDK-Source";
     rev = "release-${version}";
-    sha256 = "sha256-LEXxqzHzTadgK2PV9Wiud9MzblDHdF4L5T4fVydRJW8=";
+    sha256 = "sha256-8fCz+t+PcZflq3sYdn+J6AdWHkG6UyDNcQmJ21b9p80=";
   };
 
-  nativeBuildInputs = [ cmake python3 ];
-  buildInputs = [ libX11 libXxf86vm libXrandr vulkan-headers libGL ];
+  nativeBuildInputs = [ cmake python3 pkg-config ];
+  buildInputs = [ libX11 libXxf86vm libXrandr vulkan-headers libGL vulkan-loader wayland ];
 
-  cmakeFlags = [ "-DBUILD_TESTS=OFF" ];
+  cmakeFlags = [ "-DBUILD_TESTS=ON" ];
 
   outputs = [ "out" "dev" "layers" ];
 

@@ -6,7 +6,6 @@
 , harfbuzz
 , libintl
 , libthai
-, gobject-introspection
 , darwin
 , fribidi
 , gnome
@@ -16,23 +15,25 @@
 , meson
 , ninja
 , glib
+, python3
+, gobject-introspection
 , x11Support? !stdenv.isDarwin, libXft
 }:
 
-let
-  withDocs = stdenv.buildPlatform == stdenv.hostPlatform;
-in
 stdenv.mkDerivation rec {
   pname = "pango";
-  version = "1.48.5";
+  version = "1.50.8";
 
-  outputs = [ "bin" "out" "dev" ]
-    ++ lib.optionals withDocs [ "devdoc" ];
+  outputs = [ "bin" "out" "dev" "devdoc" ];
 
   src = fetchurl {
     url = "mirror://gnome/sources/${pname}/${lib.versions.majorMinor version}/${pname}-${version}.tar.xz";
-    sha256 = "0aivpd6l5687lj5293j859zd7vq97yxpzvad0b6jvh3kc54p87jh";
+    sha256 = "z2JvWd0UbAIxdMQDSSDpZn8dJawsFWlRbWMTbDESVfo=";
   };
+
+  depsBuildBuild = [
+    pkg-config
+  ];
 
   nativeBuildInputs = [
     meson ninja
@@ -40,11 +41,13 @@ stdenv.mkDerivation rec {
     pkg-config
     gobject-introspection
     gi-docgen
+    python3
   ];
 
   buildInputs = [
     fribidi
     libthai
+    gobject-introspection
   ] ++ lib.optionals stdenv.isDarwin (with darwin.apple_sdk.frameworks; [
     ApplicationServices
     Carbon
@@ -62,11 +65,9 @@ stdenv.mkDerivation rec {
   ];
 
   mesonFlags = [
-    "-Dgtk_doc=${lib.boolToString withDocs}"
+    "-Dgtk_doc=true"
   ] ++ lib.optionals (!x11Support) [
     "-Dxft=disabled" # only works with x11
-  ] ++ lib.optionals (stdenv.buildPlatform != stdenv.hostPlatform) [
-    "-Dintrospection=disabled"
   ];
 
   # Fontconfig error: Cannot load default config file
@@ -74,14 +75,22 @@ stdenv.mkDerivation rec {
     fontDirectories = [ freefont_ttf ];
   };
 
+  # Run-time dependency gi-docgen found: NO (tried pkgconfig and cmake)
+  # it should be a build-time dep for build
+  # TODO: send upstream
+  postPatch = ''
+    substituteInPlace meson.build \
+      --replace "dependency('gi-docgen', ver" "dependency('gi-docgen', native:true, ver"
+
+    substituteInPlace docs/meson.build \
+      --replace "'gi-docgen', req" "'gi-docgen', native:true, req"
+  '';
+
   doCheck = false; # test-font: FAIL
 
-  postInstall = lib.optionalString withDocs ''
-    # So that devhelp can find this.
-    # https://gitlab.gnome.org/GNOME/pango/merge_requests/293/diffs#note_1058448
-    mkdir -p "$devdoc/share/devhelp"
-    mv "$out/share/doc/pango/reference" "$devdoc/share/devhelp/books"
-    rmdir -p --ignore-fail-on-non-empty "$out/share/doc/pango"
+  postFixup = ''
+    # Cannot be in postInstall, otherwise _multioutDocs hook in preFixup will move right back.
+    moveToOutput "share/doc" "$devdoc"
   '';
 
   passthru = {

@@ -51,12 +51,12 @@ let
 in
 {
   options.services.jitsi-videobridge = with types; {
-    enable = mkEnableOption "Jitsi Videobridge, a WebRTC compatible video router";
+    enable = mkEnableOption (lib.mdDoc "Jitsi Videobridge, a WebRTC compatible video router");
 
     config = mkOption {
       type = attrs;
       default = { };
-      example = literalExample ''
+      example = literalExpression ''
         {
           videobridge = {
             ice.udp.port = 5000;
@@ -67,22 +67,22 @@ in
           };
         }
       '';
-      description = ''
+      description = lib.mdDoc ''
         Videobridge configuration.
 
-        See <link xlink:href="https://github.com/jitsi/jitsi-videobridge/blob/master/src/main/resources/reference.conf" />
+        See <https://github.com/jitsi/jitsi-videobridge/blob/master/src/main/resources/reference.conf>
         for default configuration with comments.
       '';
     };
 
     xmppConfigs = mkOption {
-      description = ''
+      description = lib.mdDoc ''
         XMPP servers to connect to.
 
-        See <link xlink:href="https://github.com/jitsi/jitsi-videobridge/blob/master/doc/muc.md" /> for more information.
+        See <https://github.com/jitsi/jitsi-videobridge/blob/master/doc/muc.md> for more information.
       '';
       default = { };
-      example = literalExample ''
+      example = literalExpression ''
         {
           "localhost" = {
             hostName = "localhost";
@@ -98,7 +98,7 @@ in
           hostName = mkOption {
             type = str;
             example = "xmpp.example.org";
-            description = ''
+            description = lib.mdDoc ''
               Hostname of the XMPP server to connect to. Name of the attribute set is used by default.
             '';
           };
@@ -106,35 +106,35 @@ in
             type = nullOr str;
             default = null;
             example = "auth.xmpp.example.org";
-            description = ''
+            description = lib.mdDoc ''
               Domain part of JID of the XMPP user, if it is different from hostName.
             '';
           };
           userName = mkOption {
             type = str;
             default = "jvb";
-            description = ''
+            description = lib.mdDoc ''
               User part of the JID.
             '';
           };
           passwordFile = mkOption {
             type = str;
             example = "/run/keys/jitsi-videobridge-xmpp1";
-            description = ''
+            description = lib.mdDoc ''
               File containing the password for the user.
             '';
           };
           mucJids = mkOption {
             type = str;
             example = "jvbbrewery@internal.xmpp.example.org";
-            description = ''
+            description = lib.mdDoc ''
               JID of the MUC to join. JiCoFo needs to be configured to join the same MUC.
             '';
           };
           mucNickname = mkOption {
             # Upstream DEBs use UUID, let's use hostname instead.
             type = str;
-            description = ''
+            description = lib.mdDoc ''
               Videobridges use the same XMPP account and need to be distinguished by the
               nickname (aka resource part of the JID). By default, system hostname is used.
             '';
@@ -142,7 +142,7 @@ in
           disableCertificateVerification = mkOption {
             type = bool;
             default = false;
-            description = ''
+            description = lib.mdDoc ''
               Whether to skip validation of the server's certificate.
             '';
           };
@@ -161,7 +161,7 @@ in
         type = nullOr str;
         default = null;
         example = "192.168.1.42";
-        description = ''
+        description = lib.mdDoc ''
           Local address when running behind NAT.
         '';
       };
@@ -170,7 +170,7 @@ in
         type = nullOr str;
         default = null;
         example = "1.2.3.4";
-        description = ''
+        description = lib.mdDoc ''
           Public address when running behind NAT.
         '';
       };
@@ -179,7 +179,7 @@ in
     extraProperties = mkOption {
       type = attrsOf str;
       default = { };
-      description = ''
+      description = lib.mdDoc ''
         Additional Java properties passed to jitsi-videobridge.
       '';
     };
@@ -187,19 +187,19 @@ in
     openFirewall = mkOption {
       type = bool;
       default = false;
-      description = ''
+      description = lib.mdDoc ''
         Whether to open ports in the firewall for the videobridge.
       '';
     };
 
     apis = mkOption {
       type = with types; listOf str;
-      description = ''
+      description = lib.mdDoc ''
         What is passed as --apis= parameter. If this is empty, "none" is passed.
         Needed for monitoring jitsi.
       '';
       default = [];
-      example = literalExample "[ \"colibri\" \"rest\" ]";
+      example = literalExpression "[ \"colibri\" \"rest\" ]";
     };
   };
 
@@ -217,6 +217,8 @@ in
         "-Dnet.java.sip.communicator.SC_HOME_DIR_NAME" = "videobridge";
         "-Djava.util.logging.config.file" = "/etc/jitsi/videobridge/logging.properties";
         "-Dconfig.file" = pkgs.writeText "jvb.conf" (toHOCON jvbConfig);
+        # Mitigate CVE-2021-44228
+        "-Dlog4j2.formatMsgNoLookups" = true;
       } // (mapAttrs' (k: v: nameValuePair "-D${k}" v) cfg.extraProperties);
     in
     {

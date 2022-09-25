@@ -6,7 +6,7 @@
 , addOpenGLRunpath
 , cmake
 , fdk_aac
-, ffmpeg
+, ffmpeg_4
 , jansson
 , libjack2
 , libxkbcommon
@@ -21,23 +21,23 @@
 , curl
 , wayland
 , xorg
-, makeWrapper
 , pkg-config
 , libvlc
 , mbedtls
-
+, wrapGAppsHook
 , scriptingSupport ? true
 , luajit
 , swig
 , python3
-
 , alsaSupport ? stdenv.isLinux
 , alsa-lib
 , pulseaudioSupport ? config.pulseaudio or stdenv.isLinux
 , libpulseaudio
 , libcef
+, pciutils
 , pipewireSupport ? stdenv.isLinux
 , pipewire
+, libdrm
 }:
 
 let
@@ -46,36 +46,33 @@ let
 in
 mkDerivation rec {
   pname = "obs-studio";
-  version = "27.0.0";
+  version = "27.2.4";
 
   src = fetchFromGitHub {
     owner = "obsproject";
     repo = "obs-studio";
     rev = version;
-    sha256 = "1n71705b9lbdff3svkmgwmbhlhhxvi8ajxqb74lm07v56a5bvi6p";
+    sha256 = "sha256-OiSejQovSmhItrnrQlcVp9PCDRgAhuxTinSpXbH8bo0=";
     fetchSubmodules = true;
   };
 
   patches = [
     # Lets obs-browser build against CEF 90.1.0+
     ./Enable-file-access-and-universal-access-for-file-URL.patch
-
-    # Lets obs-browser build against CEF 91.1.0+
-    ./Change-product_version-to-user_agent_product.patch
   ];
 
   nativeBuildInputs = [
     addOpenGLRunpath
     cmake
     pkg-config
-    makeWrapper
+    wrapGAppsHook
   ]
   ++ optional scriptingSupport swig;
 
   buildInputs = [
     curl
     fdk_aac
-    ffmpeg
+    ffmpeg_4
     jansson
     libcef
     libjack2
@@ -91,11 +88,12 @@ mkDerivation rec {
     x264
     libvlc
     mbedtls
+    pciutils
   ]
   ++ optionals scriptingSupport [ luajit python3 ]
   ++ optional alsaSupport alsa-lib
   ++ optional pulseaudioSupport libpulseaudio
-  ++ optional pipewireSupport pipewire;
+  ++ optionals pipewireSupport [ pipewire libdrm ];
 
   # Copied from the obs-linuxbrowser
   postUnpack = ''
@@ -121,9 +119,12 @@ mkDerivation rec {
     "-DCEF_ROOT_DIR=../../cef"
   ];
 
-  postInstall = ''
-    wrapProgram $out/bin/obs \
-      --prefix "LD_LIBRARY_PATH" : "${xorg.libX11.out}/lib:${libvlc}/lib"
+  dontWrapGApps = true;
+  preFixup = ''
+    qtWrapperArgs+=(
+      --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath [ xorg.libX11 libvlc ]}"
+      ''${gappsWrapperArgs[@]}
+    )
   '';
 
   postFixup = lib.optionalString stdenv.isLinux ''
@@ -139,8 +140,9 @@ mkDerivation rec {
       video content, efficiently
     '';
     homepage = "https://obsproject.com";
-    maintainers = with maintainers; [ jb55 MP2E V ];
+    maintainers = with maintainers; [ jb55 MP2E V miangraham ];
     license = licenses.gpl2Plus;
     platforms = [ "x86_64-linux" "i686-linux" "aarch64-linux" ];
+    mainProgram = "obs";
   };
 }

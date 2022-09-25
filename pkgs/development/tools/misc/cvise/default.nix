@@ -1,17 +1,28 @@
-{ lib, buildPythonApplication, fetchFromGitHub, cmake, flex
-, libclang, llvm, unifdef
-, pebble, psutil, pytestCheckHook, pytest-flake8
+{ lib
+, buildPythonApplication
+, fetchFromGitHub
+, bash
+, cmake
+, colordiff
+, flex
+, libclang
+, llvm
+, unifdef
+, chardet
+, pebble
+, psutil
+, pytestCheckHook
 }:
 
 buildPythonApplication rec {
   pname = "cvise";
-  version = "2.3.0";
+  version = "2.5.0";
 
   src = fetchFromGitHub {
     owner = "marxin";
     repo = "cvise";
-    rev = "v${version}";
-    sha256 = "1x2i8nv0nncgvr07znhh2slngbrg8qcsz2zqx76bcyq9hssn6yal";
+    rev = "refs/tags/v${version}";
+    sha256 = "sha256-Nt6Zs3FxO8Ti+ikVPVaMCejzBIuUxrzG4VLhChCSJQw=";
   };
 
   patches = [
@@ -19,14 +30,40 @@ buildPythonApplication rec {
     ./unifdef.patch
   ];
 
-  nativeBuildInputs = [ cmake flex llvm.dev ];
-  buildInputs = [ libclang llvm llvm.dev unifdef ];
-  propagatedBuildInputs = [ pebble psutil ];
-  checkInputs = [ pytestCheckHook pytest-flake8 unifdef ];
+  postPatch = ''
+    # 'cvise --command=...' generates a script with hardcoded shebang.
+    substituteInPlace cvise.py \
+      --replace "#!/bin/bash" "#!${bash}/bin/bash"
 
-  preCheck = ''
-    patchShebangs cvise.py
+    substituteInPlace cvise/utils/testing.py \
+      --replace "'colordiff --version'" "'${colordiff}/bin/colordiff --version'" \
+      --replace "'colordiff'" "'${colordiff}/bin/colordiff'"
   '';
+
+  nativeBuildInputs = [
+    cmake
+    flex
+    llvm.dev
+  ];
+
+  buildInputs = [
+    libclang
+    llvm
+    llvm.dev
+    unifdef
+  ];
+
+  propagatedBuildInputs = [
+    chardet
+    pebble
+    psutil
+  ];
+
+  checkInputs = [
+    pytestCheckHook
+    unifdef
+  ];
+
   disabledTests = [
     # Needs gcc, fails when run noninteractively (without tty).
     "test_simple_reduction"

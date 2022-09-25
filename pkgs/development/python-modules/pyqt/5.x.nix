@@ -1,46 +1,58 @@
 { lib
+, stdenv
 , buildPythonPackage
 , isPy27
 , fetchPypi
 , pkg-config
 , dbus
 , lndir
-, python
 , dbus-python
 , sip
+, pyqt5_sip
 , pyqt-builder
 , libsForQt5
 , withConnectivity ? false
 , withMultimedia ? false
 , withWebKit ? false
 , withWebSockets ? false
+, withLocation ? false
 }:
 
-let
-  pyqt5_sip = buildPythonPackage rec {
-    pname = "PyQt5_sip";
-    version = "12.9.0";
-
-    src = fetchPypi {
-      inherit pname version;
-      sha256 = "0cmfxb7igahxy74qkq199l6zdxrr75bnxris42fww3ibgjflir6k";
-    };
-
-    # There is no test code and the check phase fails with:
-    # > error: could not create 'PyQt5/sip.cpython-38-x86_64-linux-gnu.so': No such file or directory
-    doCheck = false;
-  };
-in buildPythonPackage rec {
+buildPythonPackage rec {
   pname = "PyQt5";
-  version = "5.15.4";
+  version = "5.15.7";
   format = "pyproject";
 
   disabled = isPy27;
 
   src = fetchPypi {
     inherit pname version;
-    sha256 = "1gp5jz71nmg58zsm1h4vzhcphf36rbz37qgsfnzal76i1mz5js9a";
+    sha256 = "sha256-dVEhpSs6CMsHJ1wQ67lldtNuMg5XJZHbFs/bxVgQFZQ=";
   };
+
+  patches = [
+    # Fix some wrong assumptions by ./project.py
+    # TODO: figure out how to send this upstream
+    ./pyqt5-fix-dbus-mainloop-support.patch
+    # confirm license when installing via pyqt5_sip
+    ./pyqt5-confirm-license.patch
+  ];
+
+  postPatch =
+  # be more verbose
+  ''
+    cat >> pyproject.toml <<EOF
+    [tool.sip.project]
+    verbose = true
+  ''
+  # Due to bug in SIP .whl name generation we have to bump minimal macos sdk upto 11.0 for
+  # aarch64-darwin. This patch can be removed once SIP will fix it in upstream,
+  # see https://github.com/NixOS/nixpkgs/pull/186612#issuecomment-1214635456.
+  + lib.optionalString (stdenv.isDarwin && stdenv.isAarch64) ''
+    minimum-macos-version = "11.0"
+  '' + ''
+    EOF
+  '';
 
   outputs = [ "out" "dev" ];
 
@@ -60,6 +72,7 @@ in buildPythonPackage rec {
     ++ lib.optional withMultimedia qtmultimedia
     ++ lib.optional withWebKit qtwebkit
     ++ lib.optional withWebSockets qtwebsockets
+    ++ lib.optional withLocation qtlocation
   ;
 
   buildInputs = with libsForQt5; [
@@ -72,6 +85,7 @@ in buildPythonPackage rec {
     ++ lib.optional withConnectivity qtconnectivity
     ++ lib.optional withWebKit qtwebkit
     ++ lib.optional withWebSockets qtwebsockets
+    ++ lib.optional withLocation qtlocation
   ;
 
   propagatedBuildInputs = [
@@ -79,14 +93,8 @@ in buildPythonPackage rec {
     pyqt5_sip
   ];
 
-  patches = [
-    # Fix some wrong assumptions by ./project.py
-    # TODO: figure out how to send this upstream
-    ./pyqt5-fix-dbus-mainloop-support.patch
-  ];
-
   passthru = {
-    inherit sip;
+    inherit sip pyqt5_sip;
     multimediaEnabled = withMultimedia;
     webKitEnabled = withWebKit;
     WebSocketsEnabled = withWebSockets;
@@ -108,6 +116,7 @@ in buildPythonPackage rec {
     ++ lib.optional withWebKit "PyQt5.QtWebKit"
     ++ lib.optional withMultimedia "PyQt5.QtMultimedia"
     ++ lib.optional withConnectivity "PyQt5.QtConnectivity"
+    ++ lib.optional withLocation "PyQt5.QtPositioning"
   ;
 
   meta = with lib; {

@@ -8,9 +8,11 @@ let
           platformio = self.callPackage ./core.nix { inherit version src; };
         };
       };
-    in (with pkgs; [
+    in
+    (with pkgs; [
       zlib
       git
+      xdg-user-dirs
     ]) ++ (with python.pkgs; [
       python
       setuptools
@@ -19,11 +21,13 @@ let
       platformio
     ]);
 
-in buildFHSUserEnv {
+in
+buildFHSUserEnv {
   name = "platformio";
 
   targetPkgs = pio-pkgs;
-  multiPkgs = pio-pkgs;
+  # disabled temporarily because fastdiff no longer support 32bit
+  # multiPkgs = pio-pkgs;
 
   meta = with lib; {
     description = "An open source ecosystem for IoT development";

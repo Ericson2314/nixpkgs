@@ -11,12 +11,17 @@ let
   });
 in {
   options.programs.singularity = {
-    enable = mkEnableOption "Singularity";
+    enable = mkEnableOption (lib.mdDoc "Singularity");
   };
 
   config = mkIf cfg.enable {
       environment.systemPackages = [ singularity ];
-      security.wrappers.singularity-suid.source = "${singularity}/libexec/singularity/bin/starter-suid.orig";
+      security.wrappers.singularity-suid =
+      { setuid = true;
+        owner = "root";
+        group = "root";
+        source = "${singularity}/libexec/singularity/bin/starter-suid.orig";
+      };
       systemd.tmpfiles.rules = [
         "d /var/singularity/mnt/session 0770 root root -"
         "d /var/singularity/mnt/final 0770 root root -"

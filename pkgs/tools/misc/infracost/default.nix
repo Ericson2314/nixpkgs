@@ -1,27 +1,36 @@
-{ lib, buildGoModule, fetchFromGitHub, installShellFiles, terraform }:
+{ lib, buildGoModule, fetchFromGitHub, installShellFiles }:
 
 buildGoModule rec {
   pname = "infracost";
-  version = "0.9.6";
+  version = "0.10.11";
 
   src = fetchFromGitHub {
     owner = "infracost";
     rev = "v${version}";
     repo = "infracost";
-    sha256 = "sha256-lcvpNhfSgr8ky03sTo7kjnaLUJeIrzFqpYUjvQpT1Po=";
+    sha256 = "sha256-ZBm93lBu6sblc/P5m1igf5K8yJ8ff5qcvECZ9o3Gn6I=";
   };
-  vendorSha256 = "sha256-TKs3xuZaO9PvlAcV5GDa3Jb36zeVWX3LcdcPxWR6KzE=";
+  vendorSha256 = "sha256-Hs+WWc2UJtxc2isSfef8xvKDqhWytkUWh6DEq+bbAt4=";
 
   ldflags = [ "-s" "-w" "-X github.com/infracost/infracost/internal/version.Version=v${version}" ];
 
-  # Install completions post-install
+  subPackages = [ "cmd/infracost" ];
+
   nativeBuildInputs = [ installShellFiles ];
 
-  checkInputs = [ terraform ];
-  checkPhase = ''
-    runHook preCheck
-    make test
-    runHook postCheck
+  preCheck = ''
+    # Feed in all tests for testing
+    # This is because subPackages above limits what is built to just what we
+    # want but also limits the tests
+    unset subPackages
+
+    # checkFlags aren't correctly passed through via buildGoModule so we use buildFlagsArray
+    # -short only runs the unit-tests tagged short
+    # move to checkFlags after https://github.com/NixOS/nixpkgs/pull/173702
+    buildFlagsArray+="-short"
+
+    # remove tests that require networking
+    rm cmd/infracost/{breakdown,diff,hcl,run}_test.go
   '';
 
   postInstall = ''

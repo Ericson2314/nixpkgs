@@ -1,8 +1,8 @@
 { lib
-, buildPythonApplication
+, buildPythonPackage
 , fetchPypi
 , pythonOlder
-, mock
+, defusedxml
 , lxml
 , relatorio
 , genshi
@@ -12,32 +12,31 @@
 , werkzeug
 , wrapt
 , passlib
-, bcrypt
 , pydot
 , python-Levenshtein
-, simplejson
 , html2text
-, psycopg2
+, weasyprint
+, gevent
+, pillow
 , withPostgresql ? true
+, psycopg2
+, unittestCheckHook
 }:
 
-buildPythonApplication rec {
+buildPythonPackage rec {
   pname = "trytond";
-  version = "5.8.9";
-  disabled = pythonOlder "3.5";
+  version = "6.4.4";
+  format = "setuptools";
+
+  disabled = pythonOlder "3.7";
 
   src = fetchPypi {
     inherit pname version;
-    sha256 = "5f14e9615ff91e18c146c74eb4c1cd56112662361a52c73389f15baced0bef18";
+    sha256 = "sha256-eTYm3anMKhgoaB8t5jald5XRD3PIVijJP4vmh0pA9lE=";
   };
 
-  # Tells the tests which database to use
-  DB_NAME = ":memory:";
-
-  buildInputs = [
-    mock
-  ];
   propagatedBuildInputs = [
+    defusedxml
     lxml
     relatorio
     genshi
@@ -49,17 +48,26 @@ buildPythonApplication rec {
     passlib
 
     # extra dependencies
-    bcrypt
     pydot
     python-Levenshtein
-    simplejson
     html2text
-  ] ++ lib.optional withPostgresql psycopg2;
+    weasyprint
+    gevent
+    pillow
+  ] ++ relatorio.optional-dependencies.fodt
+  ++ passlib.optional-dependencies.bcrypt
+  ++ passlib.optional-dependencies.argon2
+  ++ lib.optional withPostgresql psycopg2;
 
-  # If unset, trytond will try to mkdir /homeless-shelter
+  checkInputs = [ unittestCheckHook ];
+
   preCheck = ''
     export HOME=$(mktemp -d)
+    export TRYTOND_DATABASE_URI="sqlite://"
+    export DB_NAME=":memory:";
   '';
+
+  unittestFlagsArray = [ "-s" "trytond.tests" ];
 
   meta = with lib; {
     description = "The server of the Tryton application platform";
@@ -72,6 +80,7 @@ buildPythonApplication rec {
       modularity, scalability and security.
     '';
     homepage = "http://www.tryton.org/";
+    changelog = "https://hg.tryton.org/trytond/file/${version}/CHANGELOG";
     license = licenses.gpl3Plus;
     maintainers = with maintainers; [ udono johbo ];
   };

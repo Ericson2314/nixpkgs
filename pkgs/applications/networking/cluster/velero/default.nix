@@ -1,29 +1,28 @@
-{ lib, buildGoModule, fetchFromGitHub, installShellFiles }:
+{ lib, stdenv, buildGoModule, fetchFromGitHub, installShellFiles }:
 
 buildGoModule rec {
   pname = "velero";
-  # When updating, change the commit underneath
-  version = "1.6.3";
-  commit = "8c9cdb9603446760452979dc77f93b17054ea1cc";
+  version = "1.9.1";
 
 
   src = fetchFromGitHub {
-    rev = "v${version}";
     owner = "vmware-tanzu";
     repo = "velero";
-    sha256 = "sha256-oFDTjpcwlvSiAROG/EKYRCD+qKyZXu1gKotBcD0dfvk=";
+    rev = "v${version}";
+    sha256 = "sha256-zGk5Bo1n2VV33wzozgYWbrwd/D3lcSWsqb+s3U3kmus=";
   };
 
   ldflags = [
     "-s" "-w"
-    "-X github.com/vmware-tanzu/velero/pkg/buildinfo.Version=${version}"
-    "-X github.com/vmware-tanzu/velero/pkg/buildinfo.GitSHA=${commit}"
+    "-X github.com/vmware-tanzu/velero/pkg/buildinfo.Version=v${version}"
+    "-X github.com/vmware-tanzu/velero/pkg/buildinfo.ImageRegistry=velero"
     "-X github.com/vmware-tanzu/velero/pkg/buildinfo.GitTreeState=clean"
+    "-X github.com/vmware-tanzu/velero/pkg/buildinfo.GitSHA=none"
   ];
 
-  vendorSha256 = "sha256-ypgrdv6nVW+AAwyVsiROXs6jGgDTodGrGqiT2s5elOU=";
+  vendorSha256 = "sha256-l8srlzoCcBZFOwVs7veQ1RvqWRIqQAaZLM/2CbNHN50=";
 
-  excludedPackages = [ "issue-template-gen" "crd-gen" "release-tools" "velero-restic-restore-helper" ];
+  excludedPackages = [ "issue-template-gen" "release-tools" "v1" "velero-restic-restore-helper" ];
 
   doCheck = false; # Tests expect a running cluster see https://github.com/vmware-tanzu/velero/tree/main/test/e2e
   doInstallCheck = true;
@@ -32,7 +31,7 @@ buildGoModule rec {
   '';
 
   nativeBuildInputs = [ installShellFiles ];
-  postInstall = ''
+  postInstall = lib.optionalString (stdenv.hostPlatform == stdenv.buildPlatform) ''
     $out/bin/velero completion bash > velero.bash
     $out/bin/velero completion zsh > velero.zsh
     installShellCompletion velero.{bash,zsh}

@@ -1,5 +1,22 @@
-{ lib, stdenv, fetchurl, pkg-config, gettext, itstool, libxml2, libcanberra-gtk3, libgtop
-, libXdamage, libXpresent, libstartup_notification, gnome, glib, gtk3, mate-settings-daemon, wrapGAppsHook, mateUpdateScript }:
+{ lib
+, stdenv
+, fetchurl
+, pkg-config
+, gettext
+, itstool
+, libxml2
+, libcanberra-gtk3
+, libgtop
+, libXdamage
+, libXpresent
+, libstartup_notification
+, gnome
+, glib
+, gtk3
+, mate-settings-daemon
+, wrapGAppsHook
+, mateUpdateScript
+}:
 
 stdenv.mkDerivation rec {
   pname = "marco";
@@ -40,6 +57,6 @@ stdenv.mkDerivation rec {
     homepage = "https://github.com/mate-desktop/marco";
     license = [ licenses.gpl2Plus ];
     platforms = platforms.unix;
-    maintainers = [ maintainers.romildo ];
+    maintainers = teams.mate.members;
   };
 }

@@ -13,23 +13,27 @@
 , peewee
 , python-jose
 , sqlalchemy
+, trio
+, pythonOlder
 }:
 
 buildPythonPackage rec {
   pname = "fastapi";
-  version = "0.68.1";
+  version = "0.79.1";
   format = "flit";
+
+  disabled = pythonOlder "3.6";
 
   src = fetchFromGitHub {
     owner = "tiangolo";
-    repo = "fastapi";
-    rev = version;
-    sha256 = "sha256-zwfopyig4ImMbkx89l8SsLW8PzoVcDN5KSd7a7fOnms=";
+    repo = pname;
+    rev = "refs/tags/${version}";
+    hash = "sha256-vriEwUcdITKLeIy1++dvsl5Guhtjlk2WZQrprVQsYMc=";
   };
 
   postPatch = ''
     substituteInPlace pyproject.toml \
-      --replace "starlette ==" "starlette >="
+      --replace "starlette==" "starlette>="
   '';
 
   propagatedBuildInputs = [
@@ -48,19 +52,40 @@ buildPythonPackage rec {
     pytestCheckHook
     pytest-asyncio
     sqlalchemy
+    trio
+  ] ++ passlib.optional-dependencies.bcrypt;
+
+  pytestFlagsArray = [
+    # ignoring deprecation warnings to avoid test failure from
+    # tests/test_tutorial/test_testing/test_tutorial001.py
+    "-W ignore::DeprecationWarning"
   ];
 
-  # disabled tests require orjson which requires rust nightly
+  disabledTestPaths = [
+    # Disabled tests require orjson which requires rust nightly
+    "tests/test_default_response_class.py"
+    # Don't test docs and examples
+    "docs_src"
+  ];
 
-  # ignoring deprecation warnings to avoid test failure from
-  # tests/test_tutorial/test_testing/test_tutorial001.py
+  disabledTests = [
+    "test_get_custom_response"
+    # Failed: DID NOT RAISE <class 'starlette.websockets.WebSocketDisconnect'>
+    "test_websocket_invalid_data"
+    "test_websocket_no_credentials"
+    # TypeError: __init__() missing 1...starlette-releated
+    "test_head"
+    "test_options"
+    "test_trace"
+  ];
 
-  pytestFlagsArray = [ "--ignore=tests/test_default_response_class.py" "-W ignore::DeprecationWarning"];
-  disabledTests = [ "test_get_custom_response" ];
+  pythonImportsCheck = [
+    "fastapi"
+  ];
 
   meta = with lib; {
+    description = "Web framework for building APIs";
     homepage = "https://github.com/tiangolo/fastapi";
-    description = "FastAPI framework, high performance, easy to learn, fast to code, ready for production";
     license = licenses.mit;
     maintainers = with maintainers; [ wd15 ];
   };

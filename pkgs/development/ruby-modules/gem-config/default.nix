@@ -20,13 +20,13 @@
 { lib, fetchurl, writeScript, ruby, libkrb5, libxml2, libxslt, python2, stdenv, which
 , libiconv, postgresql, v8, clang, sqlite, zlib, imagemagick, lasem
 , pkg-config , ncurses, xapian, gpgme, util-linux, tzdata, icu, libffi
-, cmake, libssh2, openssl, libmysqlclient, git, perl, pcre, gecode_3, curl
+, cmake, libssh2, openssl, openssl_1_1, libmysqlclient, git, perl, pcre, gecode_3, curl
 , msgpack, libsodium, snappy, libossp_uuid, lxc, libpcap, xorg, gtk2, buildRubyGem
 , cairo, re2, rake, gobject-introspection, gdk-pixbuf, zeromq, czmq, graphicsmagick, libcxx
 , file, libvirt, glib, vips, taglib, libopus, linux-pam, libidn, protobuf, fribidi, harfbuzz
 , bison, flex, pango, python3, patchelf, binutils, freetds, wrapGAppsHook, atk
 , bundler, libsass, libexif, libselinux, libsepol, shared-mime-info, libthai, libdatrie
-, CoreServices, DarwinTools, cctools
+, CoreServices, DarwinTools, cctools, libtool, discount, exiv2, libmaxminddb
 }@args:
 
 let
@@ -135,12 +135,27 @@ in
     hardeningDisable = [ "format" ];
   };
 
+  rdiscount = attrs: {
+    # Use discount from nixpkgs instead of vendored version
+    dontBuild = false;
+    buildInputs = [ discount ];
+    patches = [
+      # Adapted from Debian:
+      # https://sources.debian.org/data/main/r/ruby-rdiscount/2.1.8-1/debian/patches/01_use-system-libmarkdown.patch
+      ./rdiscount-use-nixpkgs-libmarkdown.patch
+    ];
+  };
+
   ethon = attrs: {
     dontBuild = false;
     postPatch = ''
       substituteInPlace lib/ethon/curls/settings.rb \
         --replace "libcurl" "${curl.out}/lib/libcurl${stdenv.hostPlatform.extensions.sharedLibrary}"
     '';
+  };
+
+  exiv2 = attrs: {
+    buildFlags = [ "--with-exiv2-lib=${exiv2}/lib" "--with-exiv2-include=${exiv2.dev}/include" ];
   };
 
   fog-dnsimple = attrs:
@@ -279,8 +294,16 @@ in
     propagatedBuildInputs = [ gobject-introspection wrapGAppsHook glib ];
   };
 
+  gollum = attrs: {
+    dontBuild = false;
+    postPatch = ''
+      substituteInPlace bin/gollum \
+        --replace "/usr/bin/env -S ruby" "${ruby}/bin/ruby"
+    '';
+  };
+
   grpc = attrs: {
-    nativeBuildInputs = [ pkg-config ];
+    nativeBuildInputs = [ pkg-config ] ++ lib.optional stdenv.isDarwin libtool;
     buildInputs = [ openssl ];
     hardeningDisable = [ "format" ];
     NIX_CFLAGS_COMPILE = toString [
@@ -297,6 +320,13 @@ in
     postPatch = ''
       substituteInPlace Makefile \
         --replace '-Wno-invalid-source-encoding' ""
+    '' + lib.optionalString stdenv.isDarwin ''
+      # For < v1.48.0
+      substituteInPlace src/ruby/ext/grpc/extconf.rb \
+        --replace "ENV['AR'] = 'libtool -o' if RUBY_PLATFORM =~ /darwin/" ""
+      # For >= v1.48.0
+      substituteInPlace src/ruby/ext/grpc/extconf.rb \
+        --replace 'apple_toolchain = ' 'apple_toolchain = false && '
     '';
   };
 
@@ -331,6 +361,12 @@ in
     buildInputs = [ which v8 python2 ];
     buildFlags = [ "--with-system-v8=true" ];
     dontBuild = false;
+    # The gem includes broken symlinks which are ignored during unpacking, but
+    # then fail during build. Since the content is missing anyway, touching the
+    # files is enough to unblock the build.
+    preBuild = ''
+      touch vendor/depot_tools/cbuildbot vendor/depot_tools/chrome_set_ver vendor/depot_tools/cros_sdk
+    '';
     postPatch = ''
       substituteInPlace ext/libv8/extconf.rb \
         --replace "location = Libv8::Location::Vendor.new" \
@@ -400,6 +436,10 @@ in
     '';
   };
 
+  maxmind_geoip2 = attrs: {
+    buildFlags = [ "--with-maxminddb-lib=${libmaxminddb}/lib" "--with-maxminddb-include=${libmaxminddb}/include" ];
+  };
+
   metasploit-framework = attrs: {
     preInstall = ''
       export HOME=$TMPDIR
@@ -437,11 +477,15 @@ in
       "--with-xslt-include=${libxslt.dev}/include"
       "--with-exslt-lib=${libxslt.out}/lib"
       "--with-exslt-include=${libxslt.dev}/include"
-    ] ++ lib.optional stdenv.isDarwin "--with-iconv-dir=${libiconv}";
+    ] ++ lib.optionals stdenv.isDarwin [
+      "--with-iconv-dir=${libiconv}"
+      "--with-opt-include=${libiconv}/include"
+    ];
   };
 
   openssl = attrs: {
-    buildInputs = [ openssl ];
+    # https://github.com/ruby/openssl/issues/369
+    buildInputs = [ openssl_1_1 ];
   };
 
   opus-ruby = attrs: {
@@ -533,14 +577,6 @@ in
       "--with-libvirt-include=${libvirt}/include"
       "--with-libvirt-lib=${libvirt}/lib"
     ];
-    dontBuild = false;
-    postPatch = ''
-      # https://gitlab.com/libvirt/libvirt-ruby/-/commit/43543991832c9623c00395092bcfb9e178243ba4
-      substituteInPlace ext/libvirt/common.c \
-        --replace 'st.h' 'ruby/st.h'
-      substituteInPlace ext/libvirt/domain.c \
-        --replace 'st.h' 'ruby/st.h'
-    '';
   };
 
   ruby-lxc = attrs: {
@@ -567,7 +603,7 @@ in
   };
 
   rugged = attrs: {
-    nativeBuildInputs = [ cmake pkg-config which ];
+    nativeBuildInputs = [ cmake pkg-config which ] ++ lib.optional stdenv.isDarwin libiconv;
     buildInputs = [ openssl libssh2 zlib ];
     dontUseCmakeConfigure = true;
   };
@@ -604,7 +640,15 @@ in
     buildInputs = [ args.snappy ];
   };
 
-  sqlite3 = attrs: {
+  sqlite3 = attrs: if lib.versionAtLeast attrs.version "1.5.0"
+  then {
+    nativeBuildInputs = [ pkg-config ];
+    buildInputs = [ sqlite ];
+    buildFlags = [
+      "--enable-system-libraries"
+    ];
+  }
+  else {
     buildFlags = [
       "--with-sqlite3-include=${sqlite.dev}/include"
       "--with-sqlite3-lib=${sqlite.out}/lib"
@@ -621,13 +665,6 @@ in
 
   taglib-ruby = attrs: {
     buildInputs = [ taglib ];
-  };
-
-  thrift = attrs: {
-    # See: https://stackoverflow.com/questions/36378190/cant-install-thrift-gem-on-os-x-el-capitan/36523125#36523125
-    # Note that thrift-0.8.0 is a dependency of fluent-plugin-scribe which is a dependency of fluentd.
-    buildFlags = lib.optional (stdenv.isDarwin && lib.versionOlder attrs.version "0.9.2.0")
-      "--with-cppflags=\"-D_FORTIFY_SOURCE=0 -Wno-macro-redefined -Wno-shift-negative-value\"";
   };
 
   timfel-krb5-auth = attrs: {
@@ -680,11 +717,5 @@ in
 
   zookeeper = attrs: {
     buildInputs = lib.optionals stdenv.isDarwin [ cctools ];
-    dontBuild = false;
-    postPatch = ''
-      sed -i ext/extconf.rb -e "4a \
-        FileUtils.cp '${./zookeeper-ftbfs-with-gcc-8.patch}', 'patches/zkc-3.4.5-gcc-8.patch'
-      "
-    '';
   };
 }

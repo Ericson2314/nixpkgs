@@ -6,7 +6,7 @@ import re
 import requests
 import sys
 
-releases = ("openjdk8", "openjdk11", "openjdk13", "openjdk14", "openjdk15", "openjdk16")
+releases = ("openjdk8", "openjdk11", "openjdk13", "openjdk14", "openjdk15", "openjdk16", "openjdk17")
 oses = ("mac", "linux")
 types = ("jre", "jdk")
 impls = ("hotspot", "openj9")
@@ -15,6 +15,7 @@ arch_to_nixos = {
     "x64": ("x86_64",),
     "aarch64": ("aarch64",),
     "arm": ("armv6l", "armv7l"),
+    "ppc64le": ("powerpc64le",),
 }
 
 def get_sha256(url):

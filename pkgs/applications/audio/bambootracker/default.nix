@@ -12,14 +12,14 @@
 
 mkDerivation rec {
   pname = "bambootracker";
-  version = "0.5.0";
+  version = "0.5.2";
 
   src = fetchFromGitHub {
     owner = "BambooTracker";
     repo = "BambooTracker";
     rev = "v${version}";
     fetchSubmodules = true;
-    sha256 = "1mpbvhsmrn0wdmxfp3n5dwv4474qlhy47r3vwc2jwdslq6vgl1fa";
+    sha256 = "sha256-+9PmpmsF08oU//pJOWaoGQzG7a2O13kYqKbGwVRAMlU=";
   };
 
   nativeBuildInputs = [ qmake qttools pkg-config ];
@@ -30,13 +30,9 @@ mkDerivation rec {
 
   postConfigure = "make qmake_all";
 
-  # 1. installs app bundle on darwin, move to app bundle dir & link binary to bin
-  # 2. wrapQtAppsHook fails to wrap mach-o binaries automatically, manually call wrapper
-  #    (see https://github.com/NixOS/nixpkgs/issues/102044)
   postInstall = lib.optionalString stdenv.hostPlatform.isDarwin ''
     mkdir -p $out/Applications
     mv $out/{bin,Applications}/BambooTracker.app
-    wrapQtApp $out/Applications/BambooTracker.app/Contents/MacOS/BambooTracker
     ln -s $out/{Applications/BambooTracker.app/Contents/MacOS,bin}/BambooTracker
   '';
 

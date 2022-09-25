@@ -1,18 +1,19 @@
-{ lib, stdenv, fetchFromGitHub, cmake, pkg-config, zip, gettext, perl
+{ lib, stdenv, fetchFromGitHub
+, cmake, pkg-config, zip, gettext, perl
 , wxGTK30, libXext, libXi, libXt, libXtst, xercesc
 , qrencode, libuuid, libyubikey, yubikey-personalization
-, curl, openssl, file
+, curl, openssl, file, gitUpdater
 }:
 
 stdenv.mkDerivation rec {
   pname = "pwsafe";
-  version = "3.56.0";
+  version = "1.15.0"; # do NOT update to 3.x Windows releases
 
   src = fetchFromGitHub {
     owner = pname;
     repo = pname;
     rev = version;
-    sha256 = "sha256-ZLX/3cs1cdia5+32QEwE6q3V0uFNkkmiIGboKW6Xej8=";
+    hash = "sha256-EyyQHp2MlGgUnikClgvP7I313Bh6H3yVPXel8Z/U6gQ=";
   };
 
   nativeBuildInputs = [
@@ -32,24 +33,30 @@ stdenv.mkDerivation rec {
 
   postPatch = ''
     # Fix perl scripts used during the build.
-    for f in `find . -type f -name '*.pl'`; do
+    for f in $(find . -type f -name '*.pl') ; do
       patchShebangs $f
     done
 
     # Fix hard coded paths.
-    for f in `grep -Rl /usr/share/ src`; do
+    for f in $(grep -Rl /usr/share/ src install/desktop) ; do
       substituteInPlace $f --replace /usr/share/ $out/share/
     done
 
     # Fix hard coded zip path.
     substituteInPlace help/Makefile.linux --replace /usr/bin/zip ${zip}/bin/zip
 
-    for f in `grep -Rl /usr/bin/ .`; do
+    for f in $(grep -Rl /usr/bin/ .) ; do
       substituteInPlace $f --replace /usr/bin/ ""
     done
   '';
 
   installFlags = [ "PREFIX=${placeholder "out"}" ];
+
+  passthru.updateScript = gitUpdater {
+    inherit pname version;
+    ignoredVersions = "^([^1]|1[^.])"; # ignore anything other than 1.x
+    url = src.gitRepoUrl;
+  };
 
   meta = with lib; {
     description = "A password database utility";

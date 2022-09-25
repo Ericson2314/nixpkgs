@@ -7,13 +7,13 @@
 
 buildPythonPackage rec {
   pname = "haversine";
-  version = "2.4.0";
+  version = "2.6.0";
 
   src = fetchFromGitHub {
     owner = "mapado";
     repo = pname;
     rev = "v${version}";
-    sha256 = "sha256-Q38oeSy1ilXWc2r/GW8EWQHH2Ty+DyTxxrDX3OcOwKc=";
+    sha256 = "sha256-cFb2DsXIwaaJK3tiOTCc0k45FVJ4/Vudkq0rzqalGJs=";
   };
 
   checkInputs = [

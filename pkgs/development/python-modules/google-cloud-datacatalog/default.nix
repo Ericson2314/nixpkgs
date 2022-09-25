@@ -1,19 +1,44 @@
-{ lib, buildPythonPackage, fetchPypi, libcst, google-api-core, grpc-google-iam-v1, proto-plus, pytest-asyncio, pytestCheckHook, mock }:
+{ lib
+, buildPythonPackage
+, fetchPypi
+, libcst
+, google-api-core
+, grpc-google-iam-v1
+, proto-plus
+, pytest-asyncio
+, pytestCheckHook
+, mock
+, pythonOlder
+}:
 
 buildPythonPackage rec {
   pname = "google-cloud-datacatalog";
-  version = "3.4.0";
+  version = "3.9.1";
+  format = "setuptools";
+
+  disabled = pythonOlder "3.6";
 
   src = fetchPypi {
     inherit pname version;
-    sha256 = "2faca51e974c46203c09fd4cb2c03fd6e82cd572cc06a2bbc3b401aa419cb09f";
+    hash = "sha256-8TwAwl9/gq47lW+MXi5x2RlqaAs6dnQiuAZkb4oPD84=";
   };
 
-  propagatedBuildInputs = [ libcst google-api-core grpc-google-iam-v1 proto-plus ];
+  propagatedBuildInputs = [
+    libcst
+    google-api-core
+    grpc-google-iam-v1
+    proto-plus
+  ];
 
-  checkInputs = [ pytest-asyncio pytestCheckHook mock ];
+  checkInputs = [
+    pytest-asyncio
+    pytestCheckHook
+    mock
+  ];
 
-  pythonImportsCheck = [ "google.cloud.datacatalog" ];
+  pythonImportsCheck = [
+    "google.cloud.datacatalog"
+  ];
 
   meta = with lib; {
     description = "Google Cloud Data Catalog API API client library";

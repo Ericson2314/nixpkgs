@@ -1,38 +1,68 @@
-{ lib, buildPythonPackage, fetchPypi, python, isPy27
+{ lib
 , attrs
-, functools32
+, buildPythonPackage
+, fetchPypi
+, hatch-vcs
+, hatchling
 , importlib-metadata
-, mock
-, nose
-, pyperf
+, importlib-resources
 , pyrsistent
-, setuptools-scm
+, pythonOlder
 , twisted
-, vcversioner
+, typing-extensions
 }:
 
 buildPythonPackage rec {
   pname = "jsonschema";
-  version = "3.2.0";
+  version = "4.13.0";
+  format = "pyproject";
+
+  disabled = pythonOlder "3.7";
 
   src = fetchPypi {
     inherit pname version;
-    sha256 = "c8a85b28d377cc7737e46e2d9f2b4f44ee3c0e1deac6bf46ddefc7187d30797a";
+    sha256 = "sha256-N3ZRLfT1P3Tm4o/jVxe1siPBdWh1SGmEoxvJFl5/ySA=";
   };
 
-  nativeBuildInputs = [ setuptools-scm ];
-  propagatedBuildInputs = [ attrs importlib-metadata functools32 pyrsistent ];
-  checkInputs = [ nose mock pyperf twisted vcversioner ];
+  patches = [
+    ./remove-fancy-pypi-readme.patch
+  ];
 
-  # zope namespace collides on py27
-  doCheck = !isPy27;
-  checkPhase = ''
-    nosetests
+  postPatch = ''
+    patchShebangs json/bin/jsonschema_suite
   '';
 
+  nativeBuildInputs = [
+    hatch-vcs
+    hatchling
+  ];
+
+  propagatedBuildInputs = [
+    attrs
+    pyrsistent
+  ] ++ lib.optionals (pythonOlder "3.8") [
+    importlib-metadata
+    typing-extensions
+  ] ++ lib.optionals (pythonOlder "3.9") [
+    importlib-resources
+  ];
+
+  checkInputs = [
+    twisted
+  ];
+
+  checkPhase = ''
+    export JSON_SCHEMA_TEST_SUITE=json
+    trial jsonschema
+  '';
+
+  pythonImportsCheck = [
+    "jsonschema"
+  ];
+
   meta = with lib; {
-    homepage = "https://github.com/Julian/jsonschema";
     description = "An implementation of JSON Schema validation for Python";
+    homepage = "https://github.com/python-jsonschema/jsonschema";
     license = licenses.mit;
     maintainers = with maintainers; [ domenkozar ];
   };

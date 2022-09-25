@@ -1,7 +1,8 @@
 { lib
 , buildPythonPackage
 , fetchFromGitHub
-, netifaces
+, cryptography
+, ifaddr
 , voluptuous
 , pyyaml
 , pytest-asyncio
@@ -11,20 +12,21 @@
 
 buildPythonPackage rec {
   pname = "xknx";
-  version = "0.18.9";
-  disabled = pythonOlder "3.7";
+  version = "1.0.2";
+  format = "setuptools";
+
+  disabled = pythonOlder "3.8";
 
   src = fetchFromGitHub {
     owner = "XKNX";
     repo = pname;
-    rev = version;
-    sha256 = "1dw1dqhd790wsa6v7bpcv921zf1y544ry7drwcfdcmprsm7hs42j";
+    rev = "refs/tags/${version}";
+    sha256 = "sha256-linVQqU45vmJ8zWyJl0W4o5Ci8N0M0jP/fiYekdaamc=";
   };
 
   propagatedBuildInputs = [
-    voluptuous
-    netifaces
-    pyyaml
+    cryptography
+    ifaddr
   ];
 
   checkInputs = [
@@ -32,7 +34,14 @@ buildPythonPackage rec {
     pytestCheckHook
   ];
 
-  pythonImportsCheck = [ "xknx" ];
+  pythonImportsCheck = [
+    "xknx"
+  ];
+
+  disabledTests = [
+    # Test requires network access
+    "test_scan_timeout"
+  ];
 
   meta = with lib; {
     description = "KNX Library Written in Python";

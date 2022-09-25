@@ -1,19 +1,40 @@
-{ lib, buildPythonPackage, fetchPypi, toml }:
+{ buildPythonPackage
+, callPackage
+, fetchPypi
+, packaging
+, typing-extensions
+, tomli
+, setuptools
+, lib
+}:
 
 buildPythonPackage rec {
-  pname = "setuptools_scm";
-  version = "6.0.1";
+  pname = "setuptools-scm";
+  version = "7.0.5";
 
   src = fetchPypi {
-    inherit pname version;
-    sha256 = "d1925a69cb07e9b29416a275b9fadb009a23c148ace905b2fb220649a6c18e92";
+    pname = "setuptools_scm";
+    inherit version;
+    sha256 = "sha256-Ax4Tr3cdb4krlBrbbqBFRbv5Hrxc5ox4qvP/9uH7SEQ=";
   };
 
-  propagatedBuildInputs = [ toml ];
+  propagatedBuildInputs = [
+    packaging
+    typing-extensions
+    tomli
+    setuptools
+  ];
 
-  # Requires pytest, circular dependency
+  pythonImportsCheck = [
+    "setuptools_scm"
+  ];
+
+  # check in passthru.tests.pytest to escape infinite recursion on pytest
   doCheck = false;
-  pythonImportsCheck = [ "setuptools_scm" ];
+
+  passthru.tests = {
+    pytest = callPackage ./tests.nix { };
+  };
 
   meta = with lib; {
     homepage = "https://github.com/pypa/setuptools_scm/";

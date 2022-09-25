@@ -12,7 +12,7 @@ let
   # parse the version from package.json
   version =
     let
-      packageJson = builtins.fromJSON (builtins.readFile ./package.json);
+      packageJson = lib.importJSON ./package.json;
       splits = builtins.split "^.*#v(.*)$" (builtins.getAttr "onlykey" (builtins.head packageJson));
       matches = builtins.elemAt splits 1;
       elem = builtins.head matches;
@@ -20,7 +20,7 @@ let
     elem;
 
   # this must be updated anytime this package is updated.
-  onlykeyPkg = "onlykey-git://github.com/trustcrypto/OnlyKey-App.git#v${version}";
+  onlykeyPkg = "onlykey-git+https://github.com/trustcrypto/OnlyKey-App.git#v${version}";
 
   # define a shortcut to get to onlykey.
   onlykey = self."${onlykeyPkg}";

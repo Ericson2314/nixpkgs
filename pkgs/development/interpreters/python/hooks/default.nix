@@ -4,8 +4,6 @@
 , makeSetupHook
 , disabledIf
 , isPy3k
-, ensureNewerSourcesForZipFilesHook
-, findutils
 }:
 
 let
@@ -106,7 +104,7 @@ in rec {
       };
     } ./python-imports-check-hook.sh) {};
 
-  pythonNamespacesHook = callPackage ({}:
+  pythonNamespacesHook = callPackage ({ findutils }:
     makeSetupHook {
       name = "python-namespaces-hook.sh";
       substitutions = {
@@ -123,6 +121,15 @@ in rec {
         bytecodeName = if isPy3k then "__pycache__" else "*.pyc";
       };
     } ./python-recompile-bytecode-hook.sh ) {};
+
+  pythonRelaxDepsHook = callPackage ({ wheel }:
+    makeSetupHook {
+      name = "python-relax-deps-hook";
+      deps = [ wheel ];
+      substitutions = {
+        inherit pythonInterpreter;
+      };
+    } ./python-relax-deps-hook.sh) {};
 
   pythonRemoveBinBytecodeHook = callPackage ({ }:
     makeSetupHook {
@@ -155,18 +162,32 @@ in rec {
       };
     } ./setuptools-check-hook.sh) {};
 
-  venvShellHook = disabledIf (!isPy3k) (callPackage ({ }:
+  unittestCheckHook = callPackage ({ }:
+    makeSetupHook {
+      name = "unittest-check-hook";
+      substitutions = {
+        inherit pythonCheckInterpreter;
+      };
+    } ./unittest-check-hook.sh) {};
+
+  venvShellHook = disabledIf (!isPy3k) (callPackage ({ ensureNewerSourcesForZipFilesHook }:
     makeSetupHook {
       name = "venv-shell-hook";
       deps = [ ensureNewerSourcesForZipFilesHook ];
       substitutions = {
         inherit pythonInterpreter;
-    };
-  } ./venv-shell-hook.sh) {});
+      };
+    } ./venv-shell-hook.sh) {});
 
   wheelUnpackHook = callPackage ({ wheel }:
     makeSetupHook {
       name = "wheel-unpack-hook.sh";
       deps = [ wheel ];
     } ./wheel-unpack-hook.sh) {};
+
+  sphinxHook = callPackage ({ sphinx, installShellFiles }:
+    makeSetupHook {
+      name = "python${python.pythonVersion}-sphinx-hook";
+      deps = [ sphinx installShellFiles ];
+    } ./sphinx-hook.sh) {};
 }

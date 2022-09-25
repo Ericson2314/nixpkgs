@@ -1,6 +1,7 @@
 { lib
 , stdenv
 , fetchurl
+, fetchpatch
 , meson
 , ninja
 , pkg-config
@@ -25,6 +26,14 @@ stdenv.mkDerivation rec {
     sha256 = "hCP3Bp2qR2MHMh0cEeLswoU0DNMsqfwFIHdihD7erL0=";
   };
 
+  patches = [
+    # Fix build with GLib 2.70
+    (fetchpatch {
+      url = "https://gitlab.com/libvirt/libvirt-glib/-/commit/9a34c4ea55e0246c34896e48b8ecd637bc559ac7.patch";
+      sha256 = "UU70uTi55EzPMuLYVKRzpVcd3WogeAtWAWEC2hWlR7k=";
+    })
+  ];
+
   nativeBuildInputs = [
     meson
     ninja
@@ -36,8 +45,9 @@ stdenv.mkDerivation rec {
     gobject-introspection
   ];
 
-  buildInputs = [
+  buildInputs = (lib.optionals stdenv.isLinux [
     libcap_ng
+  ]) ++ [
     libvirt
     libxml2
     gobject-introspection
@@ -57,6 +67,6 @@ stdenv.mkDerivation rec {
     '';
     homepage = "https://libvirt.org/";
     license = licenses.lgpl2Plus;
-    platforms = platforms.linux;
+    platforms = platforms.unix;
   };
 }

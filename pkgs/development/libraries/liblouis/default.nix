@@ -1,5 +1,6 @@
 { fetchFromGitHub
-, lib, stdenv
+, lib
+, stdenv
 , autoreconfHook
 , pkg-config
 , gettext
@@ -12,16 +13,16 @@
 
 stdenv.mkDerivation rec {
   pname = "liblouis";
-  version = "3.18.0";
+  version = "3.23.0";
+
+  outputs = [ "out" "dev" "man" "info" "doc" ];
 
   src = fetchFromGitHub {
     owner = "liblouis";
     repo = "liblouis";
     rev = "v${version}";
-    sha256 = "sha256-STAfA2QgSrCZaT/tcoj0BVnFfO3jbe6W2FgVOfxjpJc=";
+    sha256 = "sha256-jXNhHzydWaMhFbEKoFHyZ77GCvAqxyT3P0xIAgFlTzY=";
   };
-
-  outputs = [ "out" "dev" "man" "info" "doc" ];
 
   nativeBuildInputs = [
     autoreconfHook
@@ -61,7 +62,10 @@ stdenv.mkDerivation rec {
   meta = with lib; {
     description = "Open-source braille translator and back-translator";
     homepage = "http://liblouis.org/";
-    license = licenses.lgpl21;
+    license = with licenses; [
+      lgpl21Plus # library
+      gpl3Plus # tools
+    ];
     maintainers = with maintainers; [ jtojnar ];
     platforms = platforms.unix;
   };

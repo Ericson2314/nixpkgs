@@ -39,11 +39,6 @@ let
   defaultXFonts =
     [ (if hasHidpi then fontcursormisc_hidpi else pkgs.xorg.fontcursormisc)
       pkgs.xorg.fontmiscmisc
-    ] ++ optionals (config.nixpkgs.config.allowUnfree or false)
-    [ # these are unfree, and will make usage with xserver fail
-      pkgs.xorg.fontbhlucidatypewriter100dpi
-      pkgs.xorg.fontbhlucidatypewriter75dpi
-      pkgs.xorg.fontbh100dpi
     ];
 
 in
@@ -61,14 +56,14 @@ in
       fonts = mkOption {
         type = types.listOf types.path;
         default = [];
-        example = literalExample "[ pkgs.dejavu_fonts ]";
-        description = "List of primary font paths.";
+        example = literalExpression "[ pkgs.dejavu_fonts ]";
+        description = lib.mdDoc "List of primary font paths.";
       };
 
       enableDefaultFonts = mkOption {
         type = types.bool;
         default = false;
-        description = ''
+        description = lib.mdDoc ''
           Enable a basic set of fonts providing several font styles
           and families and reasonable coverage of Unicode.
         '';

@@ -1,30 +1,52 @@
 { lib
 , buildGoModule
 , fetchFromGitHub
+, gitleaks
+, installShellFiles
+, testers
 }:
 
 buildGoModule rec {
   pname = "gitleaks";
-  version = "7.5.0";
+  version = "8.13.0";
 
   src = fetchFromGitHub {
     owner = "zricethezav";
     repo = pname;
     rev = "v${version}";
-    sha256 = "sha256-s7EOCoGciGT5+Fose9BffsHHE/SsSMmNoWGmeAv6Agk=";
+    sha256 = "sha256-Pdl26PoTcI0LiC3O8EN/vW9LjVfI54TsspRnmhpFaVo=";
   };
 
-  vendorSha256 = "sha256-Cc4DJPpOMHxDcH22S7znYo7QHNRXv8jOJhznu09kaE4=";
+  vendorSha256 = "sha256-Ev0/CSpwJDmc+Dvu/bFDzsgsq80rWImJWXNAUqYHgoE=";
 
   ldflags = [
-    "-s" "-w" "-X github.com/zricethezav/gitleaks/v${lib.versions.major version}/version.Version=${version}"
+    "-s"
+    "-w"
+    "-X github.com/zricethezav/gitleaks/v${lib.versions.major version}/cmd.Version=${version}"
   ];
+
+  nativeBuildInputs = [ installShellFiles ];
+
+  # With v8 the config tests are are blocking
+  doCheck = false;
+
+  postInstall = ''
+    installShellCompletion --cmd ${pname} \
+      --bash <($out/bin/${pname} completion bash) \
+      --fish <($out/bin/${pname} completion fish) \
+      --zsh <($out/bin/${pname} completion zsh)
+  '';
+
+  passthru.tests.version = testers.testVersion {
+    package = gitleaks;
+    command = "${pname} version";
+  };
 
   meta = with lib; {
     description = "Scan git repos (or files) for secrets";
     longDescription = ''
       Gitleaks is a SAST tool for detecting hardcoded secrets like passwords,
-      API keys, and tokens in git repos.
+      API keys and tokens in git repos.
     '';
     homepage = "https://github.com/zricethezav/gitleaks";
     license = with licenses; [ mit ];

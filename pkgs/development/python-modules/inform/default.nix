@@ -7,13 +7,13 @@
 
 buildPythonPackage rec {
   pname = "inform";
-  version = "1.24";
+  version = "1.26";
 
   src = fetchFromGitHub {
     owner = "KenKundert";
     repo = "inform";
     rev = "v${version}";
-    sha256 = "114cyff00j9r7qm2ld4w1a4kklr5gx570vk67p56gpr2553dkmly";
+    sha256 = "0snrmvmc3rnz90cql5ayzs878rrkadk46rhvf2sn78nb0x57wa20";
   };
 
   postPatch = ''

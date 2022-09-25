@@ -1,29 +1,55 @@
-{ stdenv, lib, buildGoModule, fetchFromGitHub, pcsclite, pkg-config, PCSC, pivKeySupport ? true }:
+{ stdenv, lib, buildGoModule, fetchFromGitHub, pcsclite, pkg-config, installShellFiles, PCSC, pivKeySupport ? true, pkcs11Support ? true }:
 
 buildGoModule rec {
   pname = "cosign";
-  version = "1.1.0";
+  version = "1.12.0";
 
   src = fetchFromGitHub {
     owner = "sigstore";
     repo = pname;
     rev = "v${version}";
-    sha256 = "sha256-FG6LAaz6n2l77Wr7SYmwzL10G5gyHPCPG05hQlsOQBI=";
+    sha256 = "sha256-TfPxLSUVs/b9krexTa1wzBkaUAL8xggfpJOlxdHLzjA=";
   };
 
-  buildInputs =
-    lib.optional (stdenv.isLinux && pivKeySupport) (lib.getDev pcsclite)
+  buildInputs = lib.optional (stdenv.isLinux && pivKeySupport) (lib.getDev pcsclite)
     ++ lib.optionals (stdenv.isDarwin && pivKeySupport) [ PCSC ];
 
-  nativeBuildInputs = [ pkg-config ];
+  nativeBuildInputs = [ pkg-config installShellFiles ];
 
-  vendorSha256 = "sha256-OKQVgF/pg4cigMkckX/dclieHCoD39ltR+DegaUfSDk=";
+  vendorSha256 = "sha256-gL5VCFcKz+hrwJ+KZifgBtgrgpKcBbvE4mFAg0LnOgc=";
 
-  excludedPackages = "\\(copasetic\\)";
+  subPackages = [
+    "cmd/cosign"
+    "cmd/sget"
+  ];
 
-  tags = lib.optionals pivKeySupport [ "pivkey" ];
+  tags = [] ++ lib.optionals pivKeySupport [ "pivkey" ] ++ lib.optionals pkcs11Support [ "pkcs11key" ];
 
-  ldflags = [ "-s" "-w" "-X github.com/sigstore/cosign/cmd/cosign/cli.gitVersion=v${version}" ];
+  ldflags = [
+    "-s"
+    "-w"
+    "-X sigs.k8s.io/release-utils/version.gitVersion=v${version}"
+    "-X sigs.k8s.io/release-utils/version.gitTreeState=clean"
+  ];
+
+  preCheck = ''
+    # test all paths
+    unset subPackages
+
+    rm pkg/cosign/tlog_test.go # Require network access
+    rm pkg/cosign/verify_test.go # Require network access
+  '';
+
+  postInstall = ''
+    installShellCompletion --cmd cosign \
+      --bash <($out/bin/cosign completion bash) \
+      --fish <($out/bin/cosign completion fish) \
+      --zsh <($out/bin/cosign completion zsh)
+    installShellCompletion --cmd sget \
+      --bash <($out/bin/sget completion bash) \
+      --fish <($out/bin/sget completion fish) \
+      --zsh <($out/bin/sget completion zsh)
+  '';
 
   meta = with lib; {
     homepage = "https://github.com/sigstore/cosign";

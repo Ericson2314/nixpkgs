@@ -2,23 +2,28 @@
 
 buildPythonPackage rec {
   pname = "cwcwidth";
-  version = "0.1.4";
+  version = "0.1.7";
   format = "pyproject";
 
   src = fetchPypi {
     inherit pname version;
-    sha256 = "1azrphpkcyggg38xvkfb9dpc4xmmm90p02kf8dkqd4d6j5w96aj8";
+    sha256 = "sha256-wNZH4S46SxWogeHYT3lpN1FmSEieARJXI33CF51rGVE=";
   };
 
   nativeBuildInputs = [ cython ];
 
   checkInputs = [ pytestCheckHook ];
-  # Hack needed to make pytest + cython work
-  # https://github.com/NixOS/nixpkgs/pull/82410#issuecomment-827186298
   preCheck = ''
+    # Hack needed to make pytest + cython work
+    # https://github.com/NixOS/nixpkgs/pull/82410#issuecomment-827186298
     export HOME=$(mktemp -d)
     cp -r $TMP/$sourceRoot/tests $HOME
     pushd $HOME
+
+    # locale settings used by upstream, has the effect of skipping
+    # otherwise-failing tests on darwin
+    export LC_ALL='C.UTF-8'
+    export LANG='C.UTF-8'
   '';
   postCheck = "popd";
 
@@ -29,6 +34,6 @@ buildPythonPackage rec {
     homepage = "https://github.com/sebastinas/cwcwidth";
     changelog = "https://github.com/sebastinas/cwcwidth/blob/main/CHANGELOG.md";
     license = licenses.mit;
-    maintainers = with maintainers; [ eduardosm ];
+    maintainers = with maintainers; [ ];
   };
 }

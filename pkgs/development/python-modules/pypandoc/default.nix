@@ -4,13 +4,13 @@
 
 buildPythonPackage rec {
   pname = "pypandoc";
-  version = "1.6.3";
+  version = "1.8.1";
 
   src = fetchFromGitHub {
     owner = "NicklasTegner";
     repo = pname;
-    rev = version;
-    sha256 = "163wkcm06klr68dadr9mb8gblj0ls26w097bjrg4f5j0533ysdpp";
+    rev = "v${version}";
+    hash = "sha256-1vQmONQFJrjptwVVjw25Wyt59loatjScsdnSax+q/f8=";
   };
 
   patches = [

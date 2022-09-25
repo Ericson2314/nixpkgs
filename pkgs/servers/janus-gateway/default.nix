@@ -15,13 +15,13 @@ in
 
 stdenv.mkDerivation rec {
   pname = "janus-gateway";
-  version = "0.11.3";
+  version = "1.0.4";
 
   src = fetchFromGitHub {
     owner = "meetecho";
     repo = pname;
     rev = "v${version}";
-    sha256 = "15nadpz67w24f4wz8ya0kx0a1jc4wxv1kl0d5fr7kckkdyijh7gz";
+    sha256 = "sha256-1WQo1v5TJPPJjC2lc8k9aWmtRUFITYEuwSfsPzh5320=";
   };
 
   nativeBuildInputs = [ autoreconfHook pkg-config gengetopt ];
@@ -34,12 +34,16 @@ stdenv.mkDerivation rec {
   enableParallelBuilding = true;
 
   configureFlags = [
-    "--enable-boringssl=${boringssl}"
+    "--enable-boringssl=${lib.getDev boringssl}"
     "--enable-libsrtp2"
     "--enable-turn-rest-api"
     "--enable-json-logger"
     "--enable-gelf-event-handler"
     "--enable-post-processing"
+  ];
+
+  makeFlagsArray = [
+    "BORINGSSL_LIBS=-L${lib.getLib boringssl}/lib"
   ];
 
   outputs = [ "out" "dev" "doc" "man" ];

@@ -1,28 +1,31 @@
 { lib
 , fetchFromGitHub
-, m4
+, gcc
+, gmp, mpfr, libmpc
 , rustPlatform
 }:
 rustPlatform.buildRustPackage rec {
   pname = "kalker";
-  version = "1.0.0";
+  version = "2.0.0";
 
   src = fetchFromGitHub {
     owner = "PaddiM8";
     repo = pname;
     rev = "v${version}";
-    sha256 = "sha256-1iZvp30/V0bw9NBxiKNiDgOMYJkDsGhTGdBsAPggdEg=";
+    sha256 = "sha256-D7FlX72fcbeVtQ/OtK2Y3P1hZ5Bmowa04up5rTTXDDU=";
   };
 
-  cargoSha256 = "sha256-fBWnMlOLgwrOBPS2GIfOUDHQHcMMaU5r9JZVMbA+W58=";
+  cargoSha256 = "sha256-r20kQG6YeNGGb7ovYaAx+4DGijZSmf5YoIYh3z5zOpk=";
 
-  nativeBuildInputs = [ m4 ];
+  buildInputs = [ gmp mpfr libmpc ];
 
   outputs = [ "out" "lib" ];
 
   postInstall = ''
     moveToOutput "lib" "$lib"
   '';
+
+  CARGO_FEATURE_USE_SYSTEM_LIBS = "1";
 
   meta = with lib; {
     homepage = "https://kalker.strct.net";

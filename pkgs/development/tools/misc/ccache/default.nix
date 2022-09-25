@@ -10,17 +10,18 @@
 , bashInteractive
 , xcodebuild
 , makeWrapper
+, nix-update-script
 }:
 
 let ccache = stdenv.mkDerivation rec {
   pname = "ccache";
-  version = "4.4";
+  version = "4.6.3";
 
   src = fetchFromGitHub {
     owner = pname;
     repo = pname;
     rev = "v${version}";
-    hash = "sha256-ZewR1srksfKCxehhAg3i8m+0OvmOSF+24njbtcc1GQY=";
+    sha256 = "sha256-uMGM3YW85wgJFin9IGrKafOkSLmN5/q/LP1sttN7/u0=";
   };
 
   outputs = [ "out" "man" ];
@@ -52,12 +53,18 @@ let ccache = stdenv.mkDerivation rec {
     bashInteractive
   ] ++ lib.optional stdenv.isDarwin xcodebuild;
 
-  checkPhase = ''
+  checkPhase = let
+    badTests = [
+      "test.trim_dir" # flaky on hydra (possibly filesystem-specific?)
+    ] ++ lib.optionals stdenv.isDarwin [
+      "test.basedir"
+      "test.multi_arch"
+      "test.nocpp2"
+    ];
+  in ''
     runHook preCheck
     export HOME=$(mktemp -d)
-    ctest --output-on-failure ${lib.optionalString stdenv.isDarwin ''
-      -E '^(test.nocpp2|test.basedir|test.multi_arch|test.trim_dir)$'
-    ''}
+    ctest --output-on-failure -E '^(${lib.concatStringsSep "|" badTests})$'
     runHook postCheck
   '';
 
@@ -101,6 +108,10 @@ let ccache = stdenv.mkDerivation rec {
         done
       '';
     };
+  };
+
+  passthru.updateScript = nix-update-script {
+    attrPath = pname;
   };
 
   meta = with lib; {

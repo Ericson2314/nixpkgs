@@ -8,46 +8,51 @@ rec {
       , moby-src
       , runcRev, runcSha256
       , containerdRev, containerdSha256
-      , tiniRev, tiniSha256, buildxSupport ? true
+      , tiniRev, tiniSha256, buildxSupport ? true, composeSupport ? true
       # package dependencies
-      , stdenv, fetchFromGitHub, buildGoPackage
+      , stdenv, fetchFromGitHub, fetchpatch, buildGoPackage
       , makeWrapper, installShellFiles, pkg-config, glibc
-      , go-md2man, go, containerd_1_4, runc, docker-proxy, tini, libtool
-      , sqlite, iproute2, lvm2, systemd, docker-buildx
+      , go-md2man, go, containerd, runc, docker-proxy, tini, libtool
+      , sqlite, iproute2, lvm2, systemd, docker-buildx, docker-compose
       , btrfs-progs, iptables, e2fsprogs, xz, util-linux, xfsprogs, git
-      , procps, libseccomp
+      , procps, libseccomp, rootlesskit, slirp4netns, fuse-overlayfs
       , nixosTests
-      , clientOnly ? !stdenv.isLinux
+      , clientOnly ? !stdenv.isLinux, symlinkJoin
     }:
   let
     docker-runc = runc.overrideAttrs (oldAttrs: {
-      name = "docker-runc-${version}";
+      pname = "docker-runc";
       inherit version;
+
       src = fetchFromGitHub {
         owner = "opencontainers";
         repo = "runc";
         rev = runcRev;
         sha256 = runcSha256;
       };
+
       # docker/runc already include these patches / are not applicable
       patches = [];
     });
 
-    docker-containerd = containerd_1_4.overrideAttrs (oldAttrs: {
-      name = "docker-containerd-${version}";
+    docker-containerd = containerd.overrideAttrs (oldAttrs: {
+      pname = "docker-containerd";
       inherit version;
+
       src = fetchFromGitHub {
         owner = "containerd";
         repo = "containerd";
         rev = containerdRev;
         sha256 = containerdSha256;
       };
+
       buildInputs = oldAttrs.buildInputs ++ [ libseccomp ];
     });
 
-    docker-tini = tini.overrideAttrs  (oldAttrs: {
-      name = "docker-init-${version}";
+    docker-tini = tini.overrideAttrs (oldAttrs: {
+      pname = "docker-init";
       inherit version;
+
       src = fetchFromGitHub {
         owner = "krallin";
         repo = "tini";
@@ -63,10 +68,9 @@ rec {
       NIX_CFLAGS_COMPILE = "-DMINIMAL=ON";
     });
 
-    moby = buildGoPackage ((optionalAttrs (stdenv.isLinux)) rec {
-      name = "moby-${version}";
+    moby = buildGoPackage (optionalAttrs stdenv.isLinux rec {
+      pname = "moby";
       inherit version;
-      inherit docker-runc docker-containerd docker-proxy docker-tini;
 
       src = moby-src;
 
@@ -75,7 +79,19 @@ rec {
       nativeBuildInputs = [ makeWrapper pkg-config go-md2man go libtool installShellFiles ];
       buildInputs = [ sqlite lvm2 btrfs-progs systemd libseccomp ];
 
-      extraPath = optionals (stdenv.isLinux) (makeBinPath [ iproute2 iptables e2fsprogs xz xfsprogs procps util-linux git ]);
+      extraPath = optionals stdenv.isLinux (makeBinPath [ iproute2 iptables e2fsprogs xz xfsprogs procps util-linux git ]);
+
+      extraUserPath = optionals (stdenv.isLinux && !clientOnly) (makeBinPath [ rootlesskit slirp4netns fuse-overlayfs ]);
+
+      patches = [
+        # This patch incorporates code from a PR fixing using buildkit with the ZFS graph driver.
+        # It could be removed when a version incorporating this patch is released.
+        (fetchpatch {
+          name = "buildkit-zfs.patch";
+          url = "https://github.com/moby/moby/pull/43136.patch";
+          sha256 = "1WZfpVnnqFwLMYqaHLploOodls0gHF8OCp7MrM26iX8=";
+        })
+      ];
 
       postPatch = ''
         patchShebangs hack/make.sh hack/make/
@@ -109,23 +125,24 @@ rec {
         install -Dm644 ./contrib/init/systemd/docker.service $out/etc/systemd/system/docker.service
         substituteInPlace $out/etc/systemd/system/docker.service --replace /usr/bin/dockerd $out/bin/dockerd
         install -Dm644 ./contrib/init/systemd/docker.socket $out/etc/systemd/system/docker.socket
+
+        # rootless Docker
+        install -Dm755 ./contrib/dockerd-rootless.sh $out/libexec/docker/dockerd-rootless.sh
+        makeWrapper $out/libexec/docker/dockerd-rootless.sh $out/bin/dockerd-rootless \
+          --prefix PATH : "$out/libexec/docker:$extraPath:$extraUserPath"
       '';
 
-      DOCKER_BUILDTAGS = []
-        ++ optional (systemd != null) [ "journald" ]
-        ++ optional (btrfs-progs == null) "exclude_graphdriver_btrfs"
-        ++ optional (lvm2 == null) "exclude_graphdriver_devicemapper"
-        ++ optional (libseccomp != null) "seccomp";
+      DOCKER_BUILDTAGS = [ "journald" "seccomp" ];
     });
+
+    plugins = optionals buildxSupport [ docker-buildx ]
+      ++ optionals composeSupport [ docker-compose ];
+    pluginsRef = symlinkJoin { name = "docker-plugins"; paths = plugins; };
   in
-    buildGoPackage ((optionalAttrs (!clientOnly) {
-
-    inherit docker-runc docker-containerd docker-proxy docker-tini moby;
-
-   }) // rec {
-    inherit version rev;
-
+    buildGoPackage (optionalAttrs (!clientOnly) {
+   } // rec {
     pname = "docker";
+    inherit version;
 
     src = fetchFromGitHub {
       owner = "docker";
@@ -141,14 +158,14 @@ rec {
     ];
     buildInputs = optionals (!clientOnly) [
       sqlite lvm2 btrfs-progs systemd libseccomp
-    ] ++ optionals (buildxSupport) [ docker-buildx ];
+    ] ++ plugins;
 
     postPatch = ''
       patchShebangs man scripts/build/
       substituteInPlace ./scripts/build/.variables --replace "set -eu" ""
-    '' + optionalString buildxSupport ''
+    '' + optionalString (plugins != []) ''
       substituteInPlace ./cli-plugins/manager/manager_unix.go --replace /usr/libexec/docker/cli-plugins \
-          ${lib.strings.makeSearchPathOutput "bin" "libexec/docker/cli-plugins" [docker-buildx]}
+          "${pluginsRef}/libexec/docker/cli-plugins"
     '';
 
     # Keep eyes on BUILDTIME format - https://github.com/docker/cli/blob/${version}/scripts/build/.variables
@@ -165,7 +182,7 @@ rec {
       export BUILDTIME="1970-01-01T00:00:00Z"
       source ./scripts/build/.variables
       export CGO_ENABLED=1
-      go build -tags pkcs11 --ldflags "$LDFLAGS" github.com/docker/cli/cmd/docker
+      go build -tags pkcs11 --ldflags "$GO_LDFLAGS" github.com/docker/cli/cmd/docker
       cd -
     '';
 
@@ -180,6 +197,7 @@ rec {
     '' + optionalString (!clientOnly) ''
       # symlink docker daemon to docker cli derivation
       ln -s ${moby}/bin/dockerd $out/bin/dockerd
+      ln -s ${moby}/bin/dockerd-rootless $out/bin/dockerd-rootless
 
       # systemd
       mkdir -p $out/etc/systemd/system
@@ -211,7 +229,6 @@ rec {
       description = "An open source project to pack, ship and run any application as a lightweight container";
       license = licenses.asl20;
       maintainers = with maintainers; [ offline tailhook vdemeester periklis mikroskeem maxeaubrey ];
-      platforms = with platforms; linux ++ darwin;
     };
 
     # Exposed for tarsum build on non-linux systems (build-support/docker/default.nix)
@@ -221,20 +238,20 @@ rec {
   # Get revisions from
   # https://github.com/moby/moby/tree/${version}/hack/dockerfile/install/*
   docker_20_10 = callPackage dockerGen rec {
-    version = "20.10.8";
+    version = "20.10.18";
     rev = "v${version}";
-    sha256 = "sha256-betZIAH4mFpb/OywWyixCjVmy5EGTrg+WbxDXkVRrsI=";
+    sha256 = "sha256-AyY6xfFEvUv7Kqo3M0gv9/4NoBUDqQyP4ZIcz+oGNys=";
     moby-src = fetchFromGitHub {
       owner = "moby";
       repo = "moby";
       rev = "v${version}";
-      sha256 = "1pjjdwzad2z337zwby88w5zwl71ch4lcwbw0sy8slvyjv387jjlm";
+      sha256 = "sha256-c0A66JVvRPFNT/xCTIsW8k3a/EMIl73d/UlCohjmGMk=";
     };
-    runcRev = "v1.0.1"; # v1.0.1
-    runcSha256 = "1zfa1zr8i9n1915nyv7hyaj7q27cy7fiihk9rr1377ayaqg3mpn5";
-    containerdRev = "v1.4.9"; # v1.4.9
-    containerdSha256 = "1ykikks6ihgg899ibk9m9m0hqrbss0cx7l7z4yjb873b10bacj52";
-    tiniRev = "v0.19.0"; # v0.19.0
-    tiniSha256 = "1h20i3wwlbd8x4jr2gz68hgklh0lb0jj7y5xk1wvr8y58fip1rdn";
+    runcRev = "v1.1.4";
+    runcSha256 = "sha256-ougJHW1Z+qZ324P8WpZqawY1QofKnn8WezP7orzRTdA=";
+    containerdRev = "v1.6.8";
+    containerdSha256 = "sha256-0UiPhkTWV61DnAF5kWd1FctX8i0sXaJ1p/xCMznY/A8=";
+    tiniRev = "v0.19.0";
+    tiniSha256 = "sha256-ZDKu/8yE5G0RYFJdhgmCdN3obJNyRWv6K/Gd17zc1sI=";
   };
 }

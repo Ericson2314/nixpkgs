@@ -6,14 +6,14 @@
 }:
 
 stdenv.mkDerivation rec {
-  name = "libva-${lib.optionalString minimal "minimal-"}${version}";
-  version = "2.12.0";
+  pname = "libva" + lib.optionalString minimal "-minimal";
+  version = "2.15.0";
 
   src = fetchFromGitHub {
     owner  = "intel";
     repo   = "libva";
     rev    = version;
-    sha256 = "1zfv4kjx0715sy62lkpv0s31f9xwy232z5zwqi5all4w1jr630i7";
+    sha256 = "sha256-NJA2FTPrhLj9+vmkBy+GcTiH57gBEQnYhZzYk3sEOBo=";
   };
 
   outputs = [ "dev" "out" ];
@@ -25,8 +25,8 @@ stdenv.mkDerivation rec {
   # TODO: share libs between minimal and !minimal - perhaps just symlink them
 
   mesonFlags = [
-    # Add FHS paths for non-NixOS applications:
-    "-Ddriverdir=${mesa.drivers.driverLink}/lib/dri:/usr/lib/dri:/usr/lib32/dri"
+    # Add FHS and Debian paths for non-NixOS applications
+    "-Ddriverdir=${mesa.drivers.driverLink}/lib/dri:/usr/lib/dri:/usr/lib32/dri:/usr/lib/x86_64-linux-gnu/dri:/usr/lib/i386-linux-gnu/dri"
   ];
 
   meta = with lib; {
@@ -40,7 +40,7 @@ stdenv.mkDerivation rec {
     homepage = "https://01.org/linuxmedia/vaapi";
     changelog = "https://raw.githubusercontent.com/intel/libva/${version}/NEWS";
     license = licenses.mit;
-    maintainers = with maintainers; [ primeos ];
+    maintainers = with maintainers; [ SuperSandro2000 ];
     platforms = platforms.unix;
   };
 }

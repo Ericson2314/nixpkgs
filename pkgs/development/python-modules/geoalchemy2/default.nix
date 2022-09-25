@@ -1,31 +1,70 @@
 { lib
 , buildPythonPackage
 , fetchPypi
-, sqlalchemy
-, shapely
+, packaging
 , setuptools-scm
-, pytest
+, shapely
+, sqlalchemy
+, alembic
+, psycopg2
+, pytestCheckHook
+, pythonOlder
 }:
 
 buildPythonPackage rec {
-  pname = "GeoAlchemy2";
-  version = "0.9.3";
+  pname = "geoalchemy2";
+  version = "0.12.5";
+  format = "setuptools";
+
+  disabled = pythonOlder "3.7";
 
   src = fetchPypi {
-    inherit pname version;
-    sha256 = "56f969cf4ad6629ebcde73e807f7dac0a9375c79991b4f93efab191f37737a00";
+    pname = "GeoAlchemy2";
+    inherit version;
+    hash = "sha256-McJQLc4xe1ezNeTrh1YtUB+jnkbHKL5RTZuGCR4I3Wc=";
   };
 
-  nativeBuildInputs = [ setuptools-scm ];
-  propagatedBuildInputs = [ sqlalchemy shapely ];
+  nativeBuildInputs = [
+    setuptools-scm
+  ];
 
-  # https://github.com/geoalchemy/geoalchemy2/blob/e05a676350b11f0e73609379dae5625c5de2e868/TEST.rst
-  doCheck = false;
+  propagatedBuildInputs = [
+    packaging
+    shapely
+    sqlalchemy
+  ];
+
+  checkInputs = [
+    alembic
+    psycopg2
+    pytestCheckHook
+  ];
+
+  pytestFlagsArray = [
+    # tests require live postgis database
+    "--deselect=tests/test_pickle.py::TestPickle::test_pickle_unpickle"
+    "--deselect=tests/gallery/test_specific_compilation.py::test_specific_compilation"
+  ];
+
+  disabledTestPaths = [
+    # tests require live postgis database
+    "tests/gallery/test_decipher_raster.py"
+    "tests/gallery/test_length_at_insert.py"
+    "tests/gallery/test_summarystatsagg.py"
+    "tests/gallery/test_type_decorator.py"
+    "tests/test_functional.py"
+    "tests/test_functional_postgresql.py"
+    "tests/test_alembic_migrations.py"
+  ];
+
+  pythonImportsCheck = [
+    "geoalchemy2"
+  ];
 
   meta = with lib; {
-    homepage =  "http://geoalchemy.org/";
-    license = licenses.mit;
     description = "Toolkit for working with spatial databases";
+    homepage =  "https://geoalchemy-2.readthedocs.io/";
+    license = licenses.mit;
+    maintainers = with maintainers; [ ];
   };
-
 }

@@ -11,6 +11,10 @@ pkgs.runCommand "nixpkgs-lib-tests" {
       inherit pkgs;
       lib = import ../.;
     })
+    (import ./teams.nix {
+      inherit pkgs;
+      lib = import ../.;
+    })
   ];
 } ''
     datadir="${pkgs.nix}/share"
@@ -23,6 +27,10 @@ pkgs.runCommand "nixpkgs-lib-tests" {
     export NIX_STORE_DIR=$TEST_ROOT/store
     export PAGER=cat
     cacheDir=$TEST_ROOT/binary-cache
+
+    mkdir -p $NIX_CONF_DIR
+    echo "experimental-features = nix-command" >> $NIX_CONF_DIR/nix.conf
+
     nix-store --init
 
     cp -r ${../.} lib

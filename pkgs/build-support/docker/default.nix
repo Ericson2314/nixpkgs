@@ -5,8 +5,9 @@
 , closureInfo
 , coreutils
 , e2fsprogs
+, fakechroot
+, fakeNss
 , fakeroot
-, findutils
 , go
 , jq
 , jshon
@@ -14,8 +15,8 @@
 , makeWrapper
 , moreutils
 , nix
+, nixosTests
 , pigz
-, pkgs
 , rsync
 , runCommand
 , runtimeShell
@@ -24,6 +25,7 @@
 , storeDir ? builtins.storeDir
 , substituteAll
 , symlinkJoin
+, tarsum
 , util-linux
 , vmTools
 , writeReferencesToFile
@@ -31,11 +33,18 @@
 , writeText
 , writeTextDir
 , writePython3
-, system
-, # Note: This is the cross system we're compiling for
 }:
 
 let
+  inherit (lib)
+    optionals
+    optionalString
+    ;
+
+  inherit (lib)
+    escapeShellArgs
+    toList
+    ;
 
   mkDbExtraCommand = contents:
     let
@@ -72,6 +81,15 @@ rec {
     inherit buildImage buildLayeredImage fakeNss pullImage shadowSetup buildImageWithNixDb;
   };
 
+  tests = {
+    inherit (nixosTests)
+      docker-tools
+      docker-tools-overlay
+      # requires remote builder
+      # docker-tools-cross
+      ;
+  };
+
   pullImage =
     let
       fixName = name: builtins.replaceStrings [ "/" ":" ] [ "-" "-" ] name;
@@ -104,7 +122,7 @@ rec {
         outputHashAlgo = "sha256";
         outputHash = sha256;
 
-        nativeBuildInputs = lib.singleton skopeo;
+        nativeBuildInputs = [ skopeo ];
         SSL_CERT_FILE = "${cacert.out}/etc/ssl/certs/ca-bundle.crt";
 
         sourceURL = "docker://${imageName}@${imageDigest}";
@@ -123,7 +141,7 @@ rec {
 
   # We need to sum layer.tar, not a directory, hence tarsum instead of nix-hash.
   # And we cannot untar it, because then we cannot preserve permissions etc.
-  tarsum = pkgs.tarsum;
+  inherit tarsum; # pkgs.dockerTools.tarsum
 
   # buildEnv creates symlinks to dirs, which is hard to edit inside the overlay VM
   mergeDrvs =
@@ -187,19 +205,21 @@ rec {
     , fromImageName ? null
     , fromImageTag ? null
     , diskSize ? 1024
+    , buildVMMemorySize ? 512
     , preMount ? ""
     , postMount ? ""
     , postUmount ? ""
     }:
-    let
-      result = vmTools.runInLinuxVM (
+      vmTools.runInLinuxVM (
         runCommand name
           {
             preVM = vmTools.createEmptyImage {
               size = diskSize;
               fullName = "docker-run-disk";
+              destination = "./image";
             };
             inherit fromImage fromImageName fromImageTag;
+            memSize = buildVMMemorySize;
 
             nativeBuildInputs = [ util-linux e2fsprogs jshon rsync jq ];
           } ''
@@ -232,7 +252,7 @@ rec {
           # Unpack all of the parent layers into the image.
           lowerdir=""
           extractionID=0
-          for layerTar in $(tac layer-list); do
+          for layerTar in $(cat layer-list); do
             echo "Unpacking layer $layerTar"
             extractionID=$((extractionID + 1))
 
@@ -278,12 +298,6 @@ rec {
 
           ${postUmount}
         '');
-    in
-    runCommand name { } ''
-      mkdir -p $out
-      cd ${result}
-      cp layer.tar json VERSION $out
-    '';
 
   exportImage = { name ? fromImage.name, fromImage, fromImageName ? null, fromImageTag ? null, diskSize ? 1024 }:
     runWithOverlay {
@@ -291,7 +305,13 @@ rec {
 
       postMount = ''
         echo "Packing raw image..."
-        tar -C mnt --hard-dereference --sort=name --mtime="@$SOURCE_DATE_EPOCH" -cf $out .
+        tar -C mnt --hard-dereference --sort=name --mtime="@$SOURCE_DATE_EPOCH" -cf $out/layer.tar .
+      '';
+
+      postUmount = ''
+        mv $out/layer.tar .
+        rm -rf $out
+        mv layer.tar $out
       '';
     };
 
@@ -314,7 +334,7 @@ rec {
     , # JSON containing configuration and metadata for this layer.
       baseJson
     , # Files to add to the layer.
-      contents ? null
+      copyToRoot ? null
     , # When copying the contents into the image, preserve symlinks to
       # directories (see `rsync -K`).  Otherwise, transform those symlinks
       # into directories.
@@ -326,7 +346,8 @@ rec {
     }:
     runCommand "docker-layer-${name}"
       {
-        inherit baseJson contents extraCommands;
+        inherit baseJson extraCommands;
+        contents = copyToRoot;
         nativeBuildInputs = [ jshon rsync tarsum ];
       }
       ''
@@ -372,7 +393,8 @@ rec {
     , # Script to run as root. Bash.
       runAsRoot
     , # Files to add to the layer. If null, an empty layer will be created.
-      contents ? null
+      # To add packages to /bin, use `buildEnv` or similar.
+      copyToRoot ? null
     , # When copying the contents into the image, preserve symlinks to
       # directories (see `rsync -K`).  Otherwise, transform those symlinks
       # into directories.
@@ -387,6 +409,8 @@ rec {
       fromImageTag ? null
     , # How much disk to allocate for the temporary virtual machine.
       diskSize ? 1024
+    , # How much memory to allocate for the temporary virtual machine.
+      buildVMMemorySize ? 512
     , # Commands (bash) to run on the layer; these do not require sudo.
       extraCommands ? ""
     }:
@@ -398,11 +422,11 @@ rec {
     runWithOverlay {
       name = "docker-layer-${name}";
 
-      inherit fromImage fromImageName fromImageTag diskSize;
+      inherit fromImage fromImageName fromImageTag diskSize buildVMMemorySize;
 
-      preMount = lib.optionalString (contents != null && contents != [ ]) ''
+      preMount = lib.optionalString (copyToRoot != null && copyToRoot != [ ]) ''
         echo "Adding contents..."
-        for item in ${toString contents}; do
+        for item in ${escapeShellArgs (map (c: "${c}") (toList copyToRoot))}; do
           echo "Adding $item..."
           rsync -a${if keepContentsDirlinks then "K" else "k"} --chown=0:0 $item/ layer/
         done
@@ -482,7 +506,7 @@ rec {
     , # Tag of the parent image; will be read from the image otherwise.
       fromImageTag ? null
     , # Files to put on the image (a nix store path or list of paths).
-      contents ? null
+      copyToRoot ? null
     , # When copying the contents into the image, preserve symlinks to
       # directories (see `rsync -K`).  Otherwise, transform those symlinks
       # into directories.
@@ -497,12 +521,24 @@ rec {
       runAsRoot ? null
     , # Size of the virtual machine disk to provision when building the image.
       diskSize ? 1024
+    , # Size of the virtual machine memory to provision when building the image.
+      buildVMMemorySize ? 512
     , # Time of creation of the image.
       created ? "1970-01-01T00:00:01Z"
+    , # Deprecated.
+      contents ? null
     ,
     }:
 
     let
+      checked =
+        lib.warnIf (contents != null)
+          "in docker image ${name}: The contents parameter is deprecated. Change to copyToRoot if the contents are designed to be copied to the root filesystem, such as when you use `buildEnv` or similar between contents and your packages. Use copyToRoot = buildEnv { ... }; or similar if you intend to add packages to /bin."
+        lib.throwIf (contents != null && copyToRoot != null) "in docker image ${name}: You can not specify both contents and copyToRoot."
+        ;
+
+      rootContents = if copyToRoot == null then contents else copyToRoot;
+
       baseName = baseNameOf name;
 
       # Create a JSON blob of the configuration. Set the date to unix zero.
@@ -527,17 +563,19 @@ rec {
           mkPureLayer
             {
               name = baseName;
-              inherit baseJson contents keepContentsDirlinks extraCommands uid gid;
+              inherit baseJson keepContentsDirlinks extraCommands uid gid;
+              copyToRoot = rootContents;
             } else
           mkRootLayer {
             name = baseName;
             inherit baseJson fromImage fromImageName fromImageTag
-              contents keepContentsDirlinks runAsRoot diskSize
+              keepContentsDirlinks runAsRoot diskSize buildVMMemorySize
               extraCommands;
+            copyToRoot = rootContents;
           };
       result = runCommand "docker-image-${baseName}.tar.gz"
         {
-          nativeBuildInputs = [ jshon pigz coreutils findutils jq moreutils ];
+          nativeBuildInputs = [ jshon pigz jq moreutils ];
           # Image name must be lowercase
           imageName = lib.toLower name;
           imageTag = if tag == null then "" else tag;
@@ -636,7 +674,7 @@ rec {
              <(sort -n layerFiles|uniq|grep -v ${layer}) -1 -3 > newFiles
         # Append the new files to the layer.
         tar -rpf temp/layer.tar --hard-dereference --sort=name --mtime="@$SOURCE_DATE_EPOCH" \
-          --owner=0 --group=0 --no-recursion --files-from newFiles
+          --owner=0 --group=0 --no-recursion --verbatim-files-from --files-from newFiles
 
         echo "Adding meta..."
 
@@ -697,7 +735,7 @@ rec {
       '';
 
     in
-    result;
+    checked result;
 
   # Merge the tarballs of images built with buildImage into a single
   # tarball that contains all images. Running `docker load` on the resulting
@@ -739,31 +777,13 @@ rec {
   # Useful when packaging binaries that insist on using nss to look up
   # username/groups (like nginx).
   # /bin/sh is fine to not exist, and provided by another shim.
-  fakeNss = symlinkJoin {
-    name = "fake-nss";
-    paths = [
-      (writeTextDir "etc/passwd" ''
-        root:x:0:0:root user:/var/empty:/bin/sh
-        nobody:x:65534:65534:nobody:/var/empty:/bin/sh
-      '')
-      (writeTextDir "etc/group" ''
-        root:x:0:
-        nobody:x:65534:
-      '')
-      (writeTextDir "etc/nsswitch.conf" ''
-        hosts: files dns
-      '')
-      (runCommand "var-empty" { } ''
-        mkdir -p $out/var/empty
-      '')
-    ];
-  };
+  inherit fakeNss; # alias
 
   # This provides a /usr/bin/env, for shell scripts using the
   # "#!/usr/bin/env executable" shebang.
   usrBinEnv = runCommand "usr-bin-env" { } ''
     mkdir -p $out/usr/bin
-    ln -s ${pkgs.coreutils}/bin/env $out/usr/bin
+    ln -s ${coreutils}/bin/env $out/usr/bin
   '';
 
   # This provides /bin/sh, pointing to bashInteractive.
@@ -772,16 +792,29 @@ rec {
     ln -s ${bashInteractive}/bin/bash $out/bin/sh
   '';
 
+  # This provides the ca bundle in common locations
+  caCertificates = runCommand "ca-certificates" { } ''
+    mkdir -p $out/etc/ssl/certs $out/etc/pki/tls/certs
+    # Old NixOS compatibility.
+    ln -s ${cacert}/etc/ssl/certs/ca-bundle.crt $out/etc/ssl/certs/ca-bundle.crt
+    # NixOS canonical location + Debian/Ubuntu/Arch/Gentoo compatibility.
+    ln -s ${cacert}/etc/ssl/certs/ca-bundle.crt $out/etc/ssl/certs/ca-certificates.crt
+    # CentOS/Fedora compatibility.
+    ln -s ${cacert}/etc/ssl/certs/ca-bundle.crt $out/etc/pki/tls/certs/ca-bundle.crt
+  '';
+
   # Build an image and populate its nix database with the provided
   # contents. The main purpose is to be able to use nix commands in
   # the container.
   # Be careful since this doesn't work well with multilayer.
-  buildImageWithNixDb = args@{ contents ? null, extraCommands ? "", ... }: (
+  # TODO: add the dependencies of the config json.
+  buildImageWithNixDb = args@{ copyToRoot ? contents, contents ? null, extraCommands ? "", ... }: (
     buildImage (args // {
-      extraCommands = (mkDbExtraCommand contents) + extraCommands;
+      extraCommands = (mkDbExtraCommand copyToRoot) + extraCommands;
     })
   );
 
+  # TODO: add the dependencies of the config json.
   buildLayeredImageWithNixDb = args@{ contents ? null, extraCommands ? "", ... }: (
     buildLayeredImage (args // {
       extraCommands = (mkDbExtraCommand contents) + extraCommands;
@@ -808,6 +841,10 @@ rec {
     , # Optional bash script to run inside fakeroot environment.
       # Could be used for changing ownership of files in customisation layer.
       fakeRootCommands ? ""
+    , # Whether to run fakeRootCommands in fakechroot as well, so that they
+      # appear to run inside the image, but have access to the normal Nix store.
+      # Perhaps this could be enabled on by default on pkgs.stdenv.buildPlatform.isLinux
+      enableFakechroot ? false
     , # We pick 100 to ensure there is plenty of room for extension. I
       # believe the actual maximum is 128.
       maxLayers ? 100
@@ -815,6 +852,8 @@ rec {
       # this on, but tooling may disable this to insert the store paths more
       # efficiently via other means, such as bind mounting the host store.
       includeStorePaths ? true
+    , # Passthru arguments for the underlying derivation.
+      passthru ? {}
     ,
     }:
       assert
@@ -839,16 +878,26 @@ rec {
           name = "${baseName}-customisation-layer";
           paths = contentsList;
           inherit extraCommands fakeRootCommands;
-          nativeBuildInputs = [ fakeroot ];
+          nativeBuildInputs = [
+            fakeroot
+          ] ++ optionals enableFakechroot [
+            fakechroot
+            # for chroot
+            coreutils
+            # fakechroot needs getopt, which is provided by util-linux
+            util-linux
+          ];
           postBuild = ''
             mv $out old_out
             (cd old_out; eval "$extraCommands" )
 
             mkdir $out
-
-            fakeroot bash -c '
+            ${optionalString enableFakechroot ''
+              export FAKECHROOT_EXCLUDE_PATH=/dev:/proc:/sys:${builtins.storeDir}:$out/layer.tar
+            ''}
+            ${optionalString enableFakechroot ''fakechroot chroot $PWD/old_out ''}fakeroot bash -c '
               source $stdenv/setup
-              cd old_out
+              ${optionalString (!enableFakechroot) ''cd old_out''}
               eval "$fakeRootCommands"
               tar \
                 --sort name \
@@ -864,13 +913,13 @@ rec {
         };
 
         closureRoots = lib.optionals includeStorePaths /* normally true */ (
-          [ baseJson ] ++ contentsList
+          [ baseJson customisationLayer ]
         );
         overallClosure = writeText "closure" (lib.concatStringsSep " " closureRoots);
 
         # These derivations are only created as implementation details of docker-tools,
         # so they'll be excluded from the created images.
-        unnecessaryDrvs = [ baseJson overallClosure ];
+        unnecessaryDrvs = [ baseJson overallClosure customisationLayer ];
 
         conf = runCommand "${baseName}-conf.json"
           {
@@ -965,7 +1014,7 @@ rec {
         result = runCommand "stream-${baseName}"
           {
             inherit (conf) imageName;
-            passthru = {
+            passthru = passthru // {
               inherit (conf) imageTag;
 
               # Distinguish tarballs and exes at the Nix level so functions that

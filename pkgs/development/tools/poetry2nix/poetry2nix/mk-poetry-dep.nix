@@ -1,5 +1,4 @@
 { autoPatchelfHook
-, pkgs
 , lib
 , python
 , buildPythonPackage
@@ -17,7 +16,6 @@
 , sourceSpec
 , supportedExtensions ? lib.importJSON ./extensions.json
 , preferWheels ? false
-, __isBootstrap ? false  # Hack: Always add Poetry as a build input unless bootstrapping
 , ...
 }:
 
@@ -27,18 +25,17 @@ pythonPackages.callPackage
     , ...
     }@args:
     let
-      inherit (pkgs) stdenv;
+      inherit (python) stdenv;
       inherit (poetryLib) isCompatible getManyLinuxDeps fetchFromLegacy fetchFromPypi moduleName;
 
       inherit (import ./pep425.nix {
-        inherit lib poetryLib python;
-        inherit (pkgs) stdenv;
+        inherit lib poetryLib python stdenv;
       }) selectWheel
         ;
       fileCandidates =
         let
           supportedRegex = ("^.*(" + builtins.concatStringsSep "|" supportedExtensions + ")");
-          matchesVersion = fname: builtins.match ("^.*" + builtins.replaceStrings [ "." ] [ "\\." ] version + ".*$") fname != null;
+          matchesVersion = fname: builtins.match ("^.*" + builtins.replaceStrings [ "." "+" ] [ "\\." "\\+" ] version + ".*$") fname != null;
           hasSupportedExtension = fname: builtins.match supportedRegex fname != null;
           isCompatibleEgg = fname: ! lib.strings.hasSuffix ".egg" fname || lib.strings.hasSuffix "py${python.pythonVersion}.egg" fname;
         in
@@ -96,6 +93,12 @@ pythonPackages.callPackage
         "setuptools_scm"
         "setuptools-scm"
         "toml" # Toml is an extra for setuptools-scm
+        "tomli" # tomli is an extra for later versions of setuptools-scm
+        "flit-core"
+        "packaging"
+        "six"
+        "pyparsing"
+        "typing-extensions"
       ];
       baseBuildInputs = lib.optional (! lib.elem name skipSetupToolsSCM) pythonPackages.setuptools-scm;
       format = if isDirectory || isGit || isUrl then "pyproject" else fileInfo.format;
@@ -115,15 +118,16 @@ pythonPackages.callPackage
         pythonPackages.poetry2nixFixupHook
       ]
       ++ lib.optional (!isSource && (getManyLinuxDeps fileInfo.name).str != null) autoPatchelfHook
-      ++ lib.optional (format == "pyproject") pythonPackages.removePathDependenciesHook
-      ;
+      ++ lib.optionals (format == "pyproject") [
+        pythonPackages.removePathDependenciesHook
+        pythonPackages.removeGitDependenciesHook
+      ];
 
       buildInputs = (
         baseBuildInputs
         ++ lib.optional (stdenv.buildPlatform != stdenv.hostPlatform) pythonPackages.setuptools
         ++ lib.optional (!isSource) (getManyLinuxDeps fileInfo.name).pkg
         ++ lib.optional isDirectory buildSystemPkgs
-        ++ lib.optional (!__isBootstrap) pythonPackages.poetry
       );
 
       propagatedBuildInputs =
@@ -163,11 +167,18 @@ pythonPackages.callPackage
       src =
         if isGit then
           (
-            builtins.fetchGit {
+            builtins.fetchGit ({
               inherit (source) url;
               rev = source.resolved_reference or source.reference;
-              ref = sourceSpec.branch or sourceSpec.rev or (if sourceSpec?tag then "refs/tags/${sourceSpec.tag}" else "HEAD");
-            }
+              ref = sourceSpec.branch or (if sourceSpec ? tag then "refs/tags/${sourceSpec.tag}" else "HEAD");
+            } // (
+              let
+                nixVersion = builtins.substring 0 3 builtins.nixVersion;
+              in
+              lib.optionalAttrs ((sourceSpec ? rev) && (lib.versionAtLeast nixVersion "2.4")) {
+                allRefs = true;
+              }
+            ))
           )
         else if isUrl then
           builtins.fetchTarball

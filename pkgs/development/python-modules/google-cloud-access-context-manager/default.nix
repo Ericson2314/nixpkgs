@@ -1,20 +1,25 @@
-{ lib, buildPythonPackage, fetchPypi, google-api-core }:
+{ lib
+, buildPythonPackage
+, fetchPypi
+, google-api-core
+, pythonOlder
+}:
 
 buildPythonPackage rec {
   pname = "google-cloud-access-context-manager";
-  version = "0.1.7";
+  version = "0.1.14";
+  format = "setuptools";
+
+  disabled = pythonOlder "3.7";
 
   src = fetchPypi {
     inherit pname version;
-    sha256 = "02adf212c8d280298ffe03a0c91743618693ec394b42cbb85b4a29f8d9544afa";
+    hash = "sha256-GFS9VvdXHxP1KvJzQkgjmYXO3qpMXl8yICGZEr18O8M=";
   };
 
-  postPatch = ''
-    substituteInPlace setup.py \
-      --replace "google-api-core[grpc] >= 1.26.0, < 2.0.0dev" "google-api-core[grpc] >= 1.26.0, < 2.0.1"
-  '';
-
-  propagatedBuildInputs = [ google-api-core ];
+  propagatedBuildInputs = [
+    google-api-core
+  ];
 
   # No tests in repo
   doCheck = false;

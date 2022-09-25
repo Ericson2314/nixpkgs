@@ -7,37 +7,38 @@ let
   fpm = config.services.phpfpm.pools.roundcube;
   localDB = cfg.database.host == "localhost";
   user = cfg.database.username;
-  phpWithPspell = pkgs.php74.withExtensions ({ enabled, all }: [ all.pspell ] ++ enabled);
+  phpWithPspell = pkgs.php80.withExtensions ({ enabled, all }: [ all.pspell ] ++ enabled);
 in
 {
   options.services.roundcube = {
     enable = mkOption {
       type = types.bool;
       default = false;
-      description = ''
+      description = lib.mdDoc ''
         Whether to enable roundcube.
 
         Also enables nginx virtual host management.
-        Further nginx configuration can be done by adapting <literal>services.nginx.virtualHosts.&lt;name&gt;</literal>.
-        See <xref linkend="opt-services.nginx.virtualHosts"/> for further information.
+        Further nginx configuration can be done by adapting `services.nginx.virtualHosts.<name>`.
+        See [](#opt-services.nginx.virtualHosts) for further information.
       '';
     };
 
     hostName = mkOption {
       type = types.str;
       example = "webmail.example.com";
-      description = "Hostname to use for the nginx vhost";
+      description = lib.mdDoc "Hostname to use for the nginx vhost";
     };
 
     package = mkOption {
       type = types.package;
       default = pkgs.roundcube;
+      defaultText = literalExpression "pkgs.roundcube";
 
-      example = literalExample ''
+      example = literalExpression ''
         roundcube.withPlugins (plugins: [ plugins.persistent_login ])
       '';
 
-      description = ''
+      description = lib.mdDoc ''
         The package which contains roundcube's sources. Can be overriden to create
         an environment which contains roundcube and third-party plugins.
       '';
@@ -47,41 +48,41 @@ in
       username = mkOption {
         type = types.str;
         default = "roundcube";
-        description = ''
+        description = lib.mdDoc ''
           Username for the postgresql connection.
-          If <literal>database.host</literal> is set to <literal>localhost</literal>, a unix user and group of the same name will be created as well.
+          If `database.host` is set to `localhost`, a unix user and group of the same name will be created as well.
         '';
       };
       host = mkOption {
         type = types.str;
         default = "localhost";
-        description = ''
+        description = lib.mdDoc ''
           Host of the postgresql server. If this is not set to
-          <literal>localhost</literal>, you have to create the
+          `localhost`, you have to create the
           postgresql user and database yourself, with appropriate
           permissions.
         '';
       };
       password = mkOption {
         type = types.str;
-        description = "Password for the postgresql connection. Do not use: the password will be stored world readable in the store; use <literal>passwordFile</literal> instead.";
+        description = lib.mdDoc "Password for the postgresql connection. Do not use: the password will be stored world readable in the store; use `passwordFile` instead.";
         default = "";
       };
       passwordFile = mkOption {
         type = types.str;
-        description = "Password file for the postgresql connection. Must be readable by user <literal>nginx</literal>. Ignored if <literal>database.host</literal> is set to <literal>localhost</literal>, as peer authentication will be used.";
+        description = lib.mdDoc "Password file for the postgresql connection. Must be readable by user `nginx`. Ignored if `database.host` is set to `localhost`, as peer authentication will be used.";
       };
       dbname = mkOption {
         type = types.str;
         default = "roundcube";
-        description = "Name of the postgresql database";
+        description = lib.mdDoc "Name of the postgresql database";
       };
     };
 
     plugins = mkOption {
       type = types.listOf types.str;
       default = [];
-      description = ''
+      description = lib.mdDoc ''
         List of roundcube plugins to enable. Currently, only those directly shipped with Roundcube are supported.
       '';
     };
@@ -89,8 +90,8 @@ in
     dicts = mkOption {
       type = types.listOf types.package;
       default = [];
-      example = literalExample "with pkgs.aspellDicts; [ en fr de ]";
-      description = ''
+      example = literalExpression "with pkgs.aspellDicts; [ en fr de ]";
+      description = lib.mdDoc ''
         List of aspell dictionnaries for spell checking. If empty, spell checking is disabled.
       '';
     };
@@ -98,11 +99,11 @@ in
     maxAttachmentSize = mkOption {
       type = types.int;
       default = 18;
-      description = ''
+      description = lib.mdDoc ''
         The maximum attachment size in MB.
 
         Note: Since roundcube only uses 70% of max upload values configured in php
-        30% is added automatically to <xref linkend="opt-services.roundcube.maxAttachmentSize"/>.
+        30% is added automatically to [](#opt-services.roundcube.maxAttachmentSize).
       '';
       apply = configuredMaxAttachmentSize: "${toString (configuredMaxAttachmentSize * 1.3)}M";
     };
@@ -110,7 +111,7 @@ in
     extraConfig = mkOption {
       type = types.lines;
       default = "";
-      description = "Extra configuration for roundcube webmail instance";
+      description = lib.mdDoc "Extra configuration for roundcube webmail instance";
     };
   };
 
@@ -152,7 +153,7 @@ in
               location ~* \.php$ {
                 fastcgi_split_path_info ^(.+\.php)(/.+)$;
                 fastcgi_pass unix:${fpm.socket};
-                include ${pkgs.nginx}/conf/fastcgi_params;
+                include ${config.services.nginx.package}/conf/fastcgi_params;
                 include ${pkgs.nginx}/conf/fastcgi.conf;
               }
             '';

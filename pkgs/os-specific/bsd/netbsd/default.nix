@@ -28,6 +28,12 @@ let
     selfTargetTarget = pkgsTargetTarget.netbsd or {}; # might be missing
   };
 
+  defaultMakeFlags = [
+    "MKSOFTFLOAT=${if stdenv.hostPlatform.gcc.float or (stdenv.hostPlatform.parsed.abi.float or "hard") == "soft"
+      then "yes"
+      else "no"}"
+  ];
+
 in lib.makeScopeWithSplicing
   splicePackages
   newScope
@@ -66,7 +72,7 @@ in lib.makeScopeWithSplicing
     nativeBuildInputs = with buildPackages.netbsd; [
       bsdSetupHook netbsdSetupHook
       makeMinimal
-      install tsort lorder mandoc groff statHook rsync
+      install tsort lorder buildPackages.mandoc groff statHook rsync
     ];
     buildInputs = with self; compatIfNeeded;
 
@@ -90,6 +96,8 @@ in lib.makeScopeWithSplicing
 
     BSD_PATH = attrs.path;
 
+    makeFlags = defaultMakeFlags;
+
     strictDeps = true;
 
     meta = with lib; {
@@ -97,6 +105,7 @@ in lib.makeScopeWithSplicing
       platforms = platforms.unix;
       license = licenses.bsd2;
     };
+
   } // lib.optionalAttrs stdenv'.hasCC {
     # TODO should CC wrapper set this?
     CPP = "${stdenv'.cc.targetPrefix}cpp";
@@ -111,7 +120,17 @@ in lib.makeScopeWithSplicing
   } // lib.optionalAttrs (attrs.headersOnly or false) {
     installPhase = "includesPhase";
     dontBuild = true;
-  } // attrs));
+  } // attrs // {
+    postPatch = lib.optionalString (!stdenv'.hostPlatform.isNetBSD) ''
+      # Files that use NetBSD-specific macros need to have nbtool_config.h
+      # included ahead of them on non-NetBSD platforms.
+      set +e
+      grep -Zlr "^__RCSID
+      ^__BEGIN_DECLS" | xargs -0r grep -FLZ nbtool_config.h |
+          xargs -0tr sed -i '0,/^#/s//#include <nbtool_config.h>\n\0/'
+      set -e
+    '' + attrs.postPatch or "";
+  }));
 
   ##
   ## START BOOTSTRAPPING
@@ -173,6 +192,12 @@ in lib.makeScopeWithSplicing
     configurePlatforms = [ "build" "host" ];
     configureFlags = [
       "--cache-file=config.cache"
+    ] ++ lib.optionals stdenv.hostPlatform.isMusl [
+      # We include this header in our musl package only for legacy
+      # compatibility, and compat works fine without it (and having it
+      # know about sys/cdefs.h breaks packages like glib when built
+      # statically).
+      "ac_cv_header_sys_cdefs_h=no"
     ];
 
     nativeBuildInputs = with buildPackages.netbsd; commonDeps ++ [
@@ -185,14 +210,22 @@ in lib.makeScopeWithSplicing
 
     # temporarily use gnuinstall for bootstrapping
     # bsdinstall will be built later
-    makeFlags = [
+    makeFlags = defaultMakeFlags ++ [
       "INSTALL=${buildPackages.coreutils}/bin/install"
       "DATADIR=$(out)/share"
       # Can't sort object files yet
       "LORDER=echo"
       "TSORT=cat"
+      # Can't process man pages yet
+      "MKSHARE=no"
+    ] ++ lib.optionals stdenv.hostPlatform.isDarwin [
+      # GNU objcopy produces broken .a libs which won't link into dependers.
+      # Makefiles only invoke `$OBJCOPY -x/-X`, so cctools strip works here.
+      "OBJCOPY=${buildPackages.darwin.cctools}/bin/strip"
     ];
     RENAME = "-D";
+
+    passthru.tests = { netbsd-install = self.install; };
 
     patches = [
       ./compat-cxx-safe-header.patch
@@ -458,9 +491,9 @@ in lib.makeScopeWithSplicing
     nativeBuildInputs = with buildPackages.netbsd; [
       bsdSetupHook netbsdSetupHook
       makeMinimal
-      install mandoc groff nbperf
+      install mandoc groff nbperf rsync
     ];
-    makeFlags = [ "TOOLDIR=$(out)" ];
+    makeFlags = defaultMakeFlags ++ [ "TOOLDIR=$(out)" ];
     extraPaths = with self; [
       libterminfo.src
       (fetchNetBSD "usr.bin/tic" "9.2" "1mwdfg7yx1g43ss378qsgl5rqhsxskqvsd2mqvrn38qw54i8v5i1")
@@ -530,7 +563,7 @@ in lib.makeScopeWithSplicing
     headersOnly = true;
     noCC = true;
     meta.platforms = lib.platforms.netbsd;
-    makeFlags = [ "RPCGEN_CPP=${buildPackages.stdenv.cc.cc}/bin/cpp" ];
+    makeFlags = defaultMakeFlags ++ [ "RPCGEN_CPP=${buildPackages.stdenv.cc.cc}/bin/cpp" ];
   };
 
   common = fetchNetBSD "common" "9.2" "1pfylz9r3ap5wnwwbwczbfjb1m5qdyspzbnmxmcdkpzz2zgj64b9";
@@ -569,7 +602,7 @@ in lib.makeScopeWithSplicing
       # multiple header dirs, see above
       + self.include.postConfigure;
 
-    makeFlags = [ "FIRMWAREDIR=$(out)/libdata/firmware" ];
+    makeFlags = defaultMakeFlags ++ [ "FIRMWAREDIR=$(out)/libdata/firmware" ];
     hardeningDisable = [ "pic" ];
     MKKMOD = "no";
     NIX_CFLAGS_COMPILE = [ "-Wa,--no-warn" ];
@@ -624,7 +657,7 @@ in lib.makeScopeWithSplicing
     nativeBuildInputs = with buildPackages.netbsd; [
       bsdSetupHook netbsdSetupHook
       makeMinimal
-      byacc install tsort lorder mandoc statHook
+      byacc install tsort lorder mandoc statHook rsync
     ];
     buildInputs = with self; [ headers ];
     SHLIBINSTALLDIR = "$(out)/lib";
@@ -637,7 +670,7 @@ in lib.makeScopeWithSplicing
     buildInputs = with self; [ libterminfo libcurses ];
     propagatedBuildInputs = with self; compatIfNeeded;
     SHLIBINSTALLDIR = "$(out)/lib";
-    makeFlags = [ "LIBDO.terminfo=${self.libterminfo}/lib" ];
+    makeFlags = defaultMakeFlags ++ [ "LIBDO.terminfo=${self.libterminfo}/lib" ];
     postPatch = ''
       sed -i '1i #undef bool_t' el.h
       substituteInPlace config.h \
@@ -657,7 +690,7 @@ in lib.makeScopeWithSplicing
     sha256 = "0pq05k3dj0dfsczv07frnnji92mazmy2qqngqbx2zgqc1x251414";
     nativeBuildInputs = with buildPackages.netbsd; [
       bsdSetupHook netbsdSetupHook
-      makeMinimal install tsort lorder mandoc statHook nbperf tic
+      makeMinimal install tsort lorder mandoc statHook nbperf tic rsync
     ];
     buildInputs = with self; compatIfNeeded;
     SHLIBINSTALLDIR = "$(out)/lib";
@@ -689,7 +722,7 @@ in lib.makeScopeWithSplicing
     ] ++ lib.optional stdenv.isDarwin "-D__strong_alias(a,b)=";
     propagatedBuildInputs = with self; compatIfNeeded;
     MKDOC = "no"; # missing vfontedpr
-    makeFlags = [ "LIBDO.terminfo=${self.libterminfo}/lib" ];
+    makeFlags = defaultMakeFlags ++ [ "LIBDO.terminfo=${self.libterminfo}/lib" ];
     postPatch = lib.optionalString (!stdenv.isDarwin) ''
       substituteInPlace printw.c \
         --replace "funopen(win, NULL, __winwrite, NULL, NULL)" NULL \
@@ -716,7 +749,7 @@ in lib.makeScopeWithSplicing
     path = "lib/librpcsvc";
     version = "9.2";
     sha256 = "1q34pfiyjbrgrdqm46jwrsqms49ly6z3b0xh1wg331zga900vq5n";
-    makeFlags = [ "INCSDIR=$(out)/include/rpcsvc" ];
+    makeFlags = defaultMakeFlags ++ [ "INCSDIR=$(out)/include/rpcsvc" ];
     meta.platforms = lib.platforms.netbsd;
     nativeBuildInputs = with buildPackages.netbsd; [
       bsdSetupHook netbsdSetupHook
@@ -815,7 +848,7 @@ in lib.makeScopeWithSplicing
     # Hack to prevent a symlink being installed here for compatibility.
     SHLINKINSTALLDIR = "/usr/libexec";
     USE_FORT = "yes";
-    makeFlags = [ "BINDIR=$(out)/libexec" "CLIBOBJ=${self.libc}/lib" ];
+    makeFlags = defaultMakeFlags ++ [ "BINDIR=$(out)/libexec" "CLIBOBJ=${self.libc}/lib" ];
     extraPaths = with self; [ libc.src ] ++ libc.extraPaths;
   };
 
@@ -846,7 +879,7 @@ in lib.makeScopeWithSplicing
     SHLIBINSTALLDIR = "$(out)/lib";
     MKPICINSTALL = "yes";
     NLSDIR = "$(out)/share/nls";
-    makeFlags = [ "FILESDIR=$(out)/var/db"];
+    makeFlags = defaultMakeFlags ++ [ "FILESDIR=$(out)/var/db"];
     postInstall = ''
       pushd ${self.headers}
       find . -type d -exec mkdir -p $out/\{} \;
@@ -900,7 +933,7 @@ in lib.makeScopeWithSplicing
     noCC = true;
     version = "9.2";
     sha256 = "0svfc0byk59ri37pyjslv4c4rc7zw396r73mr593i78d39q5g3ad";
-    makeFlags = [ "BINDIR=$(out)/share" ];
+    makeFlags = defaultMakeFlags ++ [ "BINDIR=$(out)/share" ];
   };
 
   misc = mkDerivation {
@@ -908,7 +941,7 @@ in lib.makeScopeWithSplicing
     noCC = true;
     version = "9.2";
     sha256 = "1j2cdssdx6nncv8ffj7f7ybl7m9hadjj8vm8611skqdvxnjg6nbc";
-    makeFlags = [ "BINDIR=$(out)/share" ];
+    makeFlags = defaultMakeFlags ++ [ "BINDIR=$(out)/share" ];
   };
 
   man = mkDerivation {
@@ -916,7 +949,15 @@ in lib.makeScopeWithSplicing
     noCC = true;
     version = "9.2";
     sha256 = "1l4lmj4kmg8dl86x94sr45w0xdnkz8dn4zjx0ipgr9bnq98663zl";
-    makeFlags = [ "FILESDIR=$(out)/share" ];
+    # man0 generates a man.pdf using ps2pdf, but doesn't install it later,
+    # so we can avoid the dependency on ghostscript
+    postPatch = ''
+      substituteInPlace man0/Makefile --replace "ps2pdf" "echo noop "
+    '';
+    makeFlags = defaultMakeFlags ++ [
+      "FILESDIR=$(out)/share"
+      "MKRUMP=no" # would require to have additional path sys/rump/share/man
+    ];
   };
   #
   # END MISCELLANEOUS

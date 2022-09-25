@@ -2,7 +2,7 @@
 , buildPythonPackage
 , fetchPypi
 , inflection
-, ruamel_yaml
+, ruamel-yaml
 , setuptools-scm
 , six
 , coreapi
@@ -14,16 +14,16 @@
 
 buildPythonPackage rec {
   pname = "drf-yasg";
-  version = "1.20.0";
+  version = "1.21.3";
 
   src = fetchPypi {
     inherit pname version;
-    sha256 = "d50f197c7f02545d0b736df88c6d5cf874f8fea2507ad85ad7de6ae5bf2d9e5a";
+    sha256 = "sha256-su67Q4+mQVA6CNrHkb4kGD6ibbz+NxqYJOqR9uOpiKo=";
   };
 
   postPatch = ''
     # https://github.com/axnsan12/drf-yasg/pull/710
-    substituteInPlace requirements/base.txt --replace packaging ""
+    sed -i "/packaging/d" requirements/base.txt
   '';
 
   nativeBuildInputs = [
@@ -33,7 +33,7 @@ buildPythonPackage rec {
   propagatedBuildInputs = [
     six
     inflection
-    ruamel_yaml
+    ruamel-yaml
     coreapi
     djangorestframework
   ];

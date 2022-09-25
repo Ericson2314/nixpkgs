@@ -1,4 +1,4 @@
-{ lib, stdenv, fetchurl, gettext }:
+{ lib, stdenv, fetchurl, gettext, gawk, bash }:
 
 stdenv.mkDerivation rec {
   pname = "m17n-db";
@@ -9,10 +9,12 @@ stdenv.mkDerivation rec {
     sha256 = "0vfw7z9i2s9np6nmx1d4dlsywm044rkaqarn7akffmb6bf1j6zv5";
   };
 
-  buildInputs = [ gettext ];
+  nativeBuildInputs = [ gettext ];
+  buildInputs = [ gettext gawk bash ];
 
-  configureFlags = lib.optional (stdenv ? glibc)
-    "--with-charmaps=${stdenv.glibc.out}/share/i18n/charmaps"
+  strictDeps = true;
+
+  configureFlags = [ "--with-charmaps=${stdenv.cc.libc}/share/i18n/charmaps" ]
   ;
 
   meta = {

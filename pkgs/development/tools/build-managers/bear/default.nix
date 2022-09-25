@@ -7,7 +7,6 @@
 , openssl
 , nlohmann_json
 , gtest
-, fmt
 , spdlog
 , c-ares
 , abseil-cpp
@@ -18,13 +17,13 @@
 
 stdenv.mkDerivation rec {
   pname = "bear";
-  version = "3.0.13";
+  version = "3.0.20";
 
   src = fetchFromGitHub {
     owner = "rizsotto";
     repo = pname;
     rev = version;
-    sha256 = "sha256-oMrTH3GjxiLBKX0i3ZuV+bNqpA7PkoAQAb/08Q/uELs=";
+    sha256 = "sha256-8hA0Y/AGczFwggxkTG7PQKOVnr2Oizx4OH38nS5jCU0=";
   };
 
   nativeBuildInputs = [ cmake pkg-config ];
@@ -35,7 +34,6 @@ stdenv.mkDerivation rec {
     openssl
     nlohmann_json
     gtest
-    fmt
     spdlog
     c-ares
     abseil-cpp
@@ -48,9 +46,6 @@ stdenv.mkDerivation rec {
     # Default libexec would be set to /nix/store/*-bear//nix/store/*-bear/libexec/...
     ./no-double-relative.patch
   ];
-
-  # 'path' is unavailable: introduced in macOS 10.15
-  CXXFLAGS = lib.optional (stdenv.hostPlatform.system == "x86_64-darwin") "-D_LIBCPP_DISABLE_AVAILABILITY";
 
   meta = with lib; {
     description = "Tool that generates a compilation database for clang tooling";

@@ -13,7 +13,7 @@
 , glib
 , appstream
 , libsoup
-, libhandy
+, libadwaita
 , polkit
 , isocodes
 , gspell
@@ -21,11 +21,10 @@
 , gobject-introspection
 , flatpak
 , fwupd
-, gtk3
+, gtk4
 , gsettings-desktop-schemas
 , gnome-desktop
 , libxmlb
-, gnome-online-accounts
 , json-glib
 , libsecret
 , valgrind-light
@@ -38,16 +37,16 @@
 }:
 
 let
-  withFwupd = stdenv.isx86_64 || stdenv.isi686;
+  withFwupd = stdenv.hostPlatform.isx86;
 in
 
 stdenv.mkDerivation rec {
   pname = "gnome-software";
-  version = "40.4";
+  version = "42.4";
 
   src = fetchurl {
     url = "mirror://gnome/sources/gnome-software/${lib.versions.major version}/${pname}-${version}.tar.xz";
-    sha256 = "voxhGoAvcXGNzLvUVE7ZaIcxGYRv03t7dqeq1yx5mL8=";
+    sha256 = "cRgp7mf58qG2S/oXQTdzuY8NxdIZ649sohfNZXK7SnQ=";
   };
 
   patches = [
@@ -74,12 +73,12 @@ stdenv.mkDerivation rec {
   ];
 
   buildInputs = [
-    gtk3
+    gtk4
     glib
     packagekit
     appstream
     libsoup
-    libhandy
+    libadwaita
     gsettings-desktop-schemas
     gnome-desktop
     gspell
@@ -89,7 +88,6 @@ stdenv.mkDerivation rec {
     polkit
     flatpak
     libxmlb
-    gnome-online-accounts
     libsysprof-capture
   ] ++ lib.optionals withFwupd [
     fwupd
@@ -99,6 +97,8 @@ stdenv.mkDerivation rec {
     "-Dgudev=false"
     # FIXME: package malcontent parental controls
     "-Dmalcontent=false"
+    # Needs flatpak to upgrade
+    "-Dsoup2=true"
   ] ++ lib.optionals (!withFwupd) [
     "-Dfwupd=false"
   ];

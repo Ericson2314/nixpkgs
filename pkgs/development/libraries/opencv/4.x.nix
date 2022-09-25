@@ -12,6 +12,8 @@
 , gflags
 , protobuf
 , config
+, ocl-icd
+, buildPackages
 
 , enableJPEG ? true
 , libjpeg
@@ -24,6 +26,8 @@
 , enableEXR ? !stdenv.isDarwin
 , openexr
 , ilmbase
+, enableJPEG2000 ? true
+, openjpeg
 , enableEigen ? true
 , eigen
 , enableOpenblas ? true
@@ -72,20 +76,20 @@
 }:
 
 let
-  version = "4.5.2";
+  version = "4.6.0";
 
   src = fetchFromGitHub {
     owner = "opencv";
     repo = "opencv";
     rev = version;
-    sha256 = "sha256-pxi1VBF4txvRqspdqvCsAQ3XKzl633/o3wyOgD9wid4=";
+    sha256 = "sha256-zPkMc6xEDZU5TlBH3LAzvB17XgocSPeHVMG/U6kfpxg=";
   };
 
   contribSrc = fetchFromGitHub {
     owner = "opencv";
     repo = "opencv_contrib";
     rev = version;
-    sha256 = "sha256-iMenRTY+qeL7WRgnRuQbsHflYDakE7pWWSHeIjrg0Iw=";
+    sha256 = "sha256-hjRqT7V4Sz7t4IEy89F5M+b0x2ObBbqF8GWLKhWFXtE=";
   };
 
   # Contrib must be built in order to enable Tesseract support:
@@ -173,7 +177,7 @@ let
     dst = ".cache/ade";
   };
 
-  # See opencv/modules/wechat_qrcode/CMakeLists.txt
+  # See opencv_contrib/modules/wechat_qrcode/CMakeLists.txt
   wechat_qrcode = {
     src = fetchFromGitHub {
       owner = "opencv";
@@ -214,11 +218,13 @@ stdenv.mkDerivation {
     cp --no-preserve=mode -r "${contribSrc}/modules" "$NIX_BUILD_TOP/source/opencv_contrib"
   '';
 
-  # This prevents cmake from using libraries in impure paths (which
-  # causes build failure on non NixOS)
+  # Ensures that we use the system OpenEXR rather than the vendored copy of the source included with OpenCV.
   patches = [
     ./cmake-don-t-use-OpenCVFindOpenEXR.patch
   ] ++ lib.optional enableCuda ./cuda_opt_flow.patch;
+
+  # This prevents cmake from using libraries in impure paths (which
+  # causes build failure on non NixOS)
   postPatch = ''
     sed -i '/Add these standard paths to the search paths for FIND_LIBRARY/,/^\s*$/{d}' CMakeLists.txt
   '';
@@ -241,9 +247,9 @@ stdenv.mkDerivation {
     echo '"(build info elided)"' > modules/core/version_string.inc
   '';
 
-  buildInputs =
-    [ zlib pcre hdf5 boost gflags protobuf ]
+  buildInputs = [ zlib pcre boost gflags protobuf ]
     ++ lib.optional enablePython pythonPackages.python
+    ++ lib.optional (stdenv.buildPlatform == stdenv.hostPlatform) hdf5
     ++ lib.optional enableGtk2 gtk2
     ++ lib.optional enableGtk3 gtk3
     ++ lib.optional enableVtk vtk
@@ -252,6 +258,7 @@ stdenv.mkDerivation {
     ++ lib.optional enableTIFF libtiff
     ++ lib.optional enableWebP libwebp
     ++ lib.optionals enableEXR [ openexr ilmbase ]
+    ++ lib.optional enableJPEG2000 openjpeg
     ++ lib.optional enableFfmpeg ffmpeg
     ++ lib.optionals (enableFfmpeg && stdenv.isDarwin)
       [ VideoDecodeAcceleration bzip2 ]
@@ -266,13 +273,18 @@ stdenv.mkDerivation {
     # tesseract & leptonica.
     ++ lib.optionals enableTesseract [ tesseract leptonica ]
     ++ lib.optional enableTbb tbb
-    ++ lib.optionals enableCuda [ cudatoolkit nvidia-optical-flow-sdk ]
     ++ lib.optionals stdenv.isDarwin [ bzip2 AVFoundation Cocoa VideoDecodeAcceleration CoreMedia MediaToolbox ]
     ++ lib.optionals enableDocs [ doxygen graphviz-nox ];
 
-  propagatedBuildInputs = lib.optional enablePython pythonPackages.numpy;
+  propagatedBuildInputs = lib.optional enablePython pythonPackages.numpy
+    ++ lib.optionals enableCuda [ cudatoolkit nvidia-optical-flow-sdk ];
 
-  nativeBuildInputs = [ cmake pkg-config unzip ];
+  nativeBuildInputs = [ cmake pkg-config unzip ]
+  ++ lib.optionals enablePython [
+    pythonPackages.pip
+    pythonPackages.wheel
+    pythonPackages.setuptools
+  ];
 
   NIX_CFLAGS_COMPILE = lib.optionalString enableEXR "-I${ilmbase.dev}/include/OpenEXR";
 
@@ -283,17 +295,23 @@ stdenv.mkDerivation {
     "-DOPENCV_GENERATE_PKGCONFIG=ON"
     "-DWITH_OPENMP=ON"
     "-DBUILD_PROTOBUF=OFF"
+    "-DProtobuf_PROTOC_EXECUTABLE=${lib.getExe buildPackages.protobuf}"
     "-DPROTOBUF_UPDATE_FILES=ON"
     "-DOPENCV_ENABLE_NONFREE=${printEnabled enableUnfree}"
     "-DBUILD_TESTS=OFF"
     "-DBUILD_PERF_TESTS=OFF"
     "-DBUILD_DOCS=${printEnabled enableDocs}"
+    # "OpenCV disables pkg-config to avoid using of host libraries. Consider using PKG_CONFIG_LIBDIR to specify target SYSROOT"
+    # but we have proper separation of build and host libs :), fixes cross
+    "-DOPENCV_ENABLE_PKG_CONFIG=ON"
     (opencvFlag "IPP" enableIpp)
     (opencvFlag "TIFF" enableTIFF)
     (opencvFlag "WEBP" enableWebP)
     (opencvFlag "JPEG" enableJPEG)
     (opencvFlag "PNG" enablePNG)
     (opencvFlag "OPENEXR" enableEXR)
+    (opencvFlag "OPENJPEG" enableJPEG2000)
+    "-DWITH_JASPER=OFF" # OpenCV falls back to a vendored copy of Jasper when OpenJPEG is disabled
     (opencvFlag "CUDA" enableCuda)
     (opencvFlag "CUBLAS" enableCuda)
     (opencvFlag "TBB" enableTbb)
@@ -305,6 +323,8 @@ stdenv.mkDerivation {
   ] ++ lib.optionals stdenv.isDarwin [
     "-DWITH_OPENCL=OFF"
     "-DWITH_LAPACK=OFF"
+  ] ++ lib.optionals (!stdenv.isDarwin) [
+    "-DOPENCL_LIBRARY=${ocl-icd}/lib/libOpenCL.so"
   ] ++ lib.optionals enablePython [
     "-DOPENCV_SKIP_PYTHON_LOADER=ON"
   ];
@@ -328,6 +348,21 @@ stdenv.mkDerivation {
   postInstall = ''
     sed -i "s|{exec_prefix}/$out|{exec_prefix}|;s|{prefix}/$out|{prefix}|" \
       "$out/lib/pkgconfig/opencv4.pc"
+  ''
+  # install python distribution information, so other packages can `import opencv`
+  + lib.optionalString enablePython ''
+    pushd $NIX_BUILD_TOP/$sourceRoot/modules/python/package
+    python -m pip wheel --verbose --no-index --no-deps --no-clean --no-build-isolation --wheel-dir dist .
+
+    pushd dist
+    python -m pip install ./*.whl --no-index --no-warn-script-location --prefix="$out" --no-cache
+
+    # the cv2/__init__.py just tries to check provide "nice user feedback" if the installation is bad
+    # however, this also causes infinite recursion when used by other packages
+    rm -r $out/${pythonPackages.python.sitePackages}/cv2
+
+    popd
+    popd
   '';
 
   passthru = lib.optionalAttrs enablePython { pythonPath = [ ]; };

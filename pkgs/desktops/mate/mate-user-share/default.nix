@@ -1,5 +1,21 @@
-{ lib, stdenv, fetchurl, pkg-config, gettext, itstool, gtk3, dbus-glib, libnotify, libxml2
-, libcanberra-gtk3, mod_dnssd, apacheHttpd, hicolor-icon-theme, mate, wrapGAppsHook, mateUpdateScript }:
+{ lib
+, stdenv
+, fetchurl
+, pkg-config
+, gettext
+, itstool
+, gtk3
+, dbus-glib
+, libnotify
+, libxml2
+, libcanberra-gtk3
+, mod_dnssd
+, apacheHttpd
+, hicolor-icon-theme
+, mate
+, wrapGAppsHook
+, mateUpdateScript
+}:
 
 stdenv.mkDerivation rec {
   pname = "mate-user-share";
@@ -39,7 +55,7 @@ stdenv.mkDerivation rec {
 
   configureFlags = [
     "--with-httpd=${apacheHttpd.out}/bin/httpd"
-    "--with-modules-path=${apacheHttpd.dev}/modules"
+    "--with-modules-path=${apacheHttpd}/modules"
     "--with-cajadir=$(out)/lib/caja/extensions-2.0"
   ];
 
@@ -52,6 +68,6 @@ stdenv.mkDerivation rec {
     homepage = "https://github.com/mate-desktop/mate-user-share";
     license = with licenses; [ gpl2Plus ];
     platforms = platforms.unix;
-    maintainers = [ maintainers.romildo ];
+    maintainers = teams.mate.members;
   };
 }

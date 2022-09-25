@@ -1,32 +1,33 @@
 { lib
-, fetchPypi
-, fetchpatch
 , buildPythonPackage
+, fetchFromGitHub
+, fetchpatch
 , flake8
-, flake8-polyfill
 , python
 }:
 
 buildPythonPackage rec {
   pname = "pep8-naming";
-  version = "0.11.1";
+  version = "0.13.1";
 
-  src = fetchPypi {
-    inherit pname version;
-    sha256 = "0937rnk3c2z1jkdmbw9hfm80p5k467q7rqhn6slfiprs4kflgpd1";
+  src = fetchFromGitHub {
+    owner = "PyCQA";
+    repo = pname;
+    rev = version;
+    sha256 = "sha256-NG4hLZcOMKprUyMnzkHRmUCFGyYgvT6ydBQNpgWE9h0=";
   };
 
   patches = [
+    # Fixes tests for flake8 => 5
+    # Remove on next release
     (fetchpatch {
-      # Fix tests by setting extended-default-ignore to an empty list
-      url = "https://github.com/PyCQA/pep8-naming/commit/6d62db81d7967e123e29673a4796fefec6f06d26.patch";
-      sha256 = "1jpr2dga8sphksik3izyzq9hiszyki691mwnh2rjzd2vpgnv8cxf";
+      url = "https://github.com/PyCQA/pep8-naming/commit/c8808a0907f64b5d081cff8d3f9443e5ced1474e.patch";
+      sha256 = "sha256-4c+a0viS0rXuxj+TuIfgrKZjnrjiJjDoYBbNp3+6Ed0=";
     })
   ];
 
   propagatedBuildInputs = [
     flake8
-    flake8-polyfill
   ];
 
   checkPhase = ''

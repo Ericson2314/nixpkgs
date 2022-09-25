@@ -1,45 +1,54 @@
-{ stdenv
+{ stdenv, lib
+, addOpenGLRunpath
 , alsa-lib
 , autoPatchelfHook
 , cairo
 , fetchurl
 , flac
-, gcc11
+, gcc12
 , gnome
 , gssdp
 , gupnp
-, lib
+, gupnp-av
+, lame
 , libgmpris
+, libusb-compat-0_1
 , llvmPackages_10
+, meson
+, mpg123
+, ninja
 , rpmextract
 , wavpack
 }:
-
 stdenv.mkDerivation rec {
   pname = "hqplayerd";
-  version = "4.25.2-66";
+  version = "4.32.4-94sse42";
 
   src = fetchurl {
-    url = "https://www.signalyst.eu/bins/${pname}/fc34/${pname}-${version}.fc34.x86_64.rpm";
-    sha256 = "sha256-BZGtv/Bumkltk6fJw3+RG1LZc3pGpd8e4DvgLxOTvcQ=";
+    url = "https://www.signalyst.eu/bins/${pname}/fc36/${pname}-${version}.fc36.x86_64.rpm";
+    hash = "sha256-hTckJdZzD/Sx/uV30dlGiT46QvzIGp6BQdNNRlQ/Mgw=";
   };
 
   unpackPhase = ''
     ${rpmextract}/bin/rpmextract $src
   '';
 
-  nativeBuildInputs = [ autoPatchelfHook rpmextract ];
+  nativeBuildInputs = [ addOpenGLRunpath autoPatchelfHook rpmextract ];
 
   buildInputs = [
     alsa-lib
     cairo
     flac
-    gcc11.cc.lib
+    gcc12.cc.lib
     gnome.rygel
     gssdp
     gupnp
+    gupnp-av
+    lame
     libgmpris
+    libusb-compat-0_1
     llvmPackages_10.openmp
+    mpg123
     wavpack
   ];
 
@@ -49,34 +58,37 @@ stdenv.mkDerivation rec {
   installPhase = ''
     runHook preInstall
 
-    # main executable
-    mkdir -p $out/bin
-    cp ./usr/bin/hqplayerd $out/bin
+    # executables
+    mkdir -p $out
+    cp -rv ./usr/bin $out/bin
 
-    # main configuration
-    mkdir -p $out/etc/hqplayer
-    cp ./etc/hqplayer/hqplayerd.xml $out/etc/hqplayer/
+    # libs
+    mkdir -p $out
+    cp -rv ./opt/hqplayerd/lib $out
+
+    # configuration
+    mkdir -p $out/etc
+    cp -rv ./etc/hqplayer $out/etc/
 
     # udev rules
-    mkdir -p $out/etc/udev/rules.d
-    cp ./etc/udev/rules.d/50-taudio2.rules $out/etc/udev/rules.d/
+    mkdir -p $out/etc/udev
+    cp -rv ./etc/udev/rules.d $out/etc/udev/
 
     # kernel module cfgs
-    mkdir -p $out/etc/modules-load.d
-    cp ./etc/modules-load.d/taudio2.conf $out/etc/modules-load.d/
+    mkdir -p $out/etc
+    cp -rv ./etc/modules-load.d $out/etc/
 
     # systemd service file
-    mkdir -p $out/lib/systemd/system
-    cp ./usr/lib/systemd/system/hqplayerd.service $out/lib/systemd/system/
+    mkdir -p $out/lib/systemd
+    cp -rv ./usr/lib/systemd/system $out/lib/systemd/
 
     # documentation
-    mkdir -p $out/share/doc/hqplayerd
-    cp ./usr/share/doc/hqplayerd/* $out/share/doc/hqplayerd/
+    mkdir -p $out/share/doc
+    cp -rv ./usr/share/doc/hqplayerd $out/share/doc/
 
     # misc service support files
-    mkdir -p $out/var/lib/hqplayer
-    cp -r ./var/lib/hqplayer/web $out/var/lib/hqplayer
-
+    mkdir -p $out/var/lib
+    cp -rv ./var/lib/hqplayer $out/var/lib/
     runHook postInstall
   '';
 
@@ -86,14 +98,20 @@ stdenv.mkDerivation rec {
       --replace "NetworkManager-wait-online.service" ""
   '';
 
-  postFixup = ''
-    patchelf --replace-needed libomp.so.5 libomp.so $out/bin/hqplayerd
+  # NB: addOpenGLRunpath needs to run _after_ autoPatchelfHook, which runs in
+  # postFixup, so we tack it on here.
+  doInstallCheck = true;
+  installCheckPhase = ''
+    addOpenGLRunpath $out/bin/hqplayerd
+    $out/bin/hqplayerd --version
   '';
 
   meta = with lib; {
     homepage = "https://www.signalyst.com/custom.html";
     description = "High-end upsampling multichannel software embedded HD-audio player";
+    sourceProvenance = with sourceTypes; [ binaryNativeCode ];
     license = licenses.unfree;
+    platforms = [ "x86_64-linux" ];
     maintainers = with maintainers; [ lovesegfault ];
   };
 }

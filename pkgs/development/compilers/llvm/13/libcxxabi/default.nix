@@ -1,6 +1,7 @@
-{ lib, stdenv, llvm_meta, cmake, python3, src, libunwind, version
+{ lib, stdenv, llvm_meta, cmake, python3, src, cxx-headers, libunwind, version
 , enableShared ? !stdenv.hostPlatform.isStatic
-, libcxx
+, standalone ? stdenv.hostPlatform.useLLVM or false
+, withLibunwind ? !stdenv.isDarwin && !stdenv.isFreeBSD && !stdenv.hostPlatform.isWasm
 }:
 
 stdenv.mkDerivation rec {
@@ -14,8 +15,6 @@ stdenv.mkDerivation rec {
 
   postUnpack = lib.optionalString stdenv.isDarwin ''
     export TRIPLE=x86_64-apple-darwin
-  '' + lib.optionalString stdenv.hostPlatform.isMusl ''
-    patch -p1 -d libcxx -i ${../../libcxx-0001-musl-hacks.patch}
   '' + lib.optionalString stdenv.hostPlatform.isWasm ''
     patch -p1 -d llvm -i ${./wasm.patch}
   '';
@@ -25,12 +24,13 @@ stdenv.mkDerivation rec {
   ];
 
   nativeBuildInputs = [ cmake python3 ];
-  buildInputs = lib.optional (!stdenv.isDarwin && !stdenv.isFreeBSD && !stdenv.hostPlatform.isWasm) libunwind;
+  buildInputs = lib.optional withLibunwind libunwind;
 
   cmakeFlags = [
-    "-DLIBCXXABI_LIBCXX_INCLUDES=${libcxx.dev}/include/c++/v1"
-  ] ++ lib.optionals (stdenv.hostPlatform.useLLVM or false) [
+    "-DLIBCXXABI_LIBCXX_INCLUDES=${cxx-headers}/include/c++/v1"
+  ] ++ lib.optionals standalone [
     "-DLLVM_ENABLE_LIBCXX=ON"
+  ] ++ lib.optionals (standalone && withLibunwind) [
     "-DLIBCXXABI_USE_LLVM_UNWINDER=ON"
   ] ++ lib.optionals stdenv.hostPlatform.isWasm [
     "-DLIBCXXABI_ENABLE_THREADS=OFF"
@@ -39,28 +39,20 @@ stdenv.mkDerivation rec {
     "-DLIBCXXABI_ENABLE_SHARED=OFF"
   ];
 
-  installPhase = if stdenv.isDarwin
-    then ''
-      for file in lib/*.dylib; do
-        # this should be done in CMake, but having trouble figuring out
-        # the magic combination of necessary CMake variables
-        # if you fancy a try, take a look at
-        # https://gitlab.kitware.com/cmake/community/-/wikis/doc/cmake/RPATH-handling
-        install_name_tool -id $out/$file $file
-      done
-      make install
-      install -d 755 $out/include
-      install -m 644 ../include/*.h $out/include
-    ''
-    else ''
-      install -d -m 755 $out/include $out/lib
-      install -m 644 lib/libc++abi.a $out/lib
-      install -m 644 ../include/cxxabi.h $out/include
-    '' + lib.optionalString enableShared ''
-      install -m 644 lib/libc++abi.so.1.0 $out/lib
-      ln -s libc++abi.so.1.0 $out/lib/libc++abi.so
-      ln -s libc++abi.so.1.0 $out/lib/libc++abi.so.1
-    '';
+  preInstall = lib.optionalString stdenv.isDarwin ''
+    for file in lib/*.dylib; do
+      # this should be done in CMake, but having trouble figuring out
+      # the magic combination of necessary CMake variables
+      # if you fancy a try, take a look at
+      # https://gitlab.kitware.com/cmake/community/-/wikis/doc/cmake/RPATH-handling
+      install_name_tool -id $out/$file $file
+    done
+  '';
+
+  postInstall = ''
+    mkdir -p "$dev/include"
+    install -m 644 ../include/${if stdenv.isDarwin then "*" else "cxxabi.h"} "$dev/include"
+  '';
 
   meta = llvm_meta // {
     homepage = "https://libcxxabi.llvm.org/";

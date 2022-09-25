@@ -1,63 +1,71 @@
 { lib
 , buildPythonPackage
 , fetchPypi
+, hatchling
 , jsonschema
 , pythonOlder
 , requests
 , pytestCheckHook
-, pyjson5
-, Babel
+, json5
+, babel
 , jupyter_server
 , openapi-core
+, pytest-timeout
 , pytest-tornasync
 , ruamel-yaml
-, strict-rfc3339
+, importlib-metadata
 }:
 
 buildPythonPackage rec {
   pname = "jupyterlab_server";
-  version = "2.7.0";
+  version = "2.15.1";
+  format = "pyproject";
   disabled = pythonOlder "3.6";
 
   src = fetchPypi {
     inherit pname version;
-    sha256 = "31457ef564febc42043bc539356c804f6f9144f602e2852150bf0820ed6d7e18";
+    sha256 = "sha256-MFMTlw4THFkM93u2uMp+mFkbwwQRHo0QO8kdIS6UeW8=";
   };
 
-  postPatch = ''
-    sed -i "/^addopts/d" pyproject.toml
-  '';
+  nativeBuildInputs = [
+    hatchling
+  ];
 
-  propagatedBuildInputs = [ requests jsonschema pyjson5 Babel jupyter_server ];
+  propagatedBuildInputs = [
+    requests
+    jsonschema
+    json5
+    babel
+    jupyter_server
+  ] ++ lib.optional (pythonOlder "3.10") importlib-metadata;
 
   checkInputs = [
     openapi-core
     pytestCheckHook
+    pytest-timeout
     pytest-tornasync
     ruamel-yaml
-    strict-rfc3339
   ];
 
-  pytestFlagsArray = [ "--pyargs" "jupyterlab_server" ];
+  postPatch = ''
+    # translation tests try to install additional packages into read only paths
+    rm -r tests/translations/
+  '';
 
-  disabledTests = [
-    # AttributeError: 'SpecPath' object has no attribute 'paths'
-    "test_get_listing"
-    "test_get_settings"
-    "test_get_federated"
-    "test_listing"
-    "test_patch"
-    "test_patch_unicode"
-    "test_get_theme"
-    "test_delete"
-    "test_get_non_existant"
-    "test_get"
+  preCheck = ''
+    export HOME=$(mktemp -d)
+  '';
+
+  pytestFlagsArray = [
+    # DeprecationWarning: The distutils package is deprecated and slated for removal in Python 3.12.
+    # Use setuptools or check PEP 632 for potential alternatives.
+    "-W ignore::DeprecationWarning"
   ];
 
   __darwinAllowLocalNetworking = true;
 
   meta = with lib; {
-    description = "JupyterLab Server";
+    description = "A set of server components for JupyterLab and JupyterLab like applications";
     homepage = "https://jupyter.org";
     license = licenses.bsdOriginal;
     maintainers = [ maintainers.costrouc ];

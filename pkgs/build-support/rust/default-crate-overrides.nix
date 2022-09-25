@@ -1,7 +1,35 @@
-{ lib, stdenv, pkg-config, curl, darwin, libiconv, libgit2, libssh2,
-  openssl, sqlite, zlib, dbus, dbus-glib, gdk-pixbuf, cairo, python3,
-  libsodium, postgresql, gmp, foundationdb, capnproto, nettle, clang,
-  llvmPackages, linux-pam, ... }:
+{ lib
+, stdenv
+, pkg-config
+, curl
+, darwin
+, libgit2
+, libssh2
+, openssl
+, sqlite
+, zlib
+, dbus
+, dbus-glib
+, gdk-pixbuf
+, cairo
+, python3
+, libsodium
+, postgresql
+, gmp
+, foundationdb
+, capnproto
+, nettle
+, clang
+, llvmPackages
+, linux-pam
+, cmake
+, glib
+, freetype
+, rdkafka
+, udev
+, libevdev
+, ...
+}:
 
 let
   inherit (darwin.apple_sdk.frameworks) CoreFoundation Security;
@@ -17,25 +45,35 @@ in
 
   cargo = attrs: {
     buildInputs = [ openssl zlib curl ]
-      ++ lib.optionals stdenv.isDarwin [ CoreFoundation Security libiconv ];
+      ++ lib.optionals stdenv.isDarwin [ CoreFoundation Security ];
   };
 
   libz-sys = attrs: {
     nativeBuildInputs = [ pkg-config ];
     buildInputs = [ zlib ];
-    extraLinkFlags = ["-L${zlib.out}/lib"];
+    extraLinkFlags = [ "-L${zlib.out}/lib" ];
   };
 
   curl-sys = attrs: {
     nativeBuildInputs = [ pkg-config ];
     buildInputs = [ zlib curl ];
     propagatedBuildInputs = [ curl zlib ];
-    extraLinkFlags = ["-L${zlib.out}/lib"];
+    extraLinkFlags = [ "-L${zlib.out}/lib" ];
   };
 
   dbus = attrs: {
     nativeBuildInputs = [ pkg-config ];
     buildInputs = [ dbus ];
+  };
+
+  evdev-sys = attrs: {
+    LIBGIT2_SYS_USE_PKG_CONFIG = true;
+    nativeBuildInputs = [ pkg-config ];
+    buildInputs = [ libevdev ];
+  };
+
+  expat-sys = attrs: {
+    nativeBuildInputs = [ cmake ];
   };
 
   foundationdb-sys = attrs: {
@@ -50,6 +88,16 @@ in
 
   foundationdb = attrs: {
     buildInputs = [ foundationdb ];
+  };
+
+  freetype-sys = attrs: {
+    nativeBuildInputs = [ cmake ];
+    buildInputs = [ freetype ];
+  };
+
+  glib-sys = attrs: {
+    nativeBuildInputs = [ pkg-config ];
+    buildInputs = [ glib ];
   };
 
   gobject-sys = attrs: {
@@ -89,6 +137,11 @@ in
     buildInputs = [ dbus ];
   };
 
+  libudev-sys = attrs: {
+    nativeBuildInputs = [ pkg-config ];
+    buildInputs = [ udev ];
+  };
+
   nettle-sys = attrs: {
     nativeBuildInputs = [ pkg-config ];
     buildInputs = [ nettle clang ];
@@ -113,13 +166,18 @@ in
     buildInputs = [ postgresql ];
   };
 
+  rdkafka-sys = attr: {
+    nativeBuildInputs = [ pkg-config ];
+    buildInputs = [ rdkafka ];
+  };
+
   rink = attrs: {
     buildInputs = [ gmp ];
-    crateBin = [ {  name = "rink"; path = "src/bin/rink.rs"; } ];
+    crateBin = [{ name = "rink"; path = "src/bin/rink.rs"; }];
   };
 
   security-framework-sys = attr: {
-    propagatedBuildInputs = [ Security ];
+    propagatedBuildInputs = lib.optional stdenv.isDarwin Security;
   };
 
   sequoia-openpgp = attrs: {
@@ -154,6 +212,11 @@ in
 
   serde_derive = attrs: {
     buildInputs = lib.optional stdenv.isDarwin Security;
+  };
+
+  servo-fontconfig-sys = attrs: {
+    nativeBuildInputs = [ pkg-config ];
+    buildInputs = [ freetype ];
   };
 
   thrussh-libsodium = attrs: {

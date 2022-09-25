@@ -10,13 +10,13 @@
 
 stdenv.mkDerivation rec {
   pname = "ser2net";
-  version = "4.3.3";
+  version = "4.3.7";
 
   src = fetchFromGitHub {
     owner = "cminyard";
     repo = pname;
     rev = "v${version}";
-    sha256 = "sha256-p8iQifCf/IXXPdbjB3pgcw8FgkqRLShHSSeTzJ83Ecg=";
+    hash = "sha256-5/gdKueqWKEhHDho+q719J6lQt4XG9JExWef5/Y3y1s=";
   };
 
   passthru = {
@@ -31,8 +31,8 @@ stdenv.mkDerivation rec {
 
   meta = with lib; {
     description = "Serial to network connection server";
-    homepage = "https://sourceforge.net/projects/ser2net/";
-    license = licenses.gpl2;
+    homepage = "https://github.com/cminyard/ser2net";
+    license = licenses.gpl2Only;
     maintainers = with maintainers; [ emantor ];
     platforms = with platforms; linux;
   };

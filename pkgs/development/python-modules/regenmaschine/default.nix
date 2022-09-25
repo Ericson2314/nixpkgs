@@ -14,15 +14,16 @@
 
 buildPythonPackage rec {
   pname = "regenmaschine";
-  version = "3.1.5";
+  version = "2022.09.1";
   format = "pyproject";
-  disabled = pythonOlder "3.6";
+
+  disabled = pythonOlder "3.8";
 
   src = fetchFromGitHub {
     owner = "bachya";
     repo = pname;
-    rev = version;
-    sha256 = "0jm4x66kk7aa19hablkij43vsnsyy85a638zjfjsqghwqppwklgw";
+    rev = "refs/tags/${version}";
+    sha256 = "sha256-mii7D93hi+i1F5shED21RoOtN2/RNoYG8vA/+qF8nEY=";
   };
 
   nativeBuildInputs = [
@@ -42,7 +43,14 @@ buildPythonPackage rec {
     pytestCheckHook
   ];
 
-  pythonImportsCheck = [ "regenmaschine" ];
+  disabledTestPaths = [
+    # Examples are prefix with test_
+    "examples/"
+  ];
+
+  pythonImportsCheck = [
+    "regenmaschine"
+  ];
 
   __darwinAllowLocalNetworking = true;
 

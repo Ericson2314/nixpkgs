@@ -1,21 +1,21 @@
-{ lib, buildGoModule, fetchFromGitHub, systemd }:
+{ lib, buildGoModule, fetchFromGitHub, systemd, nixosTests }:
 
 buildGoModule rec {
   pname = "grafana-agent";
-  version = "0.18.2";
+  version = "0.24.1";
 
   src = fetchFromGitHub {
     rev = "v${version}";
     owner = "grafana";
     repo = "agent";
-    sha256 = "sha256-yTCFMnOSRgMqL9KD26cYeJcQ1rrUBOf8I+i7IPExP9I=";
+    sha256 = "sha256-WxULVtqKxYXMWNY4l0wvTkqcDkPrlHcS70NgQhe8nzU=";
   };
 
-  vendorSha256 = "sha256-MZGOZB/mS3pmZuI35E/QkaNLLhbuW2DfZiih9OCXMj0=";
+  vendorSha256 = "sha256-hdo8uiVJAMMPo1N8kLDFPSbyTr5WxNKtq8E7pj6Plak=";
 
-  patches = [
-    # https://github.com/grafana/agent/issues/731
-    ./skip_test_requiring_network.patch
+  tags = [
+    "nonetwork"
+    "nodocker"
   ];
 
   # uses go-systemd, which uses libsystemd headers
@@ -35,6 +35,8 @@ buildGoModule rec {
       --set-rpath "${lib.makeLibraryPath [ (lib.getLib systemd) ]}:$(patchelf --print-rpath $out/bin/agent)" \
       $out/bin/agent
   '';
+
+  passthru.tests.grafana-agent = nixosTests.grafana-agent;
 
   meta = with lib; {
     description = "A lightweight subset of Prometheus and more, optimized for Grafana Cloud";

@@ -1,22 +1,35 @@
 { stdenv, lib, fetchurl, unzip }:
 let
-  platform =
-    if stdenv.hostPlatform.system == "x86_64-linux" then {
-      name = "x86_64-unknown-linux-musl";
-      sha256 = "sha256-uy3+/+XMq56rO75mmSeOmE1HW7hhefaGwfY/QJPk3Ok=";
-    } else if stdenv.hostPlatform.system == "x86_64-darwin" then {
-      name = "x86_64-apple-darwin";
-      sha256 = "sha256-EK7FbRzgaCXviOuBcRf/ElllRdakhDmOLsKkwrIEhBU=";
-    } else throw "Not supported on ${stdenv.hostPlatform.system}";
-in
-stdenv.mkDerivation rec {
-  pname = "tabnine";
   # You can check the latest version with `curl -sS https://update.tabnine.com/bundles/version`
-  version = "3.5.49";
+  # There's a handy prefetch script in ./fetch-latest.sh
+  version = "4.4.139";
+  supportedPlatforms = {
+    "x86_64-linux" = {
+      name = "x86_64-unknown-linux-musl";
+      hash = "sha256-CXm9WR77SMvv+9w+8QUBNHKPhe4otquLyHAwzd+jbNk=";
+    };
+    "x86_64-darwin" = {
+      name = "x86_64-apple-darwin";
+      hash = "sha256-01lotn9DzgwIj1n9GCUuGmwgtS4DtK+XOl/wduI+QyI=";
+    };
+    "aarch64-darwin" = {
+      name = "aarch64-apple-darwin";
+      hash = "sha256-RQBBsp48Xhxi3WQKsYzSiiSEW8W7UikKAyFf4sJ2JqQ=";
+    };
+  };
+  platform =
+    if (builtins.hasAttr stdenv.hostPlatform.system supportedPlatforms) then
+      builtins.getAttr (stdenv.hostPlatform.system) supportedPlatforms
+    else
+      throw "Not supported on ${stdenv.hostPlatform.system}";
+in
+stdenv.mkDerivation {
+  pname = "tabnine";
+  inherit version;
 
   src = fetchurl {
     url = "https://update.tabnine.com/bundles/${version}/${platform.name}/TabNine.zip";
-    inherit (platform) sha256;
+    inherit (platform) hash;
   };
 
   dontBuild = true;
@@ -42,7 +55,7 @@ stdenv.mkDerivation rec {
     homepage = "https://tabnine.com";
     description = "Smart Compose for code that uses deep learning to help you write code faster";
     license = licenses.unfree;
-    platforms = [ "x86_64-darwin" "x86_64-linux" ];
+    platforms = attrNames supportedPlatforms;
     maintainers = with maintainers; [ lovesegfault ];
   };
 }

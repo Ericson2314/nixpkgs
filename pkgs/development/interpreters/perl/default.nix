@@ -1,6 +1,7 @@
 { config, lib, stdenv, fetchurl, fetchFromGitHub, pkgs, buildPackages
 , callPackage
 , enableThreading ? true, coreutils, makeWrapper
+, zlib
 }:
 
 # Note: this package is used for bootstrapping fetchurl, and thus
@@ -19,14 +20,14 @@ let
 
   common = { perl, buildPerl, version, sha256 }: stdenv.mkDerivation (rec {
     inherit version;
-
-    name = "perl-${version}";
+    pname = "perl";
 
     src = fetchurl {
-      url = "mirror://cpan/src/5.0/${name}.tar.gz";
+      url = "mirror://cpan/src/5.0/perl-${version}.tar.gz";
       inherit sha256;
     };
 
+    strictDeps = true;
     # TODO: Add a "dev" output containing the header files.
     outputs = [ "out" "man" "devdoc" ] ++
       optional crossCompiling "mini";
@@ -38,6 +39,9 @@ let
       [
         # Do not look in /usr etc. for dependencies.
         ./no-sys-dirs-5.31.patch
+
+        # Enable TLS/SSL verification in HTTP::Tiny by default
+        ./http-tiny-verify-ssl-by-default.patch
       ]
       ++ optional stdenv.isSunOS ./ld-shared.patch
       ++ optionals stdenv.isDarwin [ ./cpp-precomp.patch ./sw_vers.patch ]
@@ -59,7 +63,7 @@ let
       unset src
     '';
 
-    # Build a thread-safe Perl with a dynamic libperls.o.  We need the
+    # Build a thread-safe Perl with a dynamic libperl.so.  We need the
     # "installstyle" option to ensure that modules are put under
     # $out/lib/perl5 - this is the general default, but because $out
     # contains the string "perl", Configure would select $out/lib.
@@ -71,13 +75,14 @@ let
       ++ [
         "-Uinstallusrbinperl"
         "-Dinstallstyle=lib/perl5"
-        "-Duseshrplib"
+      ] ++ lib.optional (!crossCompiling) "-Duseshrplib" ++ [
         "-Dlocincpth=${libcInc}/include"
         "-Dloclibpth=${libcLib}/lib"
       ]
       ++ optionals ((builtins.match ''5\.[0-9]*[13579]\..+'' version) != null) [ "-Dusedevel" "-Uversiononly" ]
       ++ optional stdenv.isSunOS "-Dcc=gcc"
       ++ optional enableThreading "-Dusethreads"
+      ++ optional stdenv.hostPlatform.isStatic "--all-static"
       ++ optionals (!crossCompiling) [
         "-Dprefix=${placeholder "out"}"
         "-Dman1dir=${placeholder "out"}/share/man/man1"
@@ -86,19 +91,47 @@ let
 
     configureScript = optionalString (!crossCompiling) "${stdenv.shell} ./Configure";
 
+    dontAddStaticConfigureFlags = true;
+
     dontAddPrefix = !crossCompiling;
 
     enableParallelBuilding = !crossCompiling;
 
+    # perl includes the build date, the uname of the build system and the
+    # username of the build user in some files.
+    # We override these to make it build deterministically.
+    # other distro solutions
+    # https://github.com/bmwiedemann/openSUSE/blob/master/packages/p/perl/perl-reproducible.patch
+    # https://github.com/archlinux/svntogit-packages/blob/packages/perl/trunk/config.over
+    # https://salsa.debian.org/perl-team/interpreter/perl/blob/debian-5.26/debian/config.over
+    # A ticket has been opened upstream to possibly clean some of this up: https://rt.perl.org/Public/Bug/Display.html?id=133452
     preConfigure = ''
-        substituteInPlace ./Configure --replace '`LC_ALL=C; LANGUAGE=C; export LC_ALL; export LANGUAGE; $date 2>&1`' 'Thu Jan  1 00:00:01 UTC 1970'
-        substituteInPlace ./Configure --replace '$uname -a' '$uname --kernel-name --machine --operating-system'
+        cat > config.over <<EOF
+        ${lib.optionalString (stdenv.hostPlatform.isLinux && stdenv.hostPlatform.isGnu) ''osvers="gnulinux"''}
+        myuname="nixpkgs"
+        myhostname="nixpkgs"
+        cf_by="nixpkgs"
+        cf_time="$(date -d "@$SOURCE_DATE_EPOCH")"
+        EOF
+
+        # Compress::Raw::Zlib should use our zlib package instead of the one
+        # included with the distribution
+        cat > ./cpan/Compress-Raw-Zlib/config.in <<EOF
+        BUILD_ZLIB   = False
+        INCLUDE      = ${zlib.dev}/include
+        LIB          = ${zlib.out}/lib
+        OLD_ZLIB     = False
+        GZIP_OS_CODE = AUTO_DETECT
+        EOF
       '' + optionalString stdenv.isDarwin ''
         substituteInPlace hints/darwin.sh --replace "env MACOSX_DEPLOYMENT_TARGET=10.3" ""
       '' + optionalString (!enableThreading) ''
         # We need to do this because the bootstrap doesn't have a static libpthread
         sed -i 's,\(libswanted.*\)pthread,\1,g' Configure
       '';
+
+    # Default perl does not support --host= & co.
+    configurePlatforms = [];
 
     setupHook = ./setup-hook.sh;
 
@@ -168,14 +201,14 @@ let
       priority = 6; # in `buildEnv' (including the one inside `perl.withPackages') the library files will have priority over files in `perl`
     };
   } // optionalAttrs (stdenv.buildPlatform != stdenv.hostPlatform) rec {
-    crossVersion = "1.3.6";
+    crossVersion = "c876045741f5159318085d2737b0090f35a842ca"; # June 5, 2022
 
     perl-cross-src = fetchFromGitHub {
-      name = "perl-cross-${crossVersion}";
+      name = "perl-cross-unstable-${crossVersion}";
       owner = "arsv";
       repo = "perl-cross";
       rev = crossVersion;
-      sha256 = "0k5vyj40czbkfl7r3dcwxpc7dvdlp2xliaav358bviq3dq9vq9bb";
+      sha256 = "sha256-m9UCoTQgXBxSgk9Q1Zv6wl3Qnd0aZm/jEPXkcMKti8U=";
     };
 
     depsBuildBuild = [ buildPackages.stdenv.cc makeWrapper ];
@@ -193,26 +226,26 @@ let
   });
 in {
   # Maint version
-  perl532 = common {
-    perl = pkgs.perl532;
-    buildPerl = buildPackages.perl532;
-    version = "5.32.1";
-    sha256 = "0b7brakq9xs4vavhg391as50nbhzryc7fy5i65r81bnq3j897dh3";
-  };
-
-  # Maint version
   perl534 = common {
     perl = pkgs.perl534;
     buildPerl = buildPackages.perl534;
-    version = "5.34.0";
-    sha256 = "16mywn5afpv1mczv9dlc1w84rbgjgrr0pyr4c0hhb2wnif0zq7jm";
+    version = "5.34.1";
+    sha256 = "sha256-NXlRpJGwuhzjYRJjki/ux4zNWB3dwkpEawM+JazyQqE=";
+  };
+
+  # Maint version
+  perl536 = common {
+    perl = pkgs.perl536;
+    buildPerl = buildPackages.perl536;
+    version = "5.36.0";
+    sha256 = "sha256-4mCFr4rDlvYq3YpTPDoOqMhJfYNvBok0esWr17ek4Ao=";
   };
 
   # the latest Devel version
   perldevel = common {
     perl = pkgs.perldevel;
     buildPerl = buildPackages.perldevel;
-    version = "5.35.0";
-    sha256 = "0217nbswhkjhw60kng2p64611xna7za681kk30fkriyicd3yph6n";
+    version = "5.37.0";
+    sha256 = "sha256-8RQO6gtH+WmghqzRafbqAH1MhKv/vJCcvysi7/+T9XI=";
   };
 }

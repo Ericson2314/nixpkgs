@@ -3,6 +3,7 @@
 , bundlerEnv, ruby
 , nodejs
 , nodePackages
+, python3
 , python3Packages
 , callPackage
 }:
@@ -17,7 +18,7 @@ let
     , wrapperArgs ? []
     , manifestRc ? null
     , withPython2 ? false
-    , withPython3 ? true,  python3Env ? null
+    , withPython3 ? true,  python3Env ? python3
     , withNodeJs ? false
     , rubyEnv ? null
     , vimAlias ? false
@@ -59,7 +60,7 @@ let
           --replace 'Name=Neovim' 'Name=WrappedNeovim'
       ''
       + optionalString withPython3 ''
-        makeWrapper ${python3Env}/bin/python3 $out/bin/nvim-python3 --unset PYTHONPATH
+        makeWrapper ${python3Env.interpreter} $out/bin/nvim-python3 --unset PYTHONPATH
       ''
       + optionalString (rubyEnv != null) ''
         ln -s ${rubyEnv}/bin/neovim-ruby-host $out/bin/nvim-ruby
@@ -99,7 +100,7 @@ let
         if ! $out/bin/nvim-wrapper \
           -u ${writeText "manifest.vim" manifestRc} \
           -i NONE -n \
-          -E -V1rplugins.log -s \
+          -V1rplugins.log \
           +UpdateRemotePlugins +quit! > outfile 2>&1; then
           cat outfile
           echo -e "\nGenerating rplugin.vim failed!"
@@ -122,7 +123,7 @@ let
       unwrapped = neovim;
       initRc = neovimRcContent;
 
-      tests = callPackage ./tests.nix {
+      tests = callPackage ./tests {
       };
     };
 

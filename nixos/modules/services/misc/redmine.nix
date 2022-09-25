@@ -2,7 +2,7 @@
 
 let
   inherit (lib) mkBefore mkDefault mkEnableOption mkIf mkOption mkRemovedOptionModule types;
-  inherit (lib) concatStringsSep literalExample mapAttrsToList;
+  inherit (lib) concatStringsSep literalExpression mapAttrsToList;
   inherit (lib) optional optionalAttrs optionalString;
 
   cfg = config.services.redmine;
@@ -49,48 +49,49 @@ in
   # interface
   options = {
     services.redmine = {
-      enable = mkEnableOption "Redmine";
+      enable = mkEnableOption (lib.mdDoc "Redmine");
 
       package = mkOption {
         type = types.package;
         default = pkgs.redmine;
-        description = "Which Redmine package to use.";
-        example = "pkgs.redmine.override { ruby = pkgs.ruby_2_7; }";
+        defaultText = literalExpression "pkgs.redmine";
+        description = lib.mdDoc "Which Redmine package to use.";
+        example = literalExpression "pkgs.redmine.override { ruby = pkgs.ruby_2_7; }";
       };
 
       user = mkOption {
         type = types.str;
         default = "redmine";
-        description = "User under which Redmine is ran.";
+        description = lib.mdDoc "User under which Redmine is ran.";
       };
 
       group = mkOption {
         type = types.str;
         default = "redmine";
-        description = "Group under which Redmine is ran.";
+        description = lib.mdDoc "Group under which Redmine is ran.";
       };
 
       port = mkOption {
         type = types.port;
         default = 3000;
-        description = "Port on which Redmine is ran.";
+        description = lib.mdDoc "Port on which Redmine is ran.";
       };
 
       stateDir = mkOption {
         type = types.str;
         default = "/var/lib/redmine";
-        description = "The state directory, logs and plugins are stored here.";
+        description = lib.mdDoc "The state directory, logs and plugins are stored here.";
       };
 
       settings = mkOption {
         type = format.type;
         default = {};
-        description = ''
-          Redmine configuration (<filename>configuration.yml</filename>). Refer to
-          <link xlink:href="https://guides.rubyonrails.org/action_mailer_basics.html#action-mailer-configuration"/>
+        description = lib.mdDoc ''
+          Redmine configuration ({file}`configuration.yml`). Refer to
+          <https://guides.rubyonrails.org/action_mailer_basics.html#action-mailer-configuration>
           for details.
         '';
-        example = literalExample ''
+        example = literalExpression ''
           {
             email_delivery = {
               delivery_method = "smtp";
@@ -106,13 +107,13 @@ in
       extraEnv = mkOption {
         type = types.lines;
         default = "";
-        description = ''
+        description = lib.mdDoc ''
           Extra configuration in additional_environment.rb.
 
-          See <link xlink:href="https://svn.redmine.org/redmine/trunk/config/additional_environment.rb.example"/>
+          See <https://svn.redmine.org/redmine/trunk/config/additional_environment.rb.example>
           for details.
         '';
-        example = literalExample ''
+        example = ''
           config.logger.level = Logger::DEBUG
         '';
       };
@@ -120,8 +121,8 @@ in
       themes = mkOption {
         type = types.attrsOf types.path;
         default = {};
-        description = "Set of themes.";
-        example = literalExample ''
+        description = lib.mdDoc "Set of themes.";
+        example = literalExpression ''
           {
             dkuk-redmine_alex_skin = builtins.fetchurl {
               url = "https://bitbucket.org/dkuk/redmine_alex_skin/get/1842ef675ef3.zip";
@@ -134,8 +135,8 @@ in
       plugins = mkOption {
         type = types.attrsOf types.path;
         default = {};
-        description = "Set of plugins.";
-        example = literalExample ''
+        description = lib.mdDoc "Set of plugins.";
+        example = literalExpression ''
           {
             redmine_env_auth = builtins.fetchurl {
               url = "https://github.com/Intera/redmine_env_auth/archive/0.6.zip";
@@ -150,41 +151,41 @@ in
           type = types.enum [ "mysql2" "postgresql" ];
           example = "postgresql";
           default = "mysql2";
-          description = "Database engine to use.";
+          description = lib.mdDoc "Database engine to use.";
         };
 
         host = mkOption {
           type = types.str;
           default = "localhost";
-          description = "Database host address.";
+          description = lib.mdDoc "Database host address.";
         };
 
         port = mkOption {
           type = types.int;
           default = if cfg.database.type == "postgresql" then 5432 else 3306;
-          defaultText = "3306";
-          description = "Database host port.";
+          defaultText = literalExpression "3306";
+          description = lib.mdDoc "Database host port.";
         };
 
         name = mkOption {
           type = types.str;
           default = "redmine";
-          description = "Database name.";
+          description = lib.mdDoc "Database name.";
         };
 
         user = mkOption {
           type = types.str;
           default = "redmine";
-          description = "Database user.";
+          description = lib.mdDoc "Database user.";
         };
 
         passwordFile = mkOption {
           type = types.nullOr types.path;
           default = null;
           example = "/run/keys/redmine-dbpassword";
-          description = ''
+          description = lib.mdDoc ''
             A file containing the password corresponding to
-            <option>database.user</option>.
+            {option}`database.user`.
           '';
         };
 
@@ -194,15 +195,15 @@ in
             if mysqlLocal then "/run/mysqld/mysqld.sock"
             else if pgsqlLocal then "/run/postgresql"
             else null;
-          defaultText = "/run/mysqld/mysqld.sock";
+          defaultText = literalExpression "/run/mysqld/mysqld.sock";
           example = "/run/mysqld/mysqld.sock";
-          description = "Path to the unix socket file to use for authentication.";
+          description = lib.mdDoc "Path to the unix socket file to use for authentication.";
         };
 
         createLocally = mkOption {
           type = types.bool;
           default = true;
-          description = "Create the database and database user locally.";
+          description = lib.mdDoc "Create the database and database user locally.";
         };
       };
     };

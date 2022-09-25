@@ -1,20 +1,32 @@
 { lib
 , buildGoModule
 , fetchFromGitHub
+, installShellFiles
 }:
 
 buildGoModule rec {
   pname = "gmailctl";
-  version = "0.8.0";
+  version = "0.10.5";
 
   src = fetchFromGitHub {
     owner = "mbrt";
     repo = "gmailctl";
     rev = "v${version}";
-    sha256 = "sha256-UZzpecW4vW1JYUDCcwDIJXCGjw80fgZC4wvCh0DdE98=";
+    sha256 = "sha256-H1Nuu/T55e5zWUmofKoyVSA4TaJBdK+JeZtw+G/sC54=";
   };
 
-  vendorSha256 = "sha256-5oVr1qazTzsSNVLvcAsAN8UyrJOeqLjSVinImLOyJlk=";
+  vendorSha256 = "sha256-ivkTtcvoH+i58iQM9T0xio0YUeMhNzDcmrCSuGFljEI=";
+
+  nativeBuildInputs = [
+    installShellFiles
+  ];
+
+  postInstall = ''
+    installShellCompletion --cmd gmailctl \
+      --bash <($out/bin/gmailctl completion bash) \
+      --fish <($out/bin/gmailctl completion fish) \
+      --zsh <($out/bin/gmailctl completion zsh)
+  '';
 
   doCheck = false;
 
@@ -22,7 +34,6 @@ buildGoModule rec {
     description = "Declarative configuration for Gmail filters";
     homepage = "https://github.com/mbrt/gmailctl";
     license = licenses.mit;
-    maintainers = [ maintainers.doronbehar ];
-    platforms = platforms.unix;
+    maintainers = with maintainers; [ doronbehar SuperSandro2000 ];
   };
 }

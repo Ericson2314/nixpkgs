@@ -8,19 +8,21 @@
 , stevedore
 , pbr
 , debian-inspector
+, license-expression
 , regex
 , GitPython
 , prettytable
 , idna
+, packageurl-python
 }:
 
 buildPythonPackage rec {
   pname = "tern";
-  version = "2.6.1";
+  version = "2.10.1";
 
   src = fetchPypi {
     inherit pname version;
-    sha256 = "749c18ef493ebe3ac28624b2b26c6e38f77de2afd6a6579d2c92393d8fbdbd46";
+    sha256 = "sha256-MMsq8/Obe3ogQSjiP8EebYseUJGcchMOczUrxE9jht4=";
   };
 
   preBuild = ''
@@ -35,6 +37,7 @@ buildPythonPackage rec {
     pyyaml
     docker
     dockerfile-parse
+    license-expression
     requests
     stevedore
     debian-inspector
@@ -42,6 +45,7 @@ buildPythonPackage rec {
     GitPython
     prettytable
     idna
+    packageurl-python
   ];
 
   # No tests

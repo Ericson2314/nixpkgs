@@ -1,10 +1,11 @@
-{ lib, stdenv
+{ lib
+, stdenv
 , runCommand
 , fetchurl
-, fetchpatch
 , perl
 , python3
 , ruby
+, gi-docgen
 , bison
 , gperf
 , cmake
@@ -12,16 +13,19 @@
 , pkg-config
 , gettext
 , gobject-introspection
-, libnotify
 , gnutls
 , libgcrypt
+, libgpg-error
 , gtk3
 , wayland
+, wayland-protocols
 , libwebp
+, libwpe
+, libwpe-fdo
 , enchant2
 , xorg
 , libxkbcommon
-, epoxy
+, libepoxy
 , at-spi2-core
 , libxml2
 , libsoup
@@ -41,9 +45,9 @@
 , libGLU
 , mesa
 , libintl
+, lcms2
 , libmanette
 , openjpeg
-, enableGeoLocation ? true
 , geoclue2
 , sqlite
 , enableGLES ? true
@@ -57,21 +61,23 @@
 , substituteAll
 , glib
 , addOpenGLRunpath
+, enableGeoLocation ? true
+, withLibsecret ? true
+, systemdSupport ? stdenv.isLinux
 }:
 
-assert enableGeoLocation -> geoclue2 != null;
-
-stdenv.mkDerivation rec {
+stdenv.mkDerivation (finalAttrs: {
   pname = "webkitgtk";
-  version = "2.32.3";
+  version = "2.38.0";
+  name = "${finalAttrs.pname}-${finalAttrs.version}+abi=${if lib.versionAtLeast gtk3.version "4.0" then "5.0" else "4.${if lib.versions.major libsoup.version == "2" then "0" else "1"}"}";
 
-  outputs = [ "out" "dev" ];
+  outputs = [ "out" "dev" "devdoc" ];
 
   separateDebugInfo = stdenv.isLinux;
 
   src = fetchurl {
-    url = "https://webkitgtk.org/releases/${pname}-${version}.tar.xz";
-    sha256 = "sha256-wfSW9axlTv5M72L71PL77u8mWgfF50GeXSkAv+6lLLw=";
+    url = "https://webkitgtk.org/releases/webkitgtk-${finalAttrs.version}.tar.xz";
+    sha256 = "sha256-+c5jdaO24TKbC2CfRpIeJifcetYiSze5Z6supkO8D70=";
   };
 
   patches = lib.optionals stdenv.isLinux [
@@ -80,26 +86,14 @@ stdenv.mkDerivation rec {
       inherit (builtins) storeDir;
       inherit (addOpenGLRunpath) driverLink;
     })
-    ./libglvnd-headers.patch
-  ] ++ lib.optionals stdenv.isDarwin [
-    # https://bugs.webkit.org/show_bug.cgi?id=225856
-    (fetchpatch {
-      url = "https://bug-225856-attachments.webkit.org/attachment.cgi?id=428797";
-      sha256 = "sha256-ffo5p2EyyjXe3DxdrvAcDKqxwnoqHtYBtWod+1fOjMU=";
-      excludes = [ "Source/WebCore/ChangeLog" ];
-    })
 
-    # https://bugs.webkit.org/show_bug.cgi?id=225850
-    ./428774.patch # https://bug-225850-attachments.webkit.org/attachment.cgi?id=428774
-    (fetchpatch {
-      url = "https://bug-225850-attachments.webkit.org/attachment.cgi?id=428776";
-      sha256 = "sha256-ryNRYMsk72SL0lNdh6eaAdDV3OT8KEqVq1H0j581jmQ=";
-      excludes = [ "Source/WTF/ChangeLog" ];
-    })
-    (fetchpatch {
-      url = "https://bug-225850-attachments.webkit.org/attachment.cgi?id=428778";
-      sha256 = "sha256-78iP+T2vaIufO8TmIPO/tNDgmBgzlDzalklrOPrtUeo=";
-      excludes = [ "Source/WebKit/ChangeLog" ];
+    ./libglvnd-headers.patch
+
+    # Hardcode path to WPE backend
+    # https://github.com/NixOS/nixpkgs/issues/110468
+    (substituteAll {
+      src = ./fdo-backend-path.patch;
+      wpebackend_fdo = libwpe-fdo;
     })
   ];
 
@@ -123,6 +117,7 @@ stdenv.mkDerivation rec {
     pkg-config
     python3
     ruby
+    gi-docgen
     glib # for gdbus-codegen
   ] ++ lib.optionals stdenv.isLinux [
     wayland # for wayland-scanner
@@ -131,7 +126,7 @@ stdenv.mkDerivation rec {
   buildInputs = [
     at-spi2-core
     enchant2
-    epoxy
+    libepoxy
     gnutls
     gst-plugins-bad
     gst-plugins-base
@@ -140,14 +135,11 @@ stdenv.mkDerivation rec {
     libGLU
     mesa # for libEGL headers
     libgcrypt
+    libgpg-error
     libidn
     libintl
-  ] ++ lib.optionals stdenv.isLinux [
-    libmanette
-  ] ++ [
-    libnotify
+    lcms2
     libpthreadstubs
-    libsecret
     libtasn1
     libwebp
     libxkbcommon
@@ -172,27 +164,41 @@ stdenv.mkDerivation rec {
     # (We pick just that one because using the other headers from `sdk` is not
     # compatible with our C++ standard library. This header is already in
     # the standard library on aarch64)
-    runCommand "${pname}_headers" {} ''
+    runCommand "webkitgtk_headers" { } ''
       install -Dm444 "${lib.getDev apple_sdk.sdk}"/include/libproc.h "$out"/include/libproc.h
     ''
   ) ++ lib.optionals stdenv.isLinux [
     bubblewrap
     libseccomp
-    systemd
+    libmanette
     wayland
+    libwpe
+    libwpe-fdo
     xdg-dbus-proxy
-  ] ++ lib.optional enableGeoLocation geoclue2;
+  ] ++ lib.optionals systemdSupport [
+    systemd
+  ] ++ lib.optionals enableGeoLocation [
+    geoclue2
+  ] ++ lib.optionals withLibsecret [
+    libsecret
+  ] ++ lib.optionals (lib.versionAtLeast gtk3.version "4.0") [
+    xorg.libXcomposite
+    wayland-protocols
+  ];
 
   propagatedBuildInputs = [
     gtk3
     libsoup
   ];
 
-  cmakeFlags = [
+  cmakeFlags = let
+    cmakeBool = x: if x then "ON" else "OFF";
+  in [
     "-DENABLE_INTROSPECTION=ON"
     "-DPORT=GTK"
     "-DUSE_LIBHYPHEN=OFF"
-    "-DUSE_WPE_RENDERER=OFF"
+    "-DUSE_SOUP2=${cmakeBool (lib.versions.major libsoup.version == "2")}"
+    "-DUSE_LIBSECRET=${cmakeBool withLibsecret}"
   ] ++ lib.optionals stdenv.isDarwin [
     "-DENABLE_GAMEPAD=OFF"
     "-DENABLE_GTKDOC=OFF"
@@ -205,9 +211,13 @@ stdenv.mkDerivation rec {
     "-DUSE_APPLE_ICU=OFF"
     "-DUSE_OPENGL_OR_ES=OFF"
     "-DUSE_SYSTEM_MALLOC=ON"
-  ] ++ lib.optionals (!stdenv.isLinux) [
+  ] ++ lib.optionals (lib.versionAtLeast gtk3.version "4.0") [
+    "-DUSE_GTK4=ON"
+  ] ++ lib.optionals (!systemdSupport) [
     "-DUSE_SYSTEMD=OFF"
-  ] ++ lib.optional (stdenv.isLinux && enableGLES) "-DENABLE_GLES2=ON";
+  ] ++ lib.optionals (stdenv.isLinux && enableGLES) [
+    "-DENABLE_GLES2=ON"
+  ];
 
   postPatch = ''
     patchShebangs .
@@ -218,6 +228,11 @@ stdenv.mkDerivation rec {
     sed 43i'#include <CommonCrypto/CommonCryptor.h>' -i Source/WTF/wtf/RandomDevice.cpp
   '';
 
+  postFixup = ''
+    # Cannot be in postInstall, otherwise _multioutDocs hook in preFixup will move right back.
+    moveToOutput "share/doc" "$devdoc"
+  '';
+
   requiredSystemFeatures = [ "big-parallel" ];
 
   meta = with lib; {
@@ -226,5 +241,6 @@ stdenv.mkDerivation rec {
     license = licenses.bsd2;
     platforms = platforms.linux ++ platforms.darwin;
     maintainers = teams.gnome.members;
+    broken = stdenv.isDarwin;
   };
-}
+})

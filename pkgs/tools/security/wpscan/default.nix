@@ -1,11 +1,16 @@
-{ bundlerApp, lib, makeWrapper, curl }:
+{ lib
+, bundlerApp
+, makeWrapper
+, curl
+}:
 
 bundlerApp {
   pname = "wpscan";
   gemdir = ./.;
   exes = [ "wpscan" ];
 
-  buildInputs = [ makeWrapper ];
+  nativeBuildInputs = [ makeWrapper ];
+
   postBuild = ''
     wrapProgram "$out/bin/wpscan" \
       --prefix PATH : ${lib.makeBinPath [ curl ]}

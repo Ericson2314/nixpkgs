@@ -26,6 +26,7 @@
 , tdb
 , cmocka
 , rpcsvc-proto
+, bash
 , python3Packages
 , nixosTests
 
@@ -35,7 +36,7 @@
 , enableMDNS ? false, avahi
 , enableDomainController ? false, gpgme, lmdb
 , enableRegedit ? true, ncurses
-, enableCephFS ? false, libceph
+, enableCephFS ? false, ceph
 , enableGlusterFS ? false, glusterfs, libuuid
 , enableAcl ? (!stdenv.isDarwin), acl
 , enablePam ? (!stdenv.isDarwin), pam
@@ -45,11 +46,11 @@ with lib;
 
 stdenv.mkDerivation rec {
   pname = "samba";
-  version = "4.14.4";
+  version = "4.15.9";
 
   src = fetchurl {
     url = "mirror://samba/pub/samba/stable/${pname}-${version}.tar.gz";
-    sha256 = "1fc9ix91hb1f35j69sk7rsi9pky2p0vsmw47s973bx801cm0kbw9";
+    sha256 = "sha256-loKixxwv8lOqJ8uwEmDqyJf/YlzznbIO4yBz5Thv4hk=";
   };
 
   outputs = [ "out" "dev" "man" ];
@@ -82,8 +83,9 @@ stdenv.mkDerivation rec {
   ];
 
   buildInputs = [
-    python3Packages.python
+    bash
     python3Packages.wrapPython
+    python3Packages.python
     readline
     popt
     dbus
@@ -101,7 +103,7 @@ stdenv.mkDerivation rec {
     ++ optional enableMDNS avahi
     ++ optionals enableDomainController [ gpgme lmdb python3Packages.dnspython ]
     ++ optional enableRegedit ncurses
-    ++ optional (enableCephFS && stdenv.isLinux) libceph
+    ++ optional (enableCephFS && stdenv.isLinux) (lib.getDev ceph)
     ++ optionals (enableGlusterFS && stdenv.isLinux) [ glusterfs libuuid ]
     ++ optional enableAcl acl
     ++ optional enablePam pam;
@@ -159,7 +161,7 @@ stdenv.mkDerivation rec {
   # Use find -type f -executable -exec echo {} \; -exec sh -c 'ldd {} | grep "not found"' \;
   # Looks like a bug in installer scripts.
   postFixup = ''
-    export SAMBA_LIBS="$(find $out -type f -name \*.so -exec dirname {} \; | sort | uniq)"
+    export SAMBA_LIBS="$(find $out -type f -regex '.*\.so\(\..*\)?' -exec dirname {} \; | sort | uniq)"
     read -r -d "" SCRIPT << EOF || true
     [ -z "\$SAMBA_LIBS" ] && exit 1;
     BIN='{}';
@@ -168,15 +170,21 @@ stdenv.mkDerivation rec {
     patchelf --set-rpath "\$ALL_LIBS" "\$BIN" 2>/dev/null || exit $?;
     patchelf --shrink-rpath "\$BIN";
     EOF
-    find $out -type f -name \*.so -exec $SHELL -c "$SCRIPT" \;
-
-    # Samba does its own shebang patching, but uses build Python
-    find "$out/bin" -type f -executable -exec \
-      sed -i '1 s^#!${python3Packages.python.pythonForBuild}/bin/python.*^#!${python3Packages.python.interpreter}^' {} \;
+    find $out -type f -regex '.*\.so\(\..*\)?' -exec $SHELL -c "$SCRIPT" \;
 
     # Fix PYTHONPATH for some tools
     wrapPythonPrograms
+
+    # Samba does its own shebang patching, but uses build Python
+    find $out/bin -type f -executable | while read file; do
+      isScript "$file" || continue
+      sed -i 's^${lib.getBin buildPackages.python3Packages.python}/bin^${lib.getBin python3Packages.python}/bin^' "$file"
+    done
   '';
+
+  disallowedReferences =
+    lib.optionals (buildPackages.python3Packages.python != python3Packages.python)
+      [ buildPackages.python3Packages.python ];
 
   passthru = {
     tests.samba = nixosTests.samba;

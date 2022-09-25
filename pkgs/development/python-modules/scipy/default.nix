@@ -3,7 +3,9 @@
 , fetchPypi
 , python
 , buildPythonPackage
+, cython
 , gfortran
+, pythran
 , nose
 , pytest
 , pytest-xdist
@@ -13,24 +15,27 @@
 
 buildPythonPackage rec {
   pname = "scipy";
-  version = "1.6.3";
+  version = "1.8.1";
 
   src = fetchPypi {
     inherit pname version;
-    sha256 = "a75b014d3294fce26852a9d04ea27b5671d86736beb34acdfc05859246260707";
+    sha256 = "sha256-nj+xsOiW8UqFqpoo1fdV2q7rVMiXt0bfelXMsCs0DzM=";
   };
 
-  checkInputs = [ nose pytest pytest-xdist ];
-  nativeBuildInputs = [ gfortran ];
+  nativeBuildInputs = [ cython gfortran pythran ];
+
   buildInputs = [ numpy.blas pybind11 ];
+
   propagatedBuildInputs = [ numpy ];
+
+  checkInputs = [ nose pytest pytest-xdist ];
 
   # Remove tests because of broken wrapper
   prePatch = ''
     rm scipy/linalg/tests/test_lapack.py
   '';
 
-  doCheck = true;
+  doCheck = !(stdenv.isx86_64 && stdenv.isDarwin);
 
   preConfigure = ''
     sed -i '0,/from numpy.distutils.core/s//import setuptools;from numpy.distutils.core/' setup.py
@@ -40,7 +45,6 @@ buildPythonPackage rec {
   preBuild = ''
     ln -s ${numpy.cfg} site.cfg
   '';
-
 
   # disable stackprotector on aarch64-darwin for now
   #

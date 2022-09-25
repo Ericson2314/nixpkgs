@@ -12,16 +12,19 @@
 
 stdenv.mkDerivation rec {
   pname = "sundials";
-  version = "5.7.0";
+  version = "6.3.0";
 
   outputs = [ "out" "examples" ];
 
   src = fetchurl {
     url = "https://github.com/LLNL/sundials/releases/download/v${version}/sundials-${version}.tar.gz";
-    hash = "sha256-SNp7qoFS3bIq7RsC2C0du0+/6iKs9nY0ARqgMDoQCkM=";
+    hash = "sha256-iaIr6oIP8lCqcjn2NKsH+jTv4dLc/eKcyNOvEUVboqc=";
   };
 
-  nativeBuildInputs = [ cmake ];
+  nativeBuildInputs = [
+    cmake
+    gfortran
+  ];
 
   buildInputs = [
     python
@@ -29,13 +32,11 @@ stdenv.mkDerivation rec {
     ++ lib.optionals (lapackSupport)
     # Check that the same index size is used for both libraries
     (assert (blas.isILP64 == lapack.isILP64); [
-      gfortran
       blas
       lapack
     ])
-  # KLU support is based on Suitesparse.
-  # It is tested upstream according to the section 1.1.4 of
-  # [INSTALL_GUIDE.pdf](https://raw.githubusercontent.com/LLNL/sundials/master/INSTALL_GUIDE.pdf)
+  # KLU support is based on Suitesparse. It is tested upstream according to the
+  # section 1.1.4.2 of INSTALL_GUIDE.pdf found in the source tarball.
   ++ lib.optionals (kluSupport) [
     suitesparse
   ];
@@ -65,7 +66,7 @@ stdenv.mkDerivation rec {
 
   meta = with lib; {
     description = "Suite of nonlinear differential/algebraic equation solvers";
-    homepage    = "https://computation.llnl.gov/projects/sundials";
+    homepage    = "https://computing.llnl.gov/projects/sundials";
     platforms   = platforms.all;
     maintainers = with maintainers; [ idontgetoutmuch ];
     license     = licenses.bsd3;

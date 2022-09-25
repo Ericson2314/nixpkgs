@@ -13,15 +13,26 @@ let
   # Fetch a diff between `base` and `rev` on sage's git server.
   # Used to fetch trac tickets by setting the `base` to the last release and the
   # `rev` to the last commit of the ticket.
-  fetchSageDiff = { base, name, rev, sha256, squashed ? false, ...}@args: (
+  #
+  # We don't use sage's own build system (which builds all its
+  # dependencies), so we exclude changes to "build/" from patches by
+  # default to avoid conflicts.
+  fetchSageDiff = { base, name, rev, sha256, squashed ? false, excludes ? [ "build/*" ]
+                  , ...}@args: (
     fetchpatch ({
-      inherit name sha256;
+      inherit name sha256 excludes;
 
       # There are three places to get changes from:
       #
       # 1) From Sage's Trac. Contains all release tags (like "9.4") and all developer
       # branches (wip patches from tickets), but exports each commit as a separate
       # patch, so merge commits can lead to conflicts. Used if squashed == false.
+      #
+      # The above is the preferred option. To use it, find a Trac ticket and pass the
+      # "Commit" field from the ticket as "rev", choosing "base" as an appropriate
+      # release tag, i.e. a tag that doesn't cause the patch to include a lot of
+      # unrelated changes. If there is no such tag (due to nonlinear history, for
+      # example), there are two other options, listed below.
       #
       # 2) From GitHub's sagemath/sage repo. This lets us use a GH feature that allows
       # us to choose between a .patch file, with one patch per commit, or a .diff file,
@@ -43,33 +54,23 @@ let
                "https://github.com/sagemath/sagetrac-mirror/compare/${base}...${rev}.diff"
              ]
              else [ "https://git.sagemath.org/sage.git/patch?id2=${base}&id=${rev}" ];
-
-      # We don't care about sage's own build system (which builds all its dependencies).
-      # Exclude build system changes to avoid conflicts.
-      excludes = [ "build/*" ];
-    } // builtins.removeAttrs args [ "rev" "base" "sha256" "squashed" ])
+    } // builtins.removeAttrs args [ "rev" "base" "sha256" "squashed" "excludes" ])
   );
 in
 stdenv.mkDerivation rec {
-  version = "9.4";
+  version = "9.7";
   pname = "sage-src";
 
   src = fetchFromGitHub {
     owner = "sagemath";
     repo = "sage";
     rev = version;
-    sha256 = "sha256-jqkr4meG02KbTCMsGvyr1UbosS4ZuUJhPXU/InuS+9A=";
+    sha256 = "sha256-MYpCp18wqKwCa+tcJ7He14p1FXDlVm1vubQqQS9g3LY=";
   };
 
   # Patches needed because of particularities of nix or the way this is packaged.
   # The goal is to upstream all of them and get rid of this list.
   nixPatches = [
-    # Make sure py2/py3 tests are only run when their expected context (all "sage"
-    # tests) are also run. That is necessary to test dochtml individually. See
-    # https://trac.sagemath.org/ticket/26110 for an upstream discussion.
-    # TODO: Determine if it is still necessary.
-    ./patches/Only-test-py2-py3-optional-tests-when-all-of-sage-is.patch
-
     # Fixes a potential race condition which can lead to transient doctest failures.
     ./patches/fix-ecl-race.patch
 
@@ -80,6 +81,10 @@ stdenv.mkDerivation rec {
     # Parallelize docubuild using subprocesses, fixing an isolation issue. See
     # https://groups.google.com/forum/#!topic/sage-packaging/YGOm8tkADrE
     ./patches/sphinx-docbuild-subprocesses.patch
+
+    # Docbuilding copies files from the Nix store and expects them to be writable.
+    # Remove when https://github.com/matplotlib/matplotlib/pull/23805 lands.
+    ./patches/sphinx-fix-matplotlib-css-perms.patch
   ];
 
   # Since sage unfortunately does not release bugfix releases, packagers must
@@ -103,16 +108,19 @@ stdenv.mkDerivation rec {
     # strictly necessary, but keeps us from littering in the user's HOME.
     ./patches/sympow-cache.patch
 
-    # https://trac.sagemath.org/ticket/32305
-    (fetchSageDiff {
-      base = "9.4";
-      name = "networkx-2.6-upgrade.patch";
-      rev = "9808325853ba9eb035115e5b056305a1c9d362a0";
-      sha256 = "sha256-gJSqycCtbAVr5qnVEbHFUvIuTOvaxFIeffpzd6nH4DE=";
-    })
+    # Upstream will wait until Sage 9.7 to upgrade to linbox 1.7 because it
+    # does not support gcc 6. We can upgrade earlier.
+    # https://trac.sagemath.org/ticket/32959
+    ./patches/linbox-1.7-upgrade.patch
+
+    # adapted from https://trac.sagemath.org/ticket/23712#comment:22
+    ./patches/tachyon-renamed-focallength.patch
   ];
 
   patches = nixPatches ++ bugfixPatches ++ packageUpgradePatches;
+
+  # do not create .orig backup files if patch applies with fuzz
+  patchFlags = [ "--no-backup-if-mismatch" "-p1" ];
 
   postPatch = ''
     # Make sure sage can at least be imported without setting any environment

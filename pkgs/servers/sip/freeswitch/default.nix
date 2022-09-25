@@ -88,12 +88,12 @@ in
 
 stdenv.mkDerivation rec {
   pname = "freeswitch";
-  version = "1.10.6";
+  version = "1.10.7";
   src = fetchFromGitHub {
     owner = "signalwire";
     repo = pname;
     rev = "v${version}";
-    sha256 = "1i5n06pds3kvzhhzfwvhwxnvcb2p2fcr8k52157aplm2i7prl4q2";
+    sha256 = "0npdvidvsi4dhwswdwilff4p3x04qmz7hgs9sdadiy2w83qb6alf";
   };
 
   postPatch = ''
@@ -124,6 +124,12 @@ stdenv.mkDerivation rec {
   enableParallelBuilding = true;
 
   NIX_CFLAGS_COMPILE = "-Wno-error";
+
+  # Using c++14 because of build error
+  # gsm_at.h:94:32: error: ISO C++17 does not allow dynamic exception specifications
+  CXXFLAGS = "-std=c++14";
+
+  CFLAGS = "-D_ANSI_SOURCE";
 
   hardeningDisable = [ "format" ];
 

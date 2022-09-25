@@ -64,6 +64,32 @@
 } @args:
 
 let
+  # This is a function from parsed platforms (like
+  # stdenv.hostPlatform.parsed) to parsed platforms.
+  makeMuslParsedPlatform = parsed:
+    # The following line guarantees that the output of this function
+    # is a well-formed platform with no missing fields.  It will be
+    # uncommented in a separate PR, in case it breaks the build.
+    #(x: lib.trivial.pipe x [ (x: builtins.removeAttrs x [ "_type" ]) lib.systems.parse.mkSystem ])
+      (parsed // {
+        abi = {
+          gnu = lib.systems.parse.abis.musl;
+          gnueabi = lib.systems.parse.abis.musleabi;
+          gnueabihf = lib.systems.parse.abis.musleabihf;
+          gnuabin32 = lib.systems.parse.abis.muslabin32;
+          gnuabi64 = lib.systems.parse.abis.muslabi64;
+          gnuabielfv2 = lib.systems.parse.abis.musl;
+          gnuabielfv1 = lib.systems.parse.abis.musl;
+          # The following two entries ensure that this function is idempotent.
+          musleabi = lib.systems.parse.abis.musleabi;
+          musleabihf = lib.systems.parse.abis.musleabihf;
+          muslabin32 = lib.systems.parse.abis.muslabin32;
+          muslabi64 = lib.systems.parse.abis.muslabi64;
+        }.${parsed.abi.name}
+          or lib.systems.parse.abis.musl;
+      });
+
+
   stdenvAdapters = self: super:
     let
       res = import ../stdenv/adapters.nix {
@@ -76,8 +102,10 @@ let
 
   trivialBuilders = self: super:
     import ../build-support/trivial-builders.nix {
-      inherit lib; inherit (self) stdenv stdenvNoCC; inherit (self.pkgsBuildHost.xorg) lndir;
-      inherit (self) runtimeShell;
+      inherit lib;
+      inherit (self) runtimeShell stdenv stdenvNoCC;
+      inherit (self.pkgsBuildHost) shellcheck;
+      inherit (self.pkgsBuildHost.xorg) lndir;
     };
 
   stdenvBootstappingAndPlatforms = self: super: let
@@ -116,7 +144,6 @@ let
     inherit (super.stdenv) buildPlatform hostPlatform targetPlatform;
   in {
     inherit buildPlatform hostPlatform targetPlatform;
-    inherit (hostPlatform) system;
   };
 
   splice = self: super: import ./splice.nix lib self (adjacentPackages != null);
@@ -127,7 +154,7 @@ let
       res self super;
     in res;
 
-  aliases = self: super: lib.optionalAttrs (config.allowAliases or true) (import ./aliases.nix lib self super);
+  aliases = self: super: lib.optionalAttrs config.allowAliases (import ./aliases.nix lib self super);
 
   # stdenvOverrides is used to avoid having multiple of versions
   # of certain dependencies that were used in bootstrapping the
@@ -187,14 +214,7 @@ let
       })] ++ overlays;
       ${if stdenv.hostPlatform == stdenv.buildPlatform
         then "localSystem" else "crossSystem"} = {
-        parsed = stdenv.hostPlatform.parsed // {
-          abi = {
-            gnu = lib.systems.parse.abis.musl;
-            gnueabi = lib.systems.parse.abis.musleabi;
-            gnueabihf = lib.systems.parse.abis.musleabihf;
-          }.${stdenv.hostPlatform.parsed.abi.name}
-            or lib.systems.parse.abis.musl;
-        };
+        parsed = makeMuslParsedPlatform stdenv.hostPlatform.parsed;
       };
     } else throw "Musl libc only supports Linux systems.";
 
@@ -235,22 +255,10 @@ let
       overlays = [ (self': super': {
         pkgsStatic = super';
       })] ++ overlays;
-      crossOverlays = [ (import ./static.nix) ];
     } // lib.optionalAttrs stdenv.hostPlatform.isLinux {
       crossSystem = {
         isStatic = true;
-        parsed = stdenv.hostPlatform.parsed // {
-          abi = {
-            gnu = lib.systems.parse.abis.musl;
-            gnueabi = lib.systems.parse.abis.musleabi;
-            gnueabihf = lib.systems.parse.abis.musleabihf;
-            musleabi = lib.systems.parse.abis.musleabi;
-            musleabihf = lib.systems.parse.abis.musleabihf;
-          }.${stdenv.hostPlatform.parsed.abi.name}
-            or lib.systems.parse.abis.musl;
-        };
-      } // lib.optionalAttrs (stdenv.hostPlatform.system == "powerpc64-linux") {
-        gcc.abi = "elfv2";
+        parsed = makeMuslParsedPlatform stdenv.hostPlatform.parsed;
       };
     });
   };

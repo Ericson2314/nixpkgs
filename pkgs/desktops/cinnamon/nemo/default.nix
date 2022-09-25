@@ -5,13 +5,14 @@
 , meson
 , ninja
 , pkg-config
-, lib, stdenv
+, lib
+, stdenv
 , wrapGAppsHook
 , libxml2
 , gtk3
-, libnotify
+, gvfs
 , cinnamon-desktop
-, xapps
+, xapp
 , libexif
 , exempi
 , intltool
@@ -22,7 +23,7 @@
 
 stdenv.mkDerivation rec {
   pname = "nemo";
-  version = "5.0.3";
+  version = "5.4.3";
 
   # TODO: add plugins support (see https://github.com/NixOS/nixpkgs/issues/78327)
 
@@ -30,7 +31,7 @@ stdenv.mkDerivation rec {
     owner = "linuxmint";
     repo = pname;
     rev = version;
-    sha256 = "sha256-Ah1Rp/o4LPdYm+wj2W5ljjMkCI3PgoAHrlM8yEQP77o=";
+    sha256 = "sha256-f3rO0lpOcwpSpIpKrslf6/6nqFbbGTwnKbHpWO+Uf+Q=";
   };
 
   outputs = [ "out" "dev" ];
@@ -38,12 +39,12 @@ stdenv.mkDerivation rec {
   buildInputs = [
     glib
     gtk3
-    libnotify
     cinnamon-desktop
     libxml2
-    xapps
+    xapp
     libexif
     exempi
+    gvfs
     gobject-introspection
     libgsf
   ];
@@ -58,8 +59,6 @@ stdenv.mkDerivation rec {
   ];
 
   mesonFlags = [
-    # TODO: https://github.com/NixOS/nixpkgs/issues/36468
-    "-Dc_args=-I${glib.dev}/include/gio-unix-2.0"
     # use locales from cinnamon-translations
     "--localedir=${cinnamon-translations}/share/locale"
   ];
@@ -72,3 +71,4 @@ stdenv.mkDerivation rec {
     maintainers = teams.cinnamon.members;
   };
 }
+

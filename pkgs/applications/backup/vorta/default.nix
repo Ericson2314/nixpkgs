@@ -8,13 +8,13 @@
 
 python3Packages.buildPythonApplication rec {
   pname = "vorta";
-  version = "0.7.8";
+  version = "0.8.7";
 
   src = fetchFromGitHub {
     owner = "borgbase";
     repo = "vorta";
-    rev = "v${version}";
-    sha256 = "sha256-qNBswy1dsCE6TEQLr/r7nnZWegDD8BD9pMkcpcuT7Q0=";
+    rev = "refs/tags/v${version}";
+    sha256 = "sha256-9SfHZbNM+lRtwLO/0dE9C4cHb3pSPkxBUITYNEdPMQw=";
   };
 
   nativeBuildInputs = [ wrapQtAppsHook ];
@@ -24,7 +24,6 @@ python3Packages.buildPythonApplication rec {
     peewee
     pyqt5
     python-dateutil
-    APScheduler
     psutil
     qdarkstyle
     secretstorage

@@ -7,11 +7,11 @@
 
 buildPythonPackage rec {
   pname = "scikit-fmm";
-  version = "2021.7.8";
+  version = "2022.8.15";
 
   src = fetchPypi {
     inherit pname version;
-    sha256 = "f931a2600e7f0824ac51ebde86ee40295146cc1ad5f88fdc208b0a12fcb2ddb3";
+    sha256 = "sha256-BgDmxoB1QzZ/DlqIB0m66Km+fbAo5RcpjmX0BZ9985w=";
   };
 
   propagatedBuildInputs = [

@@ -14,11 +14,11 @@ assert (!blas.isILP64) && (!lapack.isILP64);
 
 stdenv.mkDerivation rec {
   pname = "R";
-  version = "4.1.1";
+  version = "4.2.1";
 
   src = fetchurl {
     url = "https://cran.r-project.org/src/base/R-${lib.versions.major version}/${pname}-${version}.tar.gz";
-    sha256 = "0r6kpnxjbvb7gdfg4m1z8zc6xd225vw81wrnf05ps9ajawk06pji";
+    sha256 = "sha256-TVLbSG0nhI5UYT1O6XetlS7AjOF4B+G1JbEM1ENsZD8=";
   };
 
   dontUseImakeConfigure = true;
@@ -31,14 +31,18 @@ stdenv.mkDerivation rec {
 
   patches = [
     ./no-usr-local-search-paths.patch
-    ./skip-check-for-aarch64.patch
+    ./test-reg-packages.patch
   ];
 
-  prePatch = lib.optionalString stdenv.isDarwin ''
+  # Test of the examples for package 'tcltk' fails in Darwin sandbox. See:
+  # https://github.com/NixOS/nixpkgs/issues/146131
+  postPatch = lib.optionalString stdenv.isDarwin ''
     substituteInPlace configure \
       --replace "-install_name libRblas.dylib" "-install_name $out/lib/R/lib/libRblas.dylib" \
       --replace "-install_name libRlapack.dylib" "-install_name $out/lib/R/lib/libRlapack.dylib" \
       --replace "-install_name libR.dylib" "-install_name $out/lib/R/lib/libR.dylib"
+    substituteInPlace tests/Examples/Makefile.in \
+      --replace "test-Examples: test-Examples-Base" "test-Examples:" # do not test the examples
   '';
 
   dontDisableStatic = static;
@@ -87,7 +91,7 @@ stdenv.mkDerivation rec {
   postFixup = "echo ${which} > $out/nix-support/undetected-runtime-dependencies";
 
   doCheck = true;
-  preCheck = "export TZ=CET; bin/Rscript -e 'sessionInfo()'";
+  preCheck = "export HOME=$TMPDIR; export TZ=CET; bin/Rscript -e 'sessionInfo()'";
 
   enableParallelBuilding = true;
 
@@ -118,8 +122,7 @@ stdenv.mkDerivation rec {
     '';
 
     platforms = platforms.all;
-    hydraPlatforms = platforms.linux;
 
-    maintainers = with maintainers; [ peti ] ++ teams.sage.members;
+    maintainers = with maintainers; [ jbedo ] ++ teams.sage.members;
   };
 }

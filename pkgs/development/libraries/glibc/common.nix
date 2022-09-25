@@ -37,13 +37,15 @@
 , profilingLibraries ? false
 , withGd ? false
 , meta
+, extraBuildInputs ? []
+, extraNativeBuildInputs ? []
 , ...
 } @ args:
 
 let
-  version = "2.33";
-  patchSuffix = "-47";
-  sha256 = "sha256-LiVWAA4QXb1X8Layoy/yzxc73k8Nhd/8z9i35RoGd/8=";
+  version = "2.35";
+  patchSuffix = "-163";
+  sha256 = "sha256-USNzL2tnzNMZMF79OZlx1YWSEivMKmUYob0lEN0M9S4=";
 in
 
 assert withLinuxHeaders -> linuxHeaders != null;
@@ -60,14 +62,14 @@ stdenv.mkDerivation ({
   patches =
     [
       /* No tarballs for stable upstream branch, only https://sourceware.org/git/glibc.git and using git would complicate bootstrapping.
-          $ git fetch --all -p && git checkout origin/release/2.33/master && git describe
-          glibc-2.33-47-gb5711025bc
-          $ git show --minimal --reverse glibc-2.33.. | gzip -9n --rsyncable - > 2.33-master.patch.gz
+          $ git fetch --all -p && git checkout origin/release/2.35/master && git describe
+          glibc-2.35-210-ge123f08ad5
+          $ git show --minimal --reverse glibc-2.35.. | gzip -9n --rsyncable - > 2.35-master.patch.gz
 
          To compare the archive contents zdiff can be used.
-          $ zdiff -u 2.33-master.patch.gz ../nixpkgs/pkgs/development/libraries/glibc/2.33-master.patch.gz
+          $ zdiff -u 2.35-master.patch.gz ../nixpkgs/pkgs/development/libraries/glibc/2.35-master.patch.gz
        */
-      ./2.33-master.patch.gz
+      ./2.35-master.patch.gz
 
       /* Allow NixOS and Nix to handle the locale-archive. */
       ./nix-locale-archive.patch
@@ -113,13 +115,12 @@ stdenv.mkDerivation ({
         sha256 = "091bk3kyrx1gc380gryrxjzgcmh1ajcj8s2rjhp2d2yzd5mpd5ps";
       })
 
-      /* Provide utf-8 locales by default, so we can use it in stdenv without depending on our large locale-archive. */
-      (fetchurl {
-        url = "https://salsa.debian.org/glibc-team/glibc/raw/49767c9f7de4828220b691b29de0baf60d8a54ec/debian/patches/localedata/locale-C.diff";
-        sha256 = "0irj60hs2i91ilwg5w7sqrxb695c93xg0ik7yhhq9irprd7fidn4";
-      })
-
       ./fix-x64-abi.patch
+
+      /* https://github.com/NixOS/nixpkgs/pull/137601 */
+      ./nix-nss-open-files.patch
+
+      ./0001-Revert-Remove-all-usage-of-BASH-or-BASH-in-installed.patch
     ]
     ++ lib.optional stdenv.hostPlatform.isMusl ./fix-rpc-types-musl-conflicts.patch
     ++ lib.optional stdenv.buildPlatform.isDarwin ./darwin-cross-build.patch;
@@ -133,6 +134,10 @@ stdenv.mkDerivation ({
       # nscd needs libgcc, and we don't want it dynamically linked
       # because we don't want it to depend on bootstrap-tools libs.
       echo "LDFLAGS-nscd += -static-libgcc" >> nscd/Makefile
+
+      # Ensure that `__nss_files_fopen` can still be wrapped by `libredirect`.
+      sed -i -e '/libc_hidden_def (__nss_files_fopen)/d' nss/nss_files_fopen.c
+      sed -i -e '/libc_hidden_proto (__nss_files_fopen)/d' include/nss_files.h
     ''
     # FIXME: find a solution for infinite recursion in cross builds.
     # For now it's hopefully acceptable that IDN from libc doesn't reliably work.
@@ -152,16 +157,19 @@ stdenv.mkDerivation ({
     [ "-C"
       "--enable-add-ons"
       "--sysconfdir=/etc"
-      "--enable-stackguard-randomization"
+      "--enable-stack-protector=strong"
       "--enable-bind-now"
       (lib.withFeatureAs withLinuxHeaders "headers" "${linuxHeaders}/include")
       (lib.enableFeature profilingLibraries "profile")
-    ] ++ lib.optionals (stdenv.hostPlatform.isx86_64 || stdenv.hostPlatform.isi686 || stdenv.hostPlatform.isAarch64) [
+    ] ++ lib.optionals (stdenv.hostPlatform.isx86 || stdenv.hostPlatform.isAarch64) [
       # This feature is currently supported on
       # i386, x86_64 and x32 with binutils 2.29 or later,
       # and on aarch64 with binutils 2.30 or later.
       # https://sourceware.org/glibc/wiki/PortStatus
       "--enable-static-pie"
+    ] ++ lib.optionals stdenv.hostPlatform.isx86 [
+      # Enable Intel Control-flow Enforcement Technology (CET) support
+      "--enable-cet"
     ] ++ lib.optionals withLinuxHeaders [
       "--enable-kernel=3.2.0" # can't get below with glibc >= 2.26
     ] ++ lib.optionals (stdenv.hostPlatform != stdenv.buildPlatform) [
@@ -183,11 +191,13 @@ stdenv.mkDerivation ({
 
   installFlags = [ "sysconfdir=$(out)/etc" ];
 
+  # out as the first output is an exception exclusive to glibc
   outputs = [ "out" "bin" "dev" "static" ];
 
+  strictDeps = true;
   depsBuildBuild = [ buildPackages.stdenv.cc ];
-  nativeBuildInputs = [ bison python3Minimal ];
-  buildInputs = [ linuxHeaders ] ++ lib.optionals withGd [ gd libpng ];
+  nativeBuildInputs = [ bison python3Minimal ] ++ extraNativeBuildInputs;
+  buildInputs = [ linuxHeaders ] ++ lib.optionals withGd [ gd libpng ] ++ extraBuildInputs;
 
   # Needed to install share/zoneinfo/zone.tab.  Set to impure /bin/sh to
   # prevent a retained dependency on the bootstrap tools in the stdenv-linux
@@ -195,7 +205,7 @@ stdenv.mkDerivation ({
   BASH_SHELL = "/bin/sh";
 
   # Used by libgcc, elf-header, and others to determine ABI
-  passthru = { inherit version; };
+  passthru = { inherit version; minorRelease = version; };
 }
 
 // (removeAttrs args [ "withLinuxHeaders" "withGd" ]) //
@@ -283,9 +293,4 @@ stdenv.mkDerivation ({
 
 // lib.optionalAttrs (stdenv.hostPlatform != stdenv.buildPlatform) {
   preInstall = null; # clobber the native hook
-
-  # To avoid a dependency on the build system 'bash'.
-  preFixup = ''
-    rm -f $bin/bin/{ldd,tzselect,catchsegv,xtrace}
-  '';
 })

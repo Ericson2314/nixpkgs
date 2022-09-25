@@ -2,17 +2,19 @@
 , lib
 , fetchFromGitHub
 , fetchzip
+, addOpenGLRunpath
 , cmake
 , glibc_multi
 , glibc
 , git
 , pkg-config
-, cudatoolkit
+, cudaPackages ? {}
 , withCuda ? false
-, linuxPackages
 }:
 
 let
+  inherit (cudaPackages) cudatoolkit;
+
   hwloc = stdenv.mkDerivation rec {
     pname = "hwloc";
     version = "2.2.0";
@@ -60,12 +62,22 @@ stdenv.mkDerivation rec {
     fetchSubmodules = true;
   };
 
-  nativeBuildInputs = [ cmake git pkg-config ];
+  nativeBuildInputs = [
+    cmake
+    git
+    pkg-config
+  ] ++ lib.optionals withCuda [
+    addOpenGLRunpath
+  ];
 
   buildInputs = [ hwloc ] ++ (if withCuda then
-    [ glibc_multi cudatoolkit linuxPackages.nvidia_x11 ]
+    [ glibc_multi cudatoolkit ]
   else
     [ glibc.static ]);
+
+  NIX_LDFLAGS = lib.optionals withCuda [
+    "-L${cudatoolkit}/lib/stubs"
+  ];
 
   cmakeFlags = [
     "-DFIRESTARTER_BUILD_HWLOC=OFF"
@@ -76,11 +88,18 @@ stdenv.mkDerivation rec {
   ];
 
   installPhase = ''
+    runHook preInstall
     mkdir -p $out/bin
     cp src/FIRESTARTER${lib.optionalString withCuda "_CUDA"} $out/bin/
+    runHook postInstall
+  '';
+
+  postFixup = lib.optionalString withCuda ''
+    addOpenGLRunpath $out/bin/FIRESTARTER_CUDA
   '';
 
   meta = with lib; {
+    broken = (stdenv.isLinux && stdenv.isAarch64);
     homepage = "https://tu-dresden.de/zih/forschung/projekte/firestarter";
     description = "Processor Stress Test Utility";
     platforms = platforms.linux;

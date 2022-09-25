@@ -1,4 +1,8 @@
-{ lib, stdenv, fetchurl, mateUpdateScript }:
+{ lib
+, stdenv
+, fetchurl
+, mateUpdateScript
+}:
 
 stdenv.mkDerivation rec {
   pname = "mate-common";
@@ -13,11 +17,11 @@ stdenv.mkDerivation rec {
 
   passthru.updateScript = mateUpdateScript { inherit pname version; };
 
-  meta = {
+  meta = with lib; {
     description = "Common files for development of MATE packages";
     homepage = "https://mate-desktop.org";
-    license = lib.licenses.gpl3Plus;
-    platforms = lib.platforms.unix;
-    maintainers = [ lib.maintainers.romildo ];
+    license = licenses.gpl3Plus;
+    platforms = platforms.unix;
+    maintainers = teams.mate.members;
   };
 }

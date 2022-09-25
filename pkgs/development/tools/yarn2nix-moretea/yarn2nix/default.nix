@@ -1,6 +1,7 @@
 { pkgs ? import <nixpkgs> {}
 , nodejs ? pkgs.nodejs
 , yarn ? pkgs.yarn
+, allowAliases ? pkgs.config.allowAliases
 }:
 
 let
@@ -9,6 +10,14 @@ let
   compose = f: g: x: f (g x);
   id = x: x;
   composeAll = builtins.foldl' compose id;
+
+  # https://docs.npmjs.com/files/package.json#license
+  # TODO: support expression syntax (OR, AND, etc)
+  getLicenseFromSpdxId = licstr:
+    if licstr == "UNLICENSED" then
+      lib.licenses.unfree
+    else
+      lib.getLicenseFromSpdxId licstr;
 in rec {
   # Export yarn again to make it easier to find out which yarn was used.
   inherit yarn;
@@ -30,16 +39,7 @@ in rec {
       non-null = builtins.filter (x: x != null) parts;
     in builtins.concatStringsSep "-" non-null;
 
-  # https://docs.npmjs.com/files/package.json#license
-  # TODO: support expression syntax (OR, AND, etc)
-  spdxLicense = licstr:
-    if licstr == "UNLICENSED" then
-      lib.licenses.unfree
-    else
-      lib.findFirst
-        (l: l ? spdxId && l.spdxId == licstr)
-        { shortName = licstr; }
-        (builtins.attrValues lib.licenses);
+  inherit getLicenseFromSpdxId;
 
   # Generates the yarn.nix from the yarn.lock file
   mkYarnNix = { yarnLock, flags ? [] }:
@@ -68,18 +68,23 @@ in rec {
     packageJSON,
     yarnLock,
     yarnNix ? mkYarnNix { inherit yarnLock; },
-    yarnFlags ? defaultYarnFlags,
+    offlineCache ? importOfflineCache yarnNix,
+    yarnFlags ? [ ],
     pkgConfig ? {},
     preBuild ? "",
     postBuild ? "",
     workspaceDependencies ? [], # List of yarn packages
+    packageResolutions ? {},
   }:
     let
-      offlineCache = importOfflineCache yarnNix;
-
-      extraBuildInputs = (lib.flatten (builtins.map (key:
-        pkgConfig.${key}.buildInputs or []
-      ) (builtins.attrNames pkgConfig)));
+      extraNativeBuildInputs =
+        lib.concatMap
+          (key: pkgConfig.${key}.nativeBuildInputs or [])
+          (builtins.attrNames pkgConfig);
+      extraBuildInputs =
+        lib.concatMap
+          (key: pkgConfig.${key}.buildInputs or [])
+          (builtins.attrNames pkgConfig);
 
       postInstall = (builtins.map (key:
         if (pkgConfig.${key} ? postInstall) then
@@ -94,7 +99,7 @@ in rec {
 
       workspaceJSON = pkgs.writeText
         "${name}-workspace-package.json"
-        (builtins.toJSON { private = true; workspaces = ["deps/**"]; }); # scoped packages need second splat
+        (builtins.toJSON { private = true; workspaces = ["deps/**"]; resolutions = packageResolutions; }); # scoped packages need second splat
 
       workspaceDependencyLinks = lib.concatMapStringsSep "\n"
         (dep: ''
@@ -107,9 +112,15 @@ in rec {
       inherit preBuild postBuild name;
       dontUnpack = true;
       dontInstall = true;
-      buildInputs = [ yarn nodejs git ] ++ extraBuildInputs;
+      nativeBuildInputs = [ yarn nodejs git ] ++ extraNativeBuildInputs;
+      buildInputs = extraBuildInputs;
 
-      configurePhase = ''
+      configurePhase = lib.optionalString (offlineCache ? outputHash) ''
+        if ! cmp -s ${yarnLock} ${offlineCache}/yarn.lock; then
+          echo "yarn.lock changed, you need to update the fetchYarnDeps hash"
+          exit 1
+        fi
+      '' + ''
         # Yarn writes cache directories etc to $HOME.
         export HOME=$PWD/yarn_home
       '';
@@ -130,7 +141,7 @@ in rec {
 
         ${workspaceDependencyLinks}
 
-        yarn install ${lib.escapeShellArgs yarnFlags}
+        yarn install ${lib.escapeShellArgs (defaultYarnFlags ++ yarnFlags)}
 
         ${lib.concatStringsSep "\n" postInstall}
 
@@ -164,7 +175,9 @@ in rec {
   let
     package = lib.importJSON packageJSON;
 
-    packageGlobs = package.workspaces;
+    packageGlobs = if lib.isList package.workspaces then package.workspaces else package.workspaces.packages;
+
+    packageResolutions = package.resolutions or {};
 
     globElemToRegex = lib.replaceStrings ["*"] [".*"];
 
@@ -213,7 +226,7 @@ in rec {
         inherit name;
         value = mkYarnPackage (
           builtins.removeAttrs attrs ["packageOverrides"]
-          // { inherit src packageJSON yarnLock workspaceDependencies; }
+          // { inherit src packageJSON yarnLock packageResolutions workspaceDependencies; }
           // lib.attrByPath [name] {} packageOverrides
         );
       })
@@ -227,13 +240,15 @@ in rec {
     packageJSON ? src + "/package.json",
     yarnLock ? src + "/yarn.lock",
     yarnNix ? mkYarnNix { inherit yarnLock; },
-    yarnFlags ? defaultYarnFlags,
+    offlineCache ? importOfflineCache yarnNix,
+    yarnFlags ? [ ],
     yarnPreBuild ? "",
     yarnPostBuild ? "",
     pkgConfig ? {},
     extraBuildInputs ? [],
     publishBinsFor ? null,
     workspaceDependencies ? [], # List of yarnPackages
+    packageResolutions ? {},
     ...
   }@attrs:
     let
@@ -253,7 +268,7 @@ in rec {
         preBuild = yarnPreBuild;
         postBuild = yarnPostBuild;
         workspaceDependencies = workspaceDependenciesTransitive;
-        inherit packageJSON pname version yarnLock yarnNix yarnFlags pkgConfig;
+        inherit packageJSON pname version yarnLock offlineCache yarnFlags pkgConfig packageResolutions;
       };
 
       publishBinsFor_ = unlessNull publishBinsFor [pname];
@@ -287,7 +302,7 @@ in rec {
         '')
         workspaceDependenciesTransitive;
 
-    in stdenv.mkDerivation (builtins.removeAttrs attrs ["yarnNix" "pkgConfig" "workspaceDependencies"] // {
+    in stdenv.mkDerivation (builtins.removeAttrs attrs ["yarnNix" "pkgConfig" "workspaceDependencies" "packageResolutions"] // {
       inherit src pname;
 
       name = baseName;
@@ -344,7 +359,7 @@ in rec {
         runHook postInstall
       '';
 
-      doDist = true;
+      doDist = attrs.doDist or true;
 
       distPhase = attrs.distPhase or ''
         # pack command ignores cwd option
@@ -364,7 +379,7 @@ in rec {
         description = packageJSON.description or "";
         homepage = packageJSON.homepage or "";
         version = packageJSON.version or "";
-        license = if packageJSON ? license then spdxLicense packageJSON.license else "";
+        license = if packageJSON ? license then getLicenseFromSpdxId packageJSON.license else "";
       } // (attrs.meta or {});
     });
 
@@ -400,6 +415,8 @@ in rec {
 
     yarnFlags = defaultYarnFlags ++ ["--production=true"];
 
+    nativeBuildInputs = [ pkgs.makeWrapper ];
+
     buildPhase = ''
       source ${./nix/expectShFunctions.sh}
 
@@ -411,6 +428,10 @@ in rec {
       # check devDependencies are not installed
       expectFileOrDirAbsent ./node_modules/.bin/eslint
       expectFileOrDirAbsent ./node_modules/eslint/package.json
+    '';
+
+    postInstall = ''
+      wrapProgram $out/bin/yarn2nix --prefix PATH : "${pkgs.nix-prefetch-git}/bin"
     '';
   };
 
@@ -426,4 +447,7 @@ in rec {
 
     patchShebangs $out
   '';
+} // lib.optionalAttrs allowAliases {
+  # Aliases
+  spdxLicense = getLicenseFromSpdxId; # added 2021-12-01
 }

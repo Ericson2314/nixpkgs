@@ -1,5 +1,20 @@
-{ lib, stdenv, fetchurl, pkg-config, gettext, itstool, gtk3, libxml2, libxslt, libatasmart, libnotify
-, lm_sensors, mate, hicolor-icon-theme, wrapGAppsHook, mateUpdateScript }:
+{ lib
+, stdenv
+, fetchurl
+, pkg-config
+, gettext
+, itstool
+, gtk3
+, libxml2
+, libxslt
+, libatasmart
+, libnotify
+, lm_sensors
+, mate
+, hicolor-icon-theme
+, wrapGAppsHook
+, mateUpdateScript
+}:
 
 stdenv.mkDerivation rec {
   pname = "mate-sensors-applet";
@@ -38,6 +53,6 @@ stdenv.mkDerivation rec {
     description = "MATE panel applet for hardware sensors";
     license = with licenses; [ gpl2Plus ];
     platforms = platforms.linux;
-    maintainers = [ maintainers.romildo ];
+    maintainers = teams.mate.members;
   };
 }

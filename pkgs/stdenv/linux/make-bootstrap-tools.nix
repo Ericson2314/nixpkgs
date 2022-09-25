@@ -1,9 +1,6 @@
-{ localSystem ? { system = builtins.currentSystem; }
-, crossSystem ? null
-}:
+{ pkgs ? import ../../.. {} }:
 
 let
-  pkgs = import ../../.. { inherit localSystem crossSystem; };
   libc = pkgs.stdenv.cc.libc;
 in with pkgs; rec {
 
@@ -37,7 +34,7 @@ in with pkgs; rec {
   bootBinutils = binutils.bintools.override {
     withAllTargets = false;
     # Don't need two linkers, disable whatever's not primary/default.
-    gold = false;
+    enableGold = false;
     # bootstrap is easier w/static
     enableShared = false;
   };
@@ -73,6 +70,9 @@ in with pkgs; rec {
         cp -d ${libc.out}/lib/libnss*.so* $out/lib
         cp -d ${libc.out}/lib/libresolv*.so* $out/lib
         cp -d ${libc.out}/lib/crt?.o $out/lib
+
+        # Hacky compat with our current unpack-bootstrap-tools.sh
+        ln -s librt.so "$out"/lib/librt-dummy.so
 
         cp -rL ${libc.dev}/include $out
         chmod -R u+w "$out"
@@ -152,13 +152,17 @@ in with pkgs; rec {
         cp -d ${mpfr.out}/lib/libmpfr*.so* $out/lib
         cp -d ${libmpc.out}/lib/libmpc*.so* $out/lib
         cp -d ${zlib.out}/lib/libz.so* $out/lib
-        cp -d ${libelf}/lib/libelf.so* $out/lib
 
       '' + lib.optionalString (stdenv.hostPlatform != stdenv.buildPlatform) ''
         # These needed for cross but not native tools because the stdenv
         # GCC has certain things built in statically. See
         # pkgs/stdenv/linux/default.nix for the details.
         cp -d ${isl_0_20.out}/lib/libisl*.so* $out/lib
+
+      '' + lib.optionalString (stdenv.hostPlatform.isRiscV) ''
+        # libatomic is required on RiscV platform for C/C++ atomics and pthread
+        # even though they may be translated into native instructions.
+        cp -d ${bootGCC.out}/lib/libatomic.a* $out/lib
 
       '' + ''
         cp -d ${bzip2.out}/lib/libbz2.so* $out/lib
@@ -167,7 +171,7 @@ in with pkgs; rec {
         for i in as ld ar ranlib nm strip readelf objdump; do
           cp ${bootBinutils.out}/bin/$i $out/bin
         done
-        cp '${lib.getLib binutils.bintools}'/lib/* "$out/lib/"
+        cp -r '${lib.getLib binutils.bintools}'/lib/* "$out/lib/"
 
         chmod -R u+w $out
 
@@ -181,6 +185,7 @@ in with pkgs; rec {
 
         nuke-refs $out/bin/*
         nuke-refs $out/lib/*
+        nuke-refs $out/lib/*/*
         nuke-refs $out/libexec/gcc/*/*/*
         nuke-refs $out/lib/gcc/*/*/*
         nuke-refs $out/lib/gcc/*/*/include-fixed/*{,/*}
@@ -226,7 +231,7 @@ in with pkgs; rec {
 
   bootstrapTools =
     let extraAttrs = lib.optionalAttrs
-      (config.contentAddressedByDefault or false)
+      config.contentAddressedByDefault
       {
         __contentAddressed = true;
         outputHashAlgo = "sha256";

@@ -6,13 +6,13 @@
 
 stdenv.mkDerivation rec {
   pname = "opensmt";
-  version = "2.1.0";
+  version = "2.4.1";
 
   src = fetchFromGitHub {
     owner = "usi-verification-and-security";
     repo = "opensmt";
     rev = "v${version}";
-    sha256 = "sha256-m8TpMBY1r0h8GJTHM4FLBuZtX+WK/Q7RTXUnNmUWV+o=";
+    sha256 = "sha256-Hy+NCR0gbU06WnfIyKy6XTH94vd0CevwGbZ7KlXVvIQ=";
   };
 
   nativeBuildInputs = [ cmake bison flex ];
@@ -29,6 +29,7 @@ stdenv.mkDerivation rec {
   ];
 
   meta = with lib; {
+    broken = (stdenv.isLinux && stdenv.isAarch64);
     description = "A satisfiability modulo theory (SMT) solver";
     maintainers = [ maintainers.raskin ];
     platforms = platforms.linux;

@@ -13,6 +13,9 @@ import tempfile
 class CalledProcessError(Exception):
     process: asyncio.subprocess.Process
 
+class UpdateFailedException(Exception):
+    pass
+
 def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
 
@@ -69,7 +72,7 @@ async def run_update_script(nixpkgs_root: str, merge_lock: asyncio.Lock, temp_di
         eprint(f"--- SHOWING ERROR LOG FOR {package['name']} ----------------------")
 
         if not keep_going:
-            raise asyncio.exceptions.CancelledError()
+            raise UpdateFailedException(f"The update script for {package['name']} failed with exit code {e.process.returncode}")
 
 @contextlib.contextmanager
 def make_worktree() -> Generator[Tuple[str, str], None, None]:
@@ -88,6 +91,10 @@ async def commit_changes(name: str, merge_lock: asyncio.Lock, worktree: str, bra
         async with merge_lock:
             await check_subprocess('git', 'add', *change['files'], cwd=worktree)
             commit_message = '{attrPath}: {oldVersion} → {newVersion}'.format(**change)
+            if 'commitMessage' in change:
+                commit_message = change['commitMessage']
+            elif 'commitBody' in change:
+                commit_message = commit_message + '\n\n' + change['commitBody']
             await check_subprocess('git', 'commit', '--quiet', '-m', commit_message, cwd=worktree)
             await check_subprocess('git', 'cherry-pick', branch)
 
@@ -114,7 +121,7 @@ async def check_changes(package: Dict, worktree: str, update_info: str):
             changes[0]['newVersion'] = json.loads((await obtain_new_version_process.stdout.read()).decode('utf-8'))
 
         if 'files' not in changes[0]:
-            changed_files_process = await check_subprocess('git', 'diff', '--name-only', stdout=asyncio.subprocess.PIPE, cwd=worktree)
+            changed_files_process = await check_subprocess('git', 'diff', '--name-only', 'HEAD', stdout=asyncio.subprocess.PIPE, cwd=worktree)
             changed_files = (await changed_files_process.stdout.read()).splitlines()
             changes[0]['files'] = changed_files
 
@@ -181,9 +188,14 @@ async def start_updates(max_workers: int, keep_going: bool, commit: bool, packag
         try:
             # Start updater workers.
             await updaters
-        except asyncio.exceptions.CancelledError as e:
+        except asyncio.exceptions.CancelledError:
             # When one worker is cancelled, cancel the others too.
             updaters.cancel()
+        except UpdateFailedException as e:
+            # When one worker fails, cancel the others, as this exception is only thrown when keep_going is false.
+            updaters.cancel()
+            eprint(e)
+            sys.exit(1)
 
 def main(max_workers: int, keep_going: bool, commit: bool, packages_path: str) -> None:
     with open(packages_path) as f:

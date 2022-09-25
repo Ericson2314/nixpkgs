@@ -13,7 +13,7 @@ in
 {
   ###### interface
 
-  meta.maintainers = with maintainers; [ philandstuff rawkode ];
+  meta.maintainers = with maintainers; [ philandstuff rawkode jwoudenberg ];
 
   options = {
 
@@ -21,7 +21,7 @@ in
       enable = mkOption {
         type = types.bool;
         default = false;
-        description = ''
+        description = lib.mdDoc ''
           Whether to start yubikey-agent when you log in.  Also sets
           SSH_AUTH_SOCK to point at yubikey-agent.
 
@@ -33,8 +33,8 @@ in
       package = mkOption {
         type = types.package;
         default = pkgs.yubikey-agent;
-        defaultText = "pkgs.yubikey-agent";
-        description = ''
+        defaultText = literalExpression "pkgs.yubikey-agent";
+        description = lib.mdDoc ''
           The package used for the yubikey-agent daemon.
         '';
       };
@@ -49,6 +49,12 @@ in
     # yubikey-agent package
     systemd.user.services.yubikey-agent = mkIf (pinentryFlavor != null) {
       path = [ pkgs.pinentry.${pinentryFlavor} ];
+      wantedBy = [
+        (if pinentryFlavor == "tty" || pinentryFlavor == "curses" then
+          "default.target"
+        else
+          "graphical-session.target")
+      ];
     };
 
     environment.extraInit = ''

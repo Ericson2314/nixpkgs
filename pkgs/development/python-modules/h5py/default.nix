@@ -1,5 +1,5 @@
-{ lib, fetchPypi, isPy27, python, buildPythonPackage, pythonOlder
-, numpy, hdf5, cython, six, pkgconfig, unittest2, fetchpatch
+{ lib, fetchPypi, isPy27, buildPythonPackage, pythonOlder
+, numpy, hdf5, cython, six, pkgconfig, unittest2
 , mpi4py ? null, openssh, pytestCheckHook, cached-property }:
 
 assert hdf5.mpiSupport -> mpi4py != null && hdf5.mpi == mpi4py.mpi;
@@ -8,19 +8,20 @@ let
   mpi = hdf5.mpi;
   mpiSupport = hdf5.mpiSupport;
 in buildPythonPackage rec {
-  version = "3.2.1";
+  version = "3.7.0";
   pname = "h5py";
   disabled = isPy27;
 
   src = fetchPypi {
     inherit pname version;
-    sha256 = "sha256-iUdL6RG/zbNMvw2YuOxItXjCeon9sa5O51E/HvjZJJ4=";
+    sha256 = "sha256-P883iEODxdpkhGq1EBkHIAJ9ygdo3vNN2Ny2Wdvly/M=";
   };
 
   # avoid strict pinning of numpy
   postPatch = ''
     substituteInPlace setup.py \
-      --replace "numpy ==" "numpy >="
+      --replace "numpy ==" "numpy >=" \
+      --replace "mpi4py ==" "mpi4py >="
   '';
 
   HDF5_DIR = "${hdf5}";

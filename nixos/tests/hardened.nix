@@ -1,19 +1,22 @@
-import ./make-test-python.nix ({ pkgs, latestKernel ? false, ... } : {
+import ./make-test-python.nix ({ pkgs, ... } : {
   name = "hardened";
   meta = with pkgs.lib.maintainers; {
     maintainers = [ joachifm ];
   };
 
-  machine =
+  nodes.machine =
     { lib, pkgs, config, ... }:
     with lib;
     { users.users.alice = { isNormalUser = true; extraGroups = [ "proc" ]; };
       users.users.sybil = { isNormalUser = true; group = "wheel"; };
       imports = [ ../modules/profiles/hardened.nix ];
-      boot.kernelPackages =
-        lib.mkIf latestKernel pkgs.linuxPackages_latest_hardened;
       environment.memoryAllocator.provider = "graphene-hardened";
-      nix.useSandbox = false;
+      nix.settings.sandbox = false;
+      nixpkgs.overlays = [
+        (final: super: {
+          dhcpcd = super.dhcpcd.override { enablePrivSep = false; };
+        })
+      ];
       virtualisation.emptyDiskImages = [ 4096 ];
       boot.initrd.postDeviceCommands = ''
         ${pkgs.dosfstools}/bin/mkfs.vfat -n EFISYS /dev/vdb
@@ -57,6 +60,7 @@ import ./make-test-python.nix ({ pkgs, latestKernel ? false, ... } : {
       # Test kernel module hardening
       with subtest("No more kernel modules can be loaded"):
           # note: this better a be module we normally wouldn't load ...
+          machine.wait_for_unit("disable-kernel-module-loading.service")
           machine.fail("modprobe dccp")
 
 
@@ -86,8 +90,8 @@ import ./make-test-python.nix ({ pkgs, latestKernel ? false, ... } : {
 
       # Test Nix dæmon usage
       with subtest("nix-daemon cannot be used by all users"):
-          machine.fail("su -l nobody -s /bin/sh -c 'nix ping-store'")
-          machine.succeed("su -l alice -c 'nix ping-store'")
+          machine.fail("su -l nobody -s /bin/sh -c 'nix --extra-experimental-features nix-command ping-store'")
+          machine.succeed("su -l alice -c 'nix --extra-experimental-features nix-command ping-store'")
 
 
       # Test kernel image protection

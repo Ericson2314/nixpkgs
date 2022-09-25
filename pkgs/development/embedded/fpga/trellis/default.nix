@@ -1,30 +1,30 @@
-{ lib, stdenv, fetchFromGitHub
-, python3, boost
-, cmake
-}:
+{ lib, stdenv, fetchFromGitHub, python3, boost, cmake }:
 
-stdenv.mkDerivation rec {
-  pname = "trellis";
-  version = "2021.07.06";
-
+let
+  rev = "2f06397673bbca3da11928d538b8ab7d01c944c6";
   # git describe --tags
-  realVersion = with lib; with builtins;
-    "1.0-482-g${substring 0 7 (elemAt srcs 0).rev}";
+  realVersion = "1.0-534-g${builtins.substring 0 7 rev}";
+in stdenv.mkDerivation rec {
+  pname = "trellis";
+  version = "2021-12-14";
 
   srcs = [
     (fetchFromGitHub {
        owner  = "YosysHQ";
        repo   = "prjtrellis";
-       rev    = "dff1cbcb1bd30de7e96f8a059f2e19be1bb2e44d";
-       sha256 = "1gbrka9gqn124shx448aivbgywyp30zyjwfazr7v49lhrl7d46lb";
+       inherit rev;
+       hash   = "sha256-m5CalAIbzY2bhOvpBbPBeLZeDp+itk1HlRsSmtiddaA=";
        name   = "trellis";
      })
 
     (fetchFromGitHub {
       owner  = "YosysHQ";
       repo   = "prjtrellis-db";
-      rev    = "0ee729d20eaf9f1e0f1d657bc6452e3ffe6a0d63";
-      sha256 = "0069c98bb4wilxz21snwc39yy0rm7ffma179djyz57d99p0vcfkq";
+      # note: the upstream submodule points to revision 0ee729d20eaf,
+      # but that's just the tip of the branch that was merged into master.
+      # fdf4bf275a is the merge commit itself
+      rev    = "fdf4bf275a7402654bc643db537173e2fbc86103";
+      sha256 = "eDq2wU2pnfK9bOkEVZ07NQPv02Dc6iB+p5GTtVBiyQA=";
       name   = "trellis-database";
     })
   ];
@@ -38,11 +38,22 @@ stdenv.mkDerivation rec {
     "-DCMAKE_INSTALL_DATADIR=${placeholder "out"}/share"
   ];
 
-  preConfigure = with builtins; ''
-    rmdir database && ln -sfv ${elemAt srcs 1} ./database
+  preConfigure = ''
+    rmdir database && ln -sfv ${builtins.elemAt srcs 1} ./database
 
-    source environment.sh
     cd libtrellis
+  '';
+
+  postInstall = lib.optionalString stdenv.isDarwin ''
+    for f in $out/bin/* ; do
+      install_name_tool -change "$out/lib/libtrellis.dylib" "$out/lib/trellis/libtrellis.dylib" "$f"
+    done
+  '';
+
+  doInstallCheck = true;
+
+  installCheckPhase = ''
+    $out/bin/ecppack $out/share/trellis/misc/basecfgs/empty_lfe5u-85f.config /tmp/test.bin
   '';
 
   meta = with lib; {
@@ -53,9 +64,9 @@ stdenv.mkDerivation rec {
       to provide sufficient information to develop a free and
       open Verilog to bitstream toolchain for these devices.
     '';
-    homepage    = "https://github.com/SymbiFlow/prjtrellis";
-    license     = lib.licenses.isc;
-    maintainers = with maintainers; [ q3k thoughtpolice emily ];
-    platforms   = lib.platforms.all;
+    homepage    = "https://github.com/YosysHQ/prjtrellis";
+    license     = licenses.isc;
+    maintainers = with maintainers; [ q3k thoughtpolice emily rowanG077 ];
+    platforms   = platforms.all;
   };
 }

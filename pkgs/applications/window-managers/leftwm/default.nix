@@ -1,4 +1,4 @@
-{ lib, fetchFromGitHub, rustPlatform, libX11, libXinerama }:
+{ stdenv, lib, fetchFromGitHub, rustPlatform, libX11, libXinerama }:
 
 let
   rpathLibs = [ libXinerama libX11 ];
@@ -6,16 +6,16 @@ in
 
 rustPlatform.buildRustPackage rec {
   pname = "leftwm";
-  version = "0.2.8";
+  version = "0.3.0";
 
   src = fetchFromGitHub {
     owner = "leftwm";
     repo = "leftwm";
     rev = version;
-    sha256 = "sha256-T4A9NGT6sUSTKmLcAWjcp3Y8QQzZFAVSXevXtGm3szY=";
+    sha256 = "sha256-AfE36u5xSfivkg+hmJ6ASh6zXmTnLOv5RFigkGzySng=";
   };
 
-  cargoSha256 = "sha256-2prRtdBxpYc2xI/bLZNlqs3mxESfO9GhNUSlKFF//eE=";
+  cargoSha256 = "sha256-MmxF1jt5VUZGbkEe858HBjAuHhgDY23MJJxpYQ4ckhs=";
 
   buildInputs = rpathLibs;
 
@@ -28,11 +28,12 @@ rustPlatform.buildRustPackage rec {
   dontPatchELF = true;
 
   meta = with lib; {
+    broken = (stdenv.isLinux && stdenv.isAarch64);
     description = "A tiling window manager for the adventurer";
     homepage = "https://github.com/leftwm/leftwm";
     license = licenses.mit;
     platforms = platforms.linux;
-    maintainers = with maintainers; [ mschneider ];
+    maintainers = with maintainers; [ ];
     changelog = "https://github.com/leftwm/leftwm/blob/${version}/CHANGELOG";
   };
 }

@@ -1,4 +1,15 @@
-{ lib, stdenv, fetchurl, pkg-config, gettext, gtk3, gobject-introspection, libappindicator-gtk3, libindicator-gtk3, polkit, mateUpdateScript }:
+{ lib
+, stdenv
+, fetchurl
+, pkg-config
+, gettext
+, gtk3
+, gobject-introspection
+, libappindicator-gtk3
+, libindicator-gtk3
+, polkit
+, mateUpdateScript
+}:
 
 stdenv.mkDerivation rec {
   pname = "mate-polkit";
@@ -31,6 +42,6 @@ stdenv.mkDerivation rec {
     homepage = "https://mate-desktop.org";
     license = [ licenses.gpl2Plus ];
     platforms = platforms.unix;
-    maintainers = [ maintainers.romildo ];
+    maintainers = teams.mate.members;
   };
 }

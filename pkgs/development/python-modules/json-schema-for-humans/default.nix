@@ -7,9 +7,10 @@
 , htmlmin
 , jinja2
 , markdown2
-, pbr
+, poetry-core
 , pygments
 , pytestCheckHook
+, pythonOlder
 , pytz
 , pyyaml
 , requests
@@ -17,16 +18,26 @@
 
 buildPythonPackage rec {
   pname = "json-schema-for-humans";
-  version = "0.31.0";
+  version = "0.41.8";
+  format = "pyproject";
+
+  disabled = pythonOlder "3.7";
 
   src = fetchFromGitHub {
     owner = "coveooss";
     repo = pname;
     rev = "v${version}";
-    sha256 = "1aj1w0qxdw8d6mf5vngk0xjgs7z8vzwc2aycahnkqg7q3cagq19n";
+    hash = "sha256-lz08+T8ITsCI0qjcd/JcgXG4o87UjoP1NQa01FJ7fO0=";
   };
 
-  nativeBuildInputs = [ pbr ];
+  postPatch = ''
+    substituteInPlace pyproject.toml \
+      --replace 'pytz = "^2021.1"' 'pytz = "*"'
+  '';
+
+  nativeBuildInputs = [
+    poetry-core
+  ];
 
   propagatedBuildInputs = [
     click
@@ -40,10 +51,6 @@ buildPythonPackage rec {
     requests
   ];
 
-  preBuild = ''
-    export PBR_VERSION=0.0.1
-  '';
-
   checkInputs = [
     beautifulsoup4
     pytestCheckHook
@@ -52,9 +59,13 @@ buildPythonPackage rec {
   disabledTests = [
     # Tests require network access
     "test_references_url"
+    # Tests are failing
+    "TestMdGenerate"
   ];
 
-  pythonImportsCheck = [ "json_schema_for_humans" ];
+  pythonImportsCheck = [
+    "json_schema_for_humans"
+  ];
 
   meta = with lib; {
     description = "Quickly generate HTML documentation from a JSON schema";

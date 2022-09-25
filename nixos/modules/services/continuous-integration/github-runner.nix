@@ -10,38 +10,52 @@ let
   stateDir = "%S/${systemdDir}";
   # %L: Log directory root (usually /var/log); see systemd.unit(5)
   logsDir = "%L/${systemdDir}";
+  # Name of file stored in service state directory
+  currentConfigTokenFilename = ".current-token";
 in
 {
   options.services.github-runner = {
     enable = mkOption {
       default = false;
       example = true;
-      description = ''
+      description = lib.mdDoc ''
         Whether to enable GitHub Actions runner.
 
         Note: GitHub recommends using self-hosted runners with private repositories only. Learn more here:
-        <link xlink:href="https://docs.github.com/en/actions/hosting-your-own-runners/about-self-hosted-runners"
-        >About self-hosted runners</link>.
+        [About self-hosted runners](https://docs.github.com/en/actions/hosting-your-own-runners/about-self-hosted-runners).
       '';
       type = lib.types.bool;
     };
 
     url = mkOption {
       type = types.str;
-      description = ''
+      description = lib.mdDoc ''
         Repository to add the runner to.
 
         Changing this option triggers a new runner registration.
+
+        IMPORTANT: If your token is org-wide (not per repository), you need to
+        provide a github org link, not a single repository, so do it like this
+        `https://github.com/nixos`, not like this
+        `https://github.com/nixos/nixpkgs`.
+        Otherwise, you are going to get a `404 NotFound`
+        from `POST https://api.github.com/actions/runner-registration`
+        in the configure script.
       '';
       example = "https://github.com/nixos/nixpkgs";
     };
 
     tokenFile = mkOption {
       type = types.path;
-      description = ''
-        The full path to a file which contains the runner registration token.
+      description = lib.mdDoc ''
+        The full path to a file which contains either a runner registration token or a
+        personal access token (PAT).
         The file should contain exactly one line with the token without any newline.
-        The token can be used to re-register a runner of the same name but is time-limited.
+        If a registration token is given, it can be used to re-register a runner of the same
+        name but is time-limited. If the file contains a PAT, the service creates a new
+        registration token on startup as needed. Make sure the PAT has a scope of
+        `admin:org` for organization-wide registrations or a scope of
+        `repo` for a single repository.
 
         Changing this option or the file's content triggers a new runner registration.
       '';
@@ -51,18 +65,19 @@ in
     name = mkOption {
       # Same pattern as for `networking.hostName`
       type = types.strMatching "^$|^[[:alnum:]]([[:alnum:]_-]{0,61}[[:alnum:]])?$";
-      description = ''
+      description = lib.mdDoc ''
         Name of the runner to configure. Defaults to the hostname.
 
         Changing this option triggers a new runner registration.
       '';
       example = "nixos";
       default = config.networking.hostName;
+      defaultText = literalExpression "config.networking.hostName";
     };
 
     runnerGroup = mkOption {
       type = types.nullOr types.str;
-      description = ''
+      description = lib.mdDoc ''
         Name of the runner group to add this runner to (defaults to the default runner group).
 
         Changing this option triggers a new runner registration.
@@ -72,18 +87,18 @@ in
 
     extraLabels = mkOption {
       type = types.listOf types.str;
-      description = ''
-        Extra labels in addition to the default (<literal>["self-hosted", "Linux", "X64"]</literal>).
+      description = lib.mdDoc ''
+        Extra labels in addition to the default (`["self-hosted", "Linux", "X64"]`).
 
         Changing this option triggers a new runner registration.
       '';
-      example = literalExample ''[ "nixos" ]'';
+      example = literalExpression ''[ "nixos" ]'';
       default = [ ];
     };
 
     replace = mkOption {
       type = types.bool;
-      description = ''
+      description = lib.mdDoc ''
         Replace any existing runner with the same name.
 
         Without this flag, registering a new runner with the same name fails.
@@ -93,18 +108,37 @@ in
 
     extraPackages = mkOption {
       type = types.listOf types.package;
-      description = ''
-        Extra packages to add to <literal>PATH</literal> of the service to make them available to workflows.
+      description = lib.mdDoc ''
+        Extra packages to add to `PATH` of the service to make them available to workflows.
       '';
       default = [ ];
     };
 
     package = mkOption {
       type = types.package;
-      description = ''
+      description = lib.mdDoc ''
         Which github-runner derivation to use.
       '';
       default = pkgs.github-runner;
+      defaultText = literalExpression "pkgs.github-runner";
+    };
+
+    ephemeral = mkOption {
+      type = types.bool;
+      description = lib.mdDoc ''
+        If enabled, causes the following behavior:
+
+        - Passes the `--ephemeral` flag to the runner configuration script
+        - De-registers and stops the runner with GitHub after it has processed one job
+        - On stop, systemd wipes the runtime directory (this always happens, even without using the ephemeral option)
+        - Restarts the service after its successful exit
+        - On start, wipes the state directory and configures a new runner
+
+        You should only enable this option if `tokenFile` points to a file which contains a
+        personal access token (PAT). If you're using the option with a registration token, restarting the
+        service will fail as soon as the registration token expired.
+      '';
+      default = false;
     };
   };
 
@@ -125,7 +159,7 @@ in
 
       environment = {
         HOME = runtimeDir;
-        RUNNER_ROOT = runtimeDir;
+        RUNNER_ROOT = stateDir;
       };
 
       path = (with pkgs; [
@@ -139,16 +173,14 @@ in
       ] ++ cfg.extraPackages;
 
       serviceConfig = rec {
-        ExecStart = "${cfg.package}/bin/runsvc.sh";
+        ExecStart = "${cfg.package}/bin/Runner.Listener run --startuptype service";
 
         # Does the following, sequentially:
-        # - Copy the current and the previous `tokenFile` to the $RUNTIME_DIRECTORY
-        #   and make it accessible to the service user to allow for a content
-        #   comparison.
-        # - If the module configuration or the token has changed, clear the state directory.
-        # - Configure the runner.
-        # - Copy the configured `tokenFile` to the $STATE_DIRECTORY and make it
-        #   inaccessible to the service user.
+        # - If the module configuration or the token has changed, purge the state directory,
+        #   and create the current and the new token file with the contents of the configured
+        #   token. While both files have the same content, only the later is accessible by
+        #   the service user.
+        # - Configure the runner using the new token file. When finished, delete it.
         # - Set up the directory structure by creating the necessary symlinks.
         ExecStartPre =
           let
@@ -169,62 +201,69 @@ in
               ${lines}
             '';
             currentConfigPath = "$STATE_DIRECTORY/.nixos-current-config.json";
-            runnerRegistrationConfig = getAttrs [ "name" "tokenFile" "url" "runnerGroup" "extraLabels" ] cfg;
+            runnerRegistrationConfig = getAttrs [ "name" "tokenFile" "url" "runnerGroup" "extraLabels" "ephemeral" ] cfg;
             newConfigPath = builtins.toFile "${svcName}-config.json" (builtins.toJSON runnerRegistrationConfig);
-            currentConfigTokenFilename = ".current-token";
             newConfigTokenFilename = ".new-token";
             runnerCredFiles = [
               ".credentials"
               ".credentials_rsaparams"
               ".runner"
             ];
-            ownConfigTokens = writeScript "own-config-tokens" ''
-              # Copy current and new token file to runtime dir and make it accessible to the service user
-              cp ${escapeShellArg cfg.tokenFile} "$RUNTIME_DIRECTORY/${newConfigTokenFilename}"
-              chmod 600 "$RUNTIME_DIRECTORY/${newConfigTokenFilename}"
-              chown "$USER" "$RUNTIME_DIRECTORY/${newConfigTokenFilename}"
-
-              if [[ -e "$STATE_DIRECTORY/${currentConfigTokenFilename}" ]]; then
-                cp "$STATE_DIRECTORY/${currentConfigTokenFilename}" "$RUNTIME_DIRECTORY/${currentConfigTokenFilename}"
-                chmod 600 "$RUNTIME_DIRECTORY/${currentConfigTokenFilename}"
-                chown "$USER" "$RUNTIME_DIRECTORY/${currentConfigTokenFilename}"
-              fi
-            '';
-            disownConfigTokens = writeScript "disown-config-tokens" ''
-              # Make the token inaccessible to the runner service user
-              chmod 600 "$STATE_DIRECTORY/${currentConfigTokenFilename}"
-              chown root:root "$STATE_DIRECTORY/${currentConfigTokenFilename}"
-            '';
             unconfigureRunner = writeScript "unconfigure" ''
               differs=
-              # Set `differs = 1` if current and new runner config differ or if `currentConfigPath` does not exist
-              ${pkgs.diffutils}/bin/diff -q '${newConfigPath}' "${currentConfigPath}" >/dev/null 2>&1 || differs=1
-              # Also trigger a registration if the token content changed
-              ${pkgs.diffutils}/bin/diff -q \
-                "$RUNTIME_DIRECTORY"/{${currentConfigTokenFilename},${newConfigTokenFilename}} \
-                >/dev/null 2>&1 || differs=1
+
+              if [[ "$(ls -A "$STATE_DIRECTORY")" ]]; then
+                # State directory is not empty
+                # Set `differs = 1` if current and new runner config differ or if `currentConfigPath` does not exist
+                ${pkgs.diffutils}/bin/diff -q '${newConfigPath}' "${currentConfigPath}" >/dev/null 2>&1 || differs=1
+                # Also trigger a registration if the token content changed
+                ${pkgs.diffutils}/bin/diff -q \
+                  "$STATE_DIRECTORY"/${currentConfigTokenFilename} \
+                  ${escapeShellArg cfg.tokenFile} \
+                  >/dev/null 2>&1 || differs=1
+                # If .credentials does not exist, assume a previous run de-registered the runner on stop (ephemeral mode)
+                [[ ! -f "$STATE_DIRECTORY/.credentials" ]] && differs=1
+              fi
 
               if [[ -n "$differs" ]]; then
                 echo "Config has changed, removing old runner state."
-                echo "The old runner will still appear in the GitHub Actions UI." \
+                # In ephemeral mode, the runner deletes the `.credentials` file after de-registering it with GitHub
+                [[ -f "$STATE_DIRECTORY/.credentials" ]] && echo "The old runner will still appear in the GitHub Actions UI." \
                   "You have to remove it manually."
                 find "$STATE_DIRECTORY/" -mindepth 1 -delete
+
+                # Copy the configured token file to the state dir and allow the service user to read the file
+                install --mode=666 ${escapeShellArg cfg.tokenFile} "$STATE_DIRECTORY/${newConfigTokenFilename}"
+                # Also copy current file to allow for a diff on the next start
+                install --mode=600 ${escapeShellArg cfg.tokenFile} "$STATE_DIRECTORY/${currentConfigTokenFilename}"
               fi
             '';
             configureRunner = writeScript "configure" ''
-              empty=$(ls -A "$STATE_DIRECTORY")
-              if [[ -z "$empty" ]]; then
+              if [[ -e "$STATE_DIRECTORY/${newConfigTokenFilename}" ]]; then
                 echo "Configuring GitHub Actions Runner"
-                token=$(< "$RUNTIME_DIRECTORY"/${newConfigTokenFilename})
-                RUNNER_ROOT="$STATE_DIRECTORY" ${cfg.package}/bin/config.sh \
-                  --unattended \
-                  --work "$RUNTIME_DIRECTORY" \
-                  --url ${escapeShellArg cfg.url} \
-                  --token "$token" \
-                  --labels ${escapeShellArg (concatStringsSep "," cfg.extraLabels)} \
-                  --name ${escapeShellArg cfg.name} \
-                  ${optionalString cfg.replace "--replace"} \
+
+                args=(
+                  --unattended
+                  --disableupdate
+                  --work "$RUNTIME_DIRECTORY"
+                  --url ${escapeShellArg cfg.url}
+                  --labels ${escapeShellArg (concatStringsSep "," cfg.extraLabels)}
+                  --name ${escapeShellArg cfg.name}
+                  ${optionalString cfg.replace "--replace"}
                   ${optionalString (cfg.runnerGroup != null) "--runnergroup ${escapeShellArg cfg.runnerGroup}"}
+                  ${optionalString cfg.ephemeral "--ephemeral"}
+                )
+
+                # If the token file contains a PAT (i.e., it starts with "ghp_"), we have to use the --pat option,
+                # if it is not a PAT, we assume it contains a registration token and use the --token option
+                token=$(<"$STATE_DIRECTORY/${newConfigTokenFilename}")
+                if [[ "$token" =~ ^ghp_* ]]; then
+                  args+=(--pat "$token")
+                else
+                  args+=(--token "$token")
+                fi
+
+                ${cfg.package}/bin/config.sh "''${args[@]}"
 
                 # Move the automatically created _diag dir to the logs dir
                 mkdir -p  "$STATE_DIRECTORY/_diag"
@@ -232,8 +271,7 @@ in
                 rm    -rf "$STATE_DIRECTORY/_diag/"
 
                 # Cleanup token from config
-                rm -f "$RUNTIME_DIRECTORY"/${currentConfigTokenFilename}
-                mv    "$RUNTIME_DIRECTORY"/${newConfigTokenFilename} "$STATE_DIRECTORY/${currentConfigTokenFilename}"
+                rm "$STATE_DIRECTORY/${newConfigTokenFilename}"
 
                 # Symlink to new config
                 ln -s '${newConfigPath}' "${currentConfigPath}"
@@ -248,12 +286,14 @@ in
             '';
           in
           map (x: "${x} ${escapeShellArgs [ stateDir runtimeDir logsDir ]}") [
-            "+${ownConfigTokens}" # runs as root
-            unconfigureRunner
+            "+${unconfigureRunner}" # runs as root
             configureRunner
-            "+${disownConfigTokens}" # runs as root
             setupRuntimeDir
           ];
+
+        # If running in ephemeral mode, restart the service on-exit (i.e., successful de-registration of the runner)
+        # to trigger a fresh registration.
+        Restart = if cfg.ephemeral then "on-success" else "no";
 
         # Contains _diag
         LogsDirectory = [ systemdDir ];
@@ -264,11 +304,17 @@ in
         StateDirectoryMode = "0700";
         WorkingDirectory = runtimeDir;
 
+        InaccessiblePaths = [
+          # Token file path given in the configuration
+          cfg.tokenFile
+          # Token file in the state directory
+          "${stateDir}/${currentConfigTokenFilename}"
+        ];
+
         # By default, use a dynamically allocated user
         DynamicUser = true;
 
-        KillMode = "process";
-        KillSignal = "SIGTERM";
+        KillSignal = "SIGINT";
 
         # Hardening (may overlap with DynamicUser=)
         # The following options are only for optimizing:
@@ -277,7 +323,6 @@ in
         CapabilityBoundingSet = "";
         # ProtectClock= adds DeviceAllow=char-rtc r
         DeviceAllow = "";
-        LockPersonality = true;
         NoNewPrivileges = true;
         PrivateDevices = true;
         PrivateMounts = true;
@@ -296,11 +341,36 @@ in
         RestrictRealtime = true;
         RestrictSUIDSGID = true;
         UMask = "0066";
+        ProtectProc = "invisible";
+        SystemCallFilter = [
+          "~@clock"
+          "~@cpu-emulation"
+          "~@module"
+          "~@mount"
+          "~@obsolete"
+          "~@raw-io"
+          "~@reboot"
+          "~capset"
+          "~setdomainname"
+          "~sethostname"
+        ];
+        RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" "AF_NETLINK" ];
 
         # Needs network access
         PrivateNetwork = false;
         # Cannot be true due to Node
         MemoryDenyWriteExecute = false;
+
+        # The more restrictive "pid" option makes `nix` commands in CI emit
+        # "GC Warning: Couldn't read /proc/stat"
+        # You may want to set this to "pid" if not using `nix` commands
+        ProcSubset = "all";
+        # Coverage programs for compiled code such as `cargo-tarpaulin` disable
+        # ASLR (address space layout randomization) which requires the
+        # `personality` syscall
+        # You may want to set this to `true` if not using coverage tooling on
+        # compiled code
+        LockPersonality = false;
       };
     };
   };

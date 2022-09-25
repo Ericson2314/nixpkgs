@@ -2,9 +2,8 @@
 
 buildManPages {
   pname = "s6-man-pages";
-  version = "2.10.0.3.1";
-  sha256 = "0q9b6v7kbyjsh390s4bw80kjdp92kih609vlmnpl1qzyrr6kivsg";
+  version = "2.11.1.1.1";
+  sha256 = "sha256-W1+f65+Su1ZjCtzstn/fqWyU9IlQMThd/1lOg1cbCaE=";
   description = "Port of the documentation for the s6 supervision suite to mdoc";
-  sections = [ 1 7 ];
   maintainers = [ lib.maintainers.sternenseemann ];
 }

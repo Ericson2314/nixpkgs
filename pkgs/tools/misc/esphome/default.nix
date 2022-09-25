@@ -1,5 +1,4 @@
 { lib
-, pkgs
 , python3
 , fetchFromGitHub
 , platformio
@@ -10,25 +9,21 @@
 let
   python = python3.override {
     packageOverrides = self: super: {
-      esphome-dashboard = pkgs.callPackage ./dashboard.nix {};
+      esphome-dashboard = self.callPackage ./dashboard.nix {};
     };
   };
 in
 with python.pkgs; buildPythonApplication rec {
   pname = "esphome";
-  version = "2021.8.2";
+  version = "2022.9.1";
+  format = "setuptools";
 
   src = fetchFromGitHub {
     owner = pname;
     repo = pname;
-    rev = version;
-    sha256 = "sha256-R+5eefPUZc6y/B8cZbxsLVrVwvBbVISZQAb1KwiYdFg=";
+    rev = "refs/tags/${version}";
+    hash = "sha256-j6qzCzPiChvO1WR+ZaVILgONcdOzwlE4TBDnI9R6FjM=";
   };
-
-  patches = [
-    # fix missing write permissions on src files before modifing them
-   ./fix-src-permissions.patch
-  ];
 
   postPatch = ''
     # remove all version pinning (E.g tornado==5.1.1 -> tornado)
@@ -48,17 +43,20 @@ with python.pkgs; buildPythonApplication rec {
   # - validate_cryptography_installed
   # - validate_pillow_installed
   propagatedBuildInputs = [
+    aioesphomeapi
     click
     colorama
     cryptography
     esphome-dashboard
     ifaddr
+    kconfiglib
     paho-mqtt
     pillow
     protobuf
     pyserial
     pyyaml
     tornado
+    tzdata
     tzlocal
     voluptuous
   ];
@@ -102,6 +100,6 @@ with python.pkgs; buildPythonApplication rec {
       mit # The C++/runtime codebase of the ESPHome project (file extensions .c, .cpp, .h, .hpp, .tcc, .ino)
       gpl3Only # The python codebase and all other parts of this codebase
     ];
-    maintainers = with maintainers; [ globin elseym hexa ];
+    maintainers = with maintainers; [ globin hexa ];
   };
 }

@@ -10,17 +10,16 @@ in
 {
   options.programs.xwayland = {
 
-    enable = mkEnableOption "Xwayland (an X server for interfacing X11 apps with the Wayland protocol)";
+    enable = mkEnableOption (lib.mdDoc "Xwayland (an X server for interfacing X11 apps with the Wayland protocol)");
 
     defaultFontPath = mkOption {
       type = types.str;
       default = optionalString config.fonts.fontDir.enable
         "/run/current-system/sw/share/X11/fonts";
-      defaultText = literalExample ''
-        optionalString config.fonts.fontDir.enable
-          "/run/current-system/sw/share/X11/fonts";
+      defaultText = literalExpression ''
+        optionalString config.fonts.fontDir.enable "/run/current-system/sw/share/X11/fonts"
       '';
-      description = ''
+      description = lib.mdDoc ''
         Default font path. Setting this option causes Xwayland to be rebuilt.
       '';
     };
@@ -30,12 +29,12 @@ in
       default = pkgs.xwayland.override (oldArgs: {
         inherit (cfg) defaultFontPath;
       });
-      defaultText = literalExample ''
+      defaultText = literalExpression ''
         pkgs.xwayland.override (oldArgs: {
           inherit (config.programs.xwayland) defaultFontPath;
-        });
+        })
       '';
-      description = "The Xwayland package to use.";
+      description = lib.mdDoc "The Xwayland package to use.";
     };
 
   };

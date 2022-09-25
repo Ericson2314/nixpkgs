@@ -4,32 +4,27 @@
 , stdenv
 , makeWrapper
 , fetchurl
-, nodejs-14_x
+, nodejs-16_x
 , coreutils
 , which
 }:
 
 with lib;
 let
-  nodejs = nodejs-14_x;
+  nodejs = nodejs-16_x;
   inherit (builtins) elemAt;
   info = splitString "-" stdenv.hostPlatform.system;
   arch = elemAt info 0;
   plat = elemAt info 1;
   shas =
-    if enableUnfree
-    then {
-      x86_64-linux = "sha256-lTPBppKm51zgKSQtSdO0PgZ/aomvaStwqwYYGNPY4Bo=";
-      x86_64-darwin = "sha256-d7xHmoASiywDlZCJX/CfUX1VIi4iOcDrqvK0su54MJc=";
-    }
-    else {
-      x86_64-linux = "sha256-+pkKpiXBpLHs72KKNtMJbqipw6eu5XC1xu/iLFCHGRQ=";
-      x86_64-darwin = "sha256-CyJ5iRXaPgXO2lyy+E24OcGtb9V3e1gMZRIu25bVyzk=";
+    {
+      x86_64-linux  = "b657d82c8189acc8a8f656ab949e1484aaa98755a16c33f48c318fb17180343f";
+      x86_64-darwin = "ac2b5a639ad83431db25e4161f811111d45db052eb845091e18f847016a34a55";
+      aarch64-linux = "a1f7ab9e874799bf380b94394e5bb1ce28f38019896293dde8797d74ad273e67";
     };
 
-in
-stdenv.mkDerivation rec {
-  pname = "kibana${optionalString (!enableUnfree) "-oss"}";
+in stdenv.mkDerivation rec {
+  pname = "kibana";
   version = elk7Version;
 
   src = fetchurl {
@@ -58,7 +53,7 @@ stdenv.mkDerivation rec {
   meta = {
     description = "Visualize logs and time-stamped data";
     homepage = "http://www.elasticsearch.org/overview/kibana";
-    license = if enableUnfree then licenses.elastic else licenses.asl20;
+    license = licenses.elastic;
     maintainers = with maintainers; [ offline basvandijk ];
     platforms = with platforms; unix;
   };

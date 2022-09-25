@@ -3,11 +3,11 @@
 
 stdenv.mkDerivation rec {
   pname = "emuflight-configurator";
-  version = "0.3.6";
+  version = "0.4.1";
 
   src = fetchurl {
     url = "https://github.com/emuflight/EmuConfigurator/releases/download/${version}/emuflight-configurator_${version}_linux64.zip";
-    sha256 = "sha256-egSUd/+RNo0vr2EJibgk9nNnql5sHC11gctUMK+DzW0=";
+    sha256 = "sha256-e4HNg5yr9V5LyT0hYP6gzw0tZm4dLidJg5MQtH3L3JI=";
   };
 
   nativeBuildInputs = [ wrapGAppsHook unzip copyDesktopItems ];
@@ -43,6 +43,7 @@ stdenv.mkDerivation rec {
       The application allows you to configure the Emuflight software running on any supported Emuflight target.
     '';
     homepage    = "https://github.com/emuflight/EmuConfigurator";
+    sourceProvenance = with sourceTypes; [ binaryNativeCode ];
     license     = licenses.gpl3Only;
     maintainers = with maintainers; [ beezow ];
     platforms   = platforms.linux;

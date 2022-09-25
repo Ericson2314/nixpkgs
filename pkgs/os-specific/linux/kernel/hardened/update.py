@@ -1,5 +1,5 @@
 #! /usr/bin/env nix-shell
-#! nix-shell -i python -p "python38.withPackages (ps: [ps.PyGithub])" git gnupg
+#! nix-shell -i python -p "python3.withPackages (ps: [ps.PyGithub])" git gnupg
 
 # This is automatically called by ../update.sh.
 
@@ -31,7 +31,12 @@ VersionComponent = Union[int, str]
 Version = List[VersionComponent]
 
 
-Patch = TypedDict("Patch", {"name": str, "url": str, "sha256": str, "extra": str})
+PatchData = TypedDict("PatchData", {"name": str, "url": str, "sha256": str, "extra": str})
+Patch = TypedDict("Patch", {
+    "patch": PatchData,
+    "version": str,
+    "sha256": str,
+})
 
 
 @dataclass
@@ -133,7 +138,15 @@ def fetch_patch(*, name: str, release_info: ReleaseInfo) -> Optional[Patch]:
     if not sig_ok:
         return None
 
-    return Patch(name=patch_filename, url=patch_url, sha256=sha256, extra=extra)
+    kernel_ver = re.sub(r"(.*)(-hardened[\d]+)$", r'\1', release_info.release.tag_name)
+    major = kernel_ver.split('.')[0]
+    sha256_kernel, _ = nix_prefetch_url(f"mirror://kernel/linux/kernel/v{major}.x/linux-{kernel_ver}.tar.xz")
+
+    return Patch(
+        patch=PatchData(name=patch_filename, url=patch_url, sha256=sha256, extra=extra),
+        version=kernel_ver,
+        sha256=sha256_kernel
+    )
 
 
 def parse_version(version_str: str) -> Version:
@@ -188,7 +201,7 @@ for filename in os.listdir(NIXPKGS_KERNEL_PATH):
             (callPackage {NIXPKGS_KERNEL_PATH / filename} {{}}).version
         """
         kernel_version_json = run(
-            "nix-instantiate", "--eval", "--json", "--expr", nix_version_expr,
+            "nix-instantiate", "--eval", "--system", "x86_64-linux", "--json", "--expr", nix_version_expr,
         ).stdout
         kernel_version = parse_version(json.loads(kernel_version_json))
         if kernel_version < MIN_KERNEL_VERSION:
@@ -206,7 +219,16 @@ failures = False
 
 # Match each kernel version with the best patch version.
 releases = {}
+i = 0
 for release in repo.get_releases():
+    # Dirty workaround to make sure that we don't run into issues because
+    # GitHub's API only allows fetching the last 1000 releases.
+    # It's not reliable to exit earlier because not every kernel minor may
+    # have hardened patches, hence the naive search below.
+    i += 1
+    if i > 500:
+        break
+
     version = parse_version(release.tag_name)
     # needs to look like e.g. 5.6.3-hardened1
     if len(version) < 4:
@@ -249,7 +271,7 @@ for kernel_key in sorted(releases.keys()):
     old_version_str: Optional[str] = None
     update: bool
     try:
-        old_filename = patches[kernel_key]["name"]
+        old_filename = patches[kernel_key]["patch"]["name"]
         old_version_str = old_filename.replace("linux-hardened-", "").replace(
             ".patch", ""
         )

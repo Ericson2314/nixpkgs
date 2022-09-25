@@ -1,46 +1,57 @@
 { lib
 , buildPythonPackage
+, django
 , fetchFromGitHub
 , mock
-, nose
+, multidict
 , pyjwt
-, pysocks
+, pytestCheckHook
+, pythonOlder
 , pytz
 , requests
-, six
 }:
 
 buildPythonPackage rec {
   pname = "twilio";
-  version = "6.56.0";
+  version = "7.14.1";
+  format = "setuptools";
 
+  disabled = pythonOlder "3.6";
 
   src = fetchFromGitHub {
     owner = "twilio";
     repo = "twilio-python";
-    rev = version;
-    sha256 = "sha256-vVJuuPxVyOqnplPYrjCjIm5IyIFZvsCMoDLrrHpHK+4=";
+    rev = "refs/tags/${version}";
+    hash = "sha256-VKAeM1a1TMXrewJ+j+Outyp7vxh9xovqjJ+GneYa6eg=";
   };
 
   propagatedBuildInputs = [
     pyjwt
-    pysocks
     pytz
     requests
-    six
   ];
 
   checkInputs = [
+    django
     mock
-    nose
+    multidict
+    pytestCheckHook
   ];
 
-  pythonImportsCheck = [ "twilio" ];
+  disabledTests = [
+    # Tests require network access
+    "test_set_default_user_agent"
+    "test_set_user_agent_extensions"
+  ];
+
+  pythonImportsCheck = [
+    "twilio"
+  ];
 
   meta = with lib; {
     description = "Twilio API client and TwiML generator";
     homepage = "https://github.com/twilio/twilio-python/";
     license = licenses.mit;
-    maintainers = with maintainers; [ ];
+    maintainers = with maintainers; [ fab ];
   };
 }

@@ -1,28 +1,31 @@
 { lib, buildPythonPackage, fetchFromGitHub, cmake, python
 , libosmium, protozero, boost, expat, bzip2, zlib, pybind11
-, nose, shapely, pythonOlder, isPyPy, lz4 }:
+, shapely, pythonOlder, isPyPy, lz4, requests, pytestCheckHook
+}:
 
 buildPythonPackage rec {
   pname = "pyosmium";
-  version = "3.1.3";
+  version = "3.4.1";
 
   disabled = pythonOlder "3.4" || isPyPy;
 
   src = fetchFromGitHub {
     owner = "osmcode";
     repo = pname;
-    rev = "v${version}";
-    sha256 = "11ma8nr7k2ixwwb55fiqvrj5qbmpgkyfk0canz4l0m8b7rcw3qsc";
+    rev = "refs/tags/v${version}";
+    sha256 = "sha256-PMQnQe699ZWRR2gevrSCTokyc9xr1TL9Ohuqn7NL8c8=";
   };
 
   nativeBuildInputs = [ cmake ];
   buildInputs = [ libosmium protozero boost expat bzip2 zlib pybind11 lz4 ];
+  propagatedBuildInputs = [ requests ];
 
   preBuild = "cd ..";
 
-  checkInputs = [ nose shapely ];
-
-  checkPhase = "(cd test && ${python.interpreter} run_tests.py)";
+  checkInputs = [
+    pytestCheckHook
+    shapely
+  ];
 
   meta = with lib; {
     description = "Python bindings for libosmium";

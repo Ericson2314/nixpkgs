@@ -1,4 +1,16 @@
-{ lib, stdenv, fetchurl, pkg-config, gettext, libtool, libxml2, libcanberra-gtk3, gtk3, mate, wrapGAppsHook, mateUpdateScript }:
+{ lib
+, stdenv
+, fetchurl
+, pkg-config
+, gettext
+, libtool
+, libxml2
+, libcanberra-gtk3
+, gtk3
+, mate
+, wrapGAppsHook
+, mateUpdateScript
+}:
 
 stdenv.mkDerivation rec {
   pname = "mate-media";
@@ -34,6 +46,6 @@ stdenv.mkDerivation rec {
     homepage = "https://mate-desktop.org";
     license = licenses.gpl2Plus;
     platforms = platforms.unix;
-    maintainers = [ maintainers.romildo maintainers.chpatrick ];
+    maintainers = teams.mate.members ++ (with maintainers; [ chpatrick ]);
   };
 }

@@ -9,7 +9,7 @@
 , glibmm_2_68
 , cairomm_1_16
 , pangomm_2_48
-, epoxy
+, libepoxy
 , gnome
 , makeFontsConf
 , xvfb-run
@@ -17,13 +17,13 @@
 
 stdenv.mkDerivation rec {
   pname = "gtkmm";
-  version = "4.2.0";
+  version = "4.6.1";
 
   outputs = [ "out" "dev" ];
 
   src = fetchurl {
     url = "mirror://gnome/sources/${pname}/${lib.versions.majorMinor version}/${pname}-${version}.tar.xz";
-    sha256 = "12x9j82y37r4v0ngs22rzp4wmw7k2bbb9d3bymcczzz7y8w4q328";
+    sha256 = "DV7+yp7GT91TC7gibGMQrJlUmz3ZYE1uNnY5eRrz0eA=";
   };
 
   nativeBuildInputs = [
@@ -34,7 +34,7 @@ stdenv.mkDerivation rec {
   ];
 
   buildInputs = [
-    epoxy
+    libepoxy
   ];
 
   propagatedBuildInputs = [
@@ -44,7 +44,7 @@ stdenv.mkDerivation rec {
     pangomm_2_48
   ];
 
-  checkInputs = [
+  checkInputs = lib.optionals (!stdenv.isDarwin)[
     xvfb-run
   ];
 
@@ -58,7 +58,7 @@ stdenv.mkDerivation rec {
   checkPhase = ''
     runHook preCheck
 
-    xvfb-run -s '-screen 0 800x600x24' \
+    ${lib.optionalString (!stdenv.isDarwin) "xvfb-run -s '-screen 0 800x600x24'"} \
       meson test --print-errorlogs
 
     runHook postCheck

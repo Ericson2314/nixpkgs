@@ -2,15 +2,16 @@
 
 stdenv.mkDerivation rec {
   pname = "spirv-tools";
-  # Update spirv-headers rev in lockstep according to DEPs file
-  version = "2020.2";
+  version = "1.3.224.0";
 
-  src = fetchFromGitHub {
-    owner = "KhronosGroup";
-    repo = "SPIRV-Tools";
-    rev = "v${version}";
-    sha256 = "00b7xgyrcb2qq63pp3cnw5q1xqx2d9rfn65lai6n6r89s1vh3vg6";
-  };
+  src = (assert version == spirv-headers.version;
+    fetchFromGitHub {
+      owner = "KhronosGroup";
+      repo = "SPIRV-Tools";
+      rev = "sdk-${version}";
+      hash = "sha256-jpVvjrNrTAKUY4sjUT/gCUElLtW4BrznH1DbStojGB8=";
+    }
+  );
 
   nativeBuildInputs = [ cmake python3 ];
 
@@ -20,7 +21,7 @@ stdenv.mkDerivation rec {
     inherit (src.meta) homepage;
     description = "The SPIR-V Tools project provides an API and commands for processing SPIR-V modules";
     license = licenses.asl20;
-    platforms = platforms.linux;
+    platforms = platforms.unix;
     maintainers = [ maintainers.ralith ];
   };
 }

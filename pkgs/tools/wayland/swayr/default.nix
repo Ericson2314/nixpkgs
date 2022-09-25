@@ -2,20 +2,23 @@
 
 rustPlatform.buildRustPackage rec {
   pname = "swayr";
-  version = "0.6.2";
+  version = "0.20.1";
 
   src = fetchFromSourcehut {
     owner = "~tsdh";
     repo = "swayr";
-    rev = "v${version}";
-    sha256 = "sha256-ZnZ9g8o1+VfhpDqxqtknNJ7dcyt5yuQcH3txxA3HICU=";
+    rev = "swayr-${version}";
+    sha256 = "sha256-kHFo5FJMzPRlnYg5iER1ULThhfJ0pY5apJNXPyHrMzE=";
   };
 
-  cargoSha256 = "sha256-0EhHFxbQi3Jgu13pXIjYYFYDEOQjwN5h+jE+22gJG0s=";
+  cargoSha256 = "sha256-Tm+LSL13COfKyH2021oiKme2yO9jurQ/F+U2y9klz18=";
 
   patches = [
     ./icon-paths.patch
   ];
+
+  # don't build swayrbar
+  buildAndTestSubdir = pname;
 
   preCheck = ''
     export HOME=$TMPDIR

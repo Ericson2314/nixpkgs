@@ -1,23 +1,45 @@
-{ lib, buildGoModule, fetchFromGitHub, installShellFiles }:
+{ lib, buildGoModule, fetchFromGitHub, fetchgit, installShellFiles }:
 
 buildGoModule rec {
   pname = "scorecard";
-  version = "2.1.3";
+  version = "4.6.0";
 
   src = fetchFromGitHub {
     owner = "ossf";
     repo = pname;
     rev = "v${version}";
-    sha256 = "sha256-lTaFSQ3yyzQGdiKwev38iEpV+ELKg9f1rMYdbqVuiSs=";
+    sha256 = "sha256-mEUJ42Da9br5BuZgtJBMeJGSESALoqaOwO/4Bvqj0IA=";
+    # populate values otherwise taken care of by goreleaser,
+    # unfortunately these require us to use git. By doing
+    # this in postFetch we can delete .git afterwards and
+    # maintain better reproducibility of the src.
+    leaveDotGit = true;
+    postFetch = ''
+      cd "$out"
+      git rev-parse HEAD > $out/COMMIT
+      # 0000-00-00T00:00:00Z
+      date -u -d "@$(git log -1 --pretty=%ct)" "+%Y-%m-%dT%H:%M:%SZ" > $out/SOURCE_DATE_EPOCH
+      find "$out" -name .git -print0 | xargs -0 rm -rf
+    '';
   };
-  vendorSha256 = "sha256-eFu954gwoL5z99cJGhSnvliAzwxv3JJxfjmBF+cx7Dg=";
+  vendorSha256 = "sha256-HvYUfr3ojmhO6AY6SypFOMP/vjlyLKunv1LvfLgBSjU=";
+
+  nativeBuildInputs = [ installShellFiles ];
 
   subPackages = [ "." ];
 
-  ldflags = [ "-s" "-w" "-X github.com/ossf/scorecard/v2/cmd.gitVersion=v${version}" ];
+  ldflags = [
+    "-s"
+    "-w"
+    "-X sigs.k8s.io/release-utils/version.gitVersion=v${version}"
+    "-X sigs.k8s.io/release-utils/version.gitTreeState=clean"
+  ];
 
-  # Install completions post-install
-  nativeBuildInputs = [ installShellFiles ];
+  # ldflags based on metadata from git and source
+  preBuild = ''
+    ldflags+=" -X sigs.k8s.io/release-utils/version.gitCommit=$(cat COMMIT)"
+    ldflags+=" -X sigs.k8s.io/release-utils/version.buildDate=$(cat SOURCE_DATE_EPOCH)"
+  '';
 
   preCheck = ''
     # Feed in all but the e2e tests for testing
@@ -26,6 +48,8 @@ buildGoModule rec {
     getGoDirs() {
       go list ./... | grep -v e2e
     }
+    # Ensure other e2e tests that have escaped the e2e dir dont run
+    export SKIP_GINKGO=1
   '';
 
   postInstall = ''
@@ -39,7 +63,7 @@ buildGoModule rec {
   installCheckPhase = ''
     runHook preInstallCheck
     $out/bin/scorecard --help
-    $out/bin/scorecard version | grep "v${version}"
+    # $out/bin/scorecard version 2>&1 | grep "v${version}"
     runHook postInstallCheck
   '';
 

@@ -8,15 +8,17 @@
 , tzlocal
 , hijri-converter
 , convertdate
+, fasttext
+, langdetect
 , parameterized
 , pytestCheckHook
 , GitPython
-, ruamel_yaml
+, ruamel-yaml
 }:
 
 buildPythonPackage rec {
   pname = "dateparser";
-  version = "1.0.0";
+  version = "1.1.1";
 
   disabled = !isPy3k;
 
@@ -24,25 +26,42 @@ buildPythonPackage rec {
     owner = "scrapinghub";
     repo = "dateparser";
     rev = "v${version}";
-    sha256 = "0i6ci14lqfsqrmaif57dyilrjbxzmbl98hps1b565gkiy1xqmjhl";
+    sha256 = "sha256-bDup3q93Zq+pvwsy/lQy2byOMjG6C/+7813hWQMbZRU=";
   };
+
+  postPatch = ''
+    # https://github.com/scrapinghub/dateparser/issues/1053
+    substituteInPlace tests/test_search.py --replace \
+      "('June 2020', datetime.datetime(2020, 6, datetime.datetime.utcnow().day, 0, 0))," \
+      "('June 2020', datetime.datetime(2020, 6, min(30, datetime.datetime.utcnow().day), 0, 0)),"
+  '';
 
   propagatedBuildInputs = [
     # install_requires
     python-dateutil pytz regex tzlocal
     # extra_requires
-    hijri-converter convertdate
+    hijri-converter convertdate fasttext langdetect
   ];
 
   checkInputs = [
     parameterized
     pytestCheckHook
     GitPython
-    ruamel_yaml
+    ruamel-yaml
   ];
+
+  preCheck = ''
+    export HOME="$TEMPDIR"
+  '';
 
   # Upstream only runs the tests in tests/ in CI, others use git clone
   pytestFlagsArray = [ "tests" ];
+
+  disabledTests = [
+    # access network
+    "test_custom_language_detect_fast_text_0"
+    "test_custom_language_detect_fast_text_1"
+  ];
 
   pythonImportsCheck = [ "dateparser" ];
 

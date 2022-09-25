@@ -6,13 +6,13 @@
 }:
 
 buildPythonPackage rec {
-  version = "8.1.0";
+  version = "10.0.0";
   pname = "azure-mgmt-containerregistry";
   disabled = isPy27;
 
   src = fetchPypi {
     inherit pname version;
-    sha256 = "62efbb03275d920894d79879ad0ed59605163abd32177dcf24e90c1862ebccbd";
+    sha256 = "sha256-HjejK28Em5AeoQ20o4fucnXTlAwADF/SEpVfHn9anZk=";
     extension = "zip";
   };
 

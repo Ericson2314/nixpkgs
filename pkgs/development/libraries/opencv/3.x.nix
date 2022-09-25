@@ -1,5 +1,6 @@
 { lib, stdenv
-, fetchFromGitHub, fetchpatch
+, fetchFromGitHub
+, fetchpatch
 , cmake, pkg-config, unzip, zlib, pcre, hdf5
 , glog, boost, gflags, protobuf
 , config
@@ -39,20 +40,20 @@ assert blas.implementation == "openblas" && lapack.implementation == "openblas";
 assert enablePython -> pythonPackages != null;
 
 let
-  version = "3.4.8";
+  version = "3.4.18";
 
   src = fetchFromGitHub {
     owner  = "opencv";
     repo   = "opencv";
     rev    = version;
-    sha256 = "1dnz3gfj70lm1gbrk8pz28apinlqi2x6nvd6xcy5hs08505nqnjp";
+    hash   = "sha256-PgwAZNoPknFT0jCLt3TCzend6OYFY3iUIzDf/FptAYA=";
   };
 
   contribSrc = fetchFromGitHub {
     owner  = "opencv";
     repo   = "opencv_contrib";
     rev    = version;
-    sha256 = "0psaa1yx36n34l09zd1y8jxgf8q4jzxd3vn06fqmzwzy85hcqn8i";
+    hash   = "sha256-TEF/GHglOmsshlC6q4iw14ZMpvA0SaKwlidomAN+sRc=";
   };
 
   # Contrib must be built in order to enable Tesseract support:
@@ -151,6 +152,11 @@ stdenv.mkDerivation {
     cp --no-preserve=mode -r "${contribSrc}/modules" "$NIX_BUILD_TOP/opencv_contrib"
   '';
 
+  # Ensures that we use the system OpenEXR rather than the vendored copy of the source included with OpenCV.
+  patches = [
+    ./cmake-don-t-use-OpenCVFindOpenEXR.patch
+  ];
+
   # This prevents cmake from using libraries in impure paths (which
   # causes build failure on non NixOS)
   # Also, work around https://github.com/NixOS/nixpkgs/issues/26304 with
@@ -202,11 +208,11 @@ stdenv.mkDerivation {
     # tesseract & leptonica.
     ++ lib.optionals enableTesseract [ tesseract leptonica ]
     ++ lib.optional enableTbb tbb
-    ++ lib.optional enableCuda cudatoolkit
     ++ lib.optionals stdenv.isDarwin [ bzip2 AVFoundation Cocoa VideoDecodeAcceleration ]
     ++ lib.optionals enableDocs [ doxygen graphviz-nox ];
 
-  propagatedBuildInputs = lib.optional enablePython pythonPackages.numpy;
+  propagatedBuildInputs = lib.optional enablePython pythonPackages.numpy
+    ++ lib.optional enableCuda cudatoolkit;
 
   nativeBuildInputs = [ cmake pkg-config unzip ];
 

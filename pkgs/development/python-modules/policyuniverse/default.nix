@@ -1,24 +1,27 @@
 { lib
 , buildPythonPackage
 , fetchPypi
-, pytestCheckHook
 , pythonOlder
 }:
 
 buildPythonPackage rec {
   pname = "policyuniverse";
-  version = "1.4.0.20210816";
+  version = "1.5.0.20220613";
+  format = "setuptools";
+
   disabled = pythonOlder "3.7";
 
   src = fetchPypi {
     inherit pname version;
-    sha256 = "05fxn89f6rr5rrp117cnqsfzy1p3nbmq3izq2jqk6kackcr3cl8x";
+    hash = "sha256-xmsfuQd1BkOhmH60GbIRKuP5xSfAE0KVJfn6uYnJotc=";
   };
 
   # Tests are not shipped and there are no GitHub tags
   doCheck = false;
 
-  pythonImportsCheck = [ "policyuniverse" ];
+  pythonImportsCheck = [
+    "policyuniverse"
+  ];
 
   meta = with lib; {
     description = "Parse and Process AWS IAM Policies, Statements, ARNs and wildcards";

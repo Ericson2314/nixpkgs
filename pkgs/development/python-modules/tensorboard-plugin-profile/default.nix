@@ -6,14 +6,15 @@
 
 buildPythonPackage rec {
   pname = "tensorboard_plugin_profile";
-  version = "2.4.0";
+  version = "2.8.0";
   format = "wheel";
 
   src = fetchPypi {
     inherit pname version;
     format = "wheel";
+    dist = "py3";
     python = "py3";
-    sha256 = "0z6dcjvkk3pzmmmjxi2ybawnfshz5qa3ga92kqj69ld1g9k3i9bj";
+    hash = "sha256-2LzXSdPrzS5G63ONvchdEL4aJD75eU9dF1pMqLcfbto=";
   };
 
   propagatedBuildInputs = [
@@ -24,7 +25,7 @@ buildPythonPackage rec {
 
   meta = with lib; {
     description = "Profile Tensorboard Plugin.";
-    homepage = http://tensorflow.org;
+    homepage = "http://tensorflow.org";
     license = licenses.asl20;
     maintainers = with maintainers; [ ndl ];
   };

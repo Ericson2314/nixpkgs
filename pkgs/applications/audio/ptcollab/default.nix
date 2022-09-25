@@ -13,18 +13,29 @@
 
 mkDerivation rec {
   pname = "ptcollab";
-  version = "0.4.2";
+  version = "0.6.2.0";
 
   src = fetchFromGitHub {
     owner = "yuxshao";
     repo = "ptcollab";
     rev = "v${version}";
-    sha256 = "sha256-AeIjc+FoFsTcyWl261GvyySIHP107rL4JkuMXFhnPbk=";
+    sha256 = "sha256-iSCuFCwOPrvff9N/a2J0kPrxikhyR7yYbD4VaU/TF4M=";
   };
 
   nativeBuildInputs = [ qmake pkg-config ];
 
   buildInputs = [ qtbase qtmultimedia libvorbis rtmidi ];
+
+  postInstall = lib.optionalString stdenv.hostPlatform.isDarwin ''
+    # Move appbundles to Applications before wrapping happens
+    mkdir $out/Applications
+    mv $out/{bin,Applications}/ptcollab.app
+  '';
+
+  postFixup = lib.optionalString stdenv.hostPlatform.isDarwin ''
+    # Link to now-wrapped binary inside appbundle
+    ln -s $out/{Applications/ptcollab.app/Contents/MacOS,bin}/ptcollab
+  '';
 
   passthru = {
     updateScript = nix-update-script {
@@ -38,7 +49,5 @@ mkDerivation rec {
     license = licenses.mit;
     maintainers = with maintainers; [ OPNA2608 ];
     platforms = platforms.all;
-    # Requires Qt5.15
-    broken = stdenv.hostPlatform.isDarwin;
   };
 }

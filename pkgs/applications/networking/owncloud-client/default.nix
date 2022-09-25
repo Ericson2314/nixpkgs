@@ -2,11 +2,11 @@
 
 mkDerivation rec {
   pname = "owncloud-client";
-  version = "2.8.2.4246";
+  version = "2.11.0.8354";
 
   src = fetchurl {
     url = "https://download.owncloud.com/desktop/ownCloud/stable/${version}/source/ownCloud-${version}.tar.xz";
-    sha256 = "0cc2e5154a1349bd21941ac3c32e8621778a9ff150730a19de2710e22d32fc43";
+    sha256 = "sha256-YraWvGgeF5b1+3i5Jlk+bwvAULr7KFOSX8y0ZoPpljI=";
   };
 
   nativeBuildInputs = [ pkg-config cmake extra-cmake-modules ];

@@ -2,18 +2,18 @@
 
 stdenv.mkDerivation rec {
   pname = "tzdata";
-  version = "2021a";
+  version = "2022c";
 
-  srcs =
-    [ (fetchurl {
-        url = "https://data.iana.org/time-zones/releases/tzdata${version}.tar.gz";
-        sha256 = "022fn6gkmp7pamlgab04x0dm5hnyn2m2fcnyr3pvm36612xd5rrr";
-      })
-      (fetchurl {
-        url = "https://data.iana.org/time-zones/releases/tzcode${version}.tar.gz";
-        sha256 = "1l02b0jiwp3fl0xd6227i69d26rmx3yrnq0ssq9vvdmm4jhvyipb";
-      })
-    ];
+  srcs = [
+    (fetchurl {
+      url = "https://data.iana.org/time-zones/releases/tzdata${version}.tar.gz";
+      hash = "sha256-aXT040i/IyMnS1bf+edQAkfjFZ6qS0hd+gzWbnXBS/4=";
+    })
+    (fetchurl {
+      url = "https://data.iana.org/time-zones/releases/tzcode${version}.tar.gz";
+      hash = "sha256-Pnzh82IMwEgZB8fgdNaZEHkyhb/+DKMx7xptGuPqkMw=";
+    })
+  ];
 
   sourceRoot = ".";
 
@@ -26,7 +26,7 @@ stdenv.mkDerivation rec {
     "BINDIR=$(bin)/bin"
     "ZICDIR=$(bin)/bin"
     "ETCDIR=$(TMPDIR)/etc"
-    "TZDEFAULT=$(TMPDIR)/etc"
+    "TZDEFAULT=tzdefault-to-remove"
     "LIBDIR=$(dev)/lib"
     "MANDIR=$(man)/share/man"
     "AWK=awk"
@@ -54,6 +54,7 @@ stdenv.mkDerivation rec {
   postInstall =
     ''
       rm $out/share/zoneinfo-posix
+      rm $out/share/zoneinfo/tzdefault-to-remove
       mkdir $out/share/zoneinfo/posix
       ( cd $out/share/zoneinfo/posix; ln -s ../* .; rm posix )
       mv $out/share/zoneinfo-leaps $out/share/zoneinfo/right
@@ -73,6 +74,6 @@ stdenv.mkDerivation rec {
       publicDomain # tzdata
     ];
     platforms = platforms.all;
-    maintainers = with maintainers; [ fpletz ];
+    maintainers = with maintainers; [ ajs124 fpletz ];
   };
 }

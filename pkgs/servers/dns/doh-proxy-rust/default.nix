@@ -1,27 +1,26 @@
-{ lib, stdenv, rustPlatform, fetchFromGitHub, Security, libiconv }:
+{ lib, rustPlatform, fetchCrate, stdenv, Security, libiconv, nixosTests }:
 
 rustPlatform.buildRustPackage rec {
   pname = "doh-proxy-rust";
-  version = "0.3.8";
+  version = "0.9.4";
 
-  src = fetchFromGitHub {
-    owner = "jedisct1";
-    repo = "doh-server";
-    rev = version;
-    sha256 = "0jksdrji06ykk5cj6i8ydcjhagjwb2xz5bjs6qsw044p8a2hsq53";
+  src = fetchCrate {
+    inherit version;
+    crateName = "doh-proxy";
+    sha256 = "sha256-IuLNgyPiAPYu440jMtpXxEuQDIn9TUMjnD7y8WB+Ujs=";
   };
 
-  cargoSha256 = "0i7rga5w4jh7zia4v2zkbmbc683p69z5z05ksl40jcmzvp29p3fj";
-  cargoPatches = [ ./cargo-lock.patch ];
+  cargoSha256 = "sha256-qrLhRNaGG7n9UPtkqNkJvnf+w9P0iLQ7MkIxnWYqYLM=";
 
   buildInputs = lib.optionals stdenv.isDarwin [ Security libiconv ];
 
-  doCheck = false; # no test suite, skip useless compile step
+  passthru.tests = { inherit (nixosTests) doh-proxy-rust; };
 
   meta = with lib; {
     homepage = "https://github.com/jedisct1/doh-server";
     description = "Fast, mature, secure DoH server proxy written in Rust";
     license = with licenses; [ mit ];
     maintainers = with maintainers; [ stephank ];
+    mainProgram = "doh-proxy";
   };
 }
