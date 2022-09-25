@@ -328,12 +328,12 @@ in lib.makeScopeWithSplicing
     ];
 
     preIncludes = ''
-      mkdir -p $out/include0
+      mkdir -p $out/include{0,1}
       cp --no-preserve=mode -r cross-build/include/common/* $out/include0
     '' + lib.optionalString stdenv.hostPlatform.isLinux ''
-      cp --no-preserve=mode -r cross-build/include/linux/* $out/include0
+      cp --no-preserve=mode -r cross-build/include/linux/* $out/include1
     '' + lib.optionalString stdenv.hostPlatform.isDarwin ''
-      cp --no-preserve=mode -r cross-build/include/darwin/* $out/include0
+      cp --no-preserve=mode -r cross-build/include/darwin/* $out/include1
     '';
   };
 
@@ -501,18 +501,32 @@ in lib.makeScopeWithSplicing
     extraPaths = [
       "lib/libmd"
       "lib/msun"
+      "sys/kern"
       "sys/sys"
+      "include/rpcsvc"
+      "contrib/jemalloc"
+      "contrib/gdtoa"
       "contrib/libc-pwcache"
       "contrib/libc-vis"
+      "contrib/tzcode/stdtime"
       "sys/kern/subr_acl_nfs4.c"
+    ];
+
+    patches = [
+      # Hack around broken propogating MAKEFLAGS to submake, just inline logic
+      ./libc-msun-arch-subdir.patch
     ];
 
     postPatch = ''
       substituteInPlace Makefile --replace '.include <src.opts.mk>' ""
     '';
 
-    makeFlags = [
-      #"-B"
+    nativeBuildInputs = with buildPackages.freebsd; [
+      bsdSetupHook freebsdSetupHook
+      makeMinimal
+      boot-install
+
+      rpcgen
     ];
 
     MK_SYMVER = "yes";
