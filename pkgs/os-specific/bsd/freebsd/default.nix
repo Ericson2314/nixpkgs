@@ -493,6 +493,15 @@ in lib.makeScopeWithSplicing
     # for debugging
     # makeFlags = defaultMakeFlags ++ [ "-d x" ];
     # NIX_DEBUG = 7;
+
+    # This is terrible! No idea why this macro definition got lost.
+    #
+    #     echo -e '#include <sys/wait.h>\nWUNTRACED' | $CC -E -x c - | tail
+    #
+    # Actually works just fine in this derivation.
+    postPatch = ''
+      substituteInPlace rpc_scan.c --replace WUNTRACED 2
+    '';
   };
 
   libc = mkDerivation rec {
