@@ -511,6 +511,7 @@ in lib.makeScopeWithSplicing
       "lib/libmd"
       "lib/msun"
       "sys/kern"
+      "sys/libkern"
       "sys/sys"
       "include/rpcsvc"
       "contrib/jemalloc"
@@ -518,7 +519,6 @@ in lib.makeScopeWithSplicing
       "contrib/libc-pwcache"
       "contrib/libc-vis"
       "contrib/tzcode/stdtime"
-      "sys/kern/subr_acl_nfs4.c"
     ];
 
     patches = [
@@ -535,7 +535,7 @@ in lib.makeScopeWithSplicing
       makeMinimal
       boot-install
 
-      rpcgen
+      flex byacc rpcgen
     ];
 
     MK_SYMVER = "yes";
