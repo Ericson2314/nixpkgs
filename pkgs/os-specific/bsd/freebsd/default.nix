@@ -513,7 +513,8 @@ in lib.makeScopeWithSplicing
     nativeBuildInputs = with buildPackages.freebsd; [
       bsdSetupHook freebsdSetupHook
       makeMinimal
-      install mandoc groff rsync /*nbperf*/ rpcgen
+      boot-install
+      mandoc groff rsync /*nbperf*/ rpcgen
 
       # HACK use NetBSD's for now
       buildPackages.netbsd.mtree
@@ -553,10 +554,104 @@ in lib.makeScopeWithSplicing
       "sys/contrib/openzfs/include/sys"
 
       "etc/mtree/BSD.include.dist"
+
+      # Listed as LDIRS
+      "sys/bsm"
+      "sys/cam"
+      "sys/geom"
+      "sys/net"
+      "sys/net80211"
+      "sys/netgraph"
+      "sys/netinet"
+      "sys/netinet6"
+      "sys/netipsec"
+      "sys/netsmb"
+      "sys/nfs"
+      "sys/nfsclient"
+      "sys/nfsserver"
+      "sys/sys"
+      "sys/vm"
+
+      # Listd as LSUBDIRS
+      "sys/cam/ata"
+      "sys/cam/mmc"
+      "sys/cam/nvme"
+      "sys/cam/scsi"
+      "sys/dev/acpica"
+      "sys/dev/agp"
+      "sys/dev/an"
+      "sys/dev/ciss"
+      "sys/dev/filemon"
+      "sys/dev/firewire"
+      "sys/dev/hwpmc"
+      "sys/dev/hyperv"
+      "sys/dev/ic"
+      "sys/dev/iicbus"
+      "sys/dev/io"
+      "sys/dev/mfi"
+      "sys/dev/mmc"
+      "sys/dev/nvme"
+      "sys/dev/ofw"
+      "sys/dev/pbio"
+      "sys/dev/pci"
+      "sys/dev/ppbus"
+      "sys/dev/pwm"
+      "sys/dev/smbus"
+      "sys/dev/speaker"
+      "sys/dev/tcp_log"
+      "sys/dev/veriexec"
+      "sys/dev/vkbd"
+      "sys/fs/cuse"
+      "sys/fs/devfs"
+      "sys/fs/fdescfs"
+      "sys/fs/msdosfs"
+      "sys/fs/nfs"
+      "sys/fs/nullfs"
+      "sys/fs/procfs"
+      "sys/fs/smbfs"
+      "sys/fs/udf"
+      "sys/fs/unionfs"
+      "sys/geom/cache"
+      "sys/geom/concat"
+      "sys/geom/eli"
+      "sys/geom/gate"
+      "sys/geom/journal"
+      "sys/geom/label"
+      "sys/geom/mirror"
+      "sys/geom/mountver"
+      "sys/geom/multipath"
+      "sys/geom/nop"
+      "sys/geom/raid"
+      "sys/geom/raid3"
+      "sys/geom/shsec"
+      "sys/geom/stripe"
+      "sys/geom/virstor"
+      "sys/net/altq"
+      "sys/net/route"
+      "sys/netgraph/atm"
+      "sys/netgraph/netflow"
+      "sys/netinet/cc"
+      "sys/netinet/netdump"
+      "sys/netinet/tcp_stacks"
+      "sys/security/audit"
+      "sys/security/mac_biba"
+      "sys/security/mac_bsdextended"
+      "sys/security/mac_lomac"
+      "sys/security/mac_mls"
+      "sys/security/mac_partition"
+      "sys/security/mac_veriexec"
+      "sys/sys/disk"
+      "sys/ufs/ffs"
+      "sys/ufs/ufs"
+
+      "sys/${mkBsdArch stdenv}/include"
     ];
     headersOnly = true;
     meta.platforms = lib.platforms.freebsd;
-    makeFlags = [ "RPCGEN_CPP=${buildPackages.stdenv.cc.cc}/bin/cpp" ];
+    makeFlags = [
+      "RPCGEN_CPP=${buildPackages.stdenv.cc.cc}/bin/cpp"
+      "INSTALL=boot-install"
+    ];
   };
 
   sys-headers = mkDerivation {
@@ -591,7 +686,10 @@ in lib.makeScopeWithSplicing
       # multiple header dirs, see above
       + self.include.postConfigure;
 
-    makeFlags = [ "FIRMWAREDIR=$(out)/libdata/firmware" ];
+    makeFlags = [
+      "FIRMWAREDIR=$(out)/libdata/firmware"
+      "INSTALL=boot-install"
+    ];
     hardeningDisable = [ "pic" ];
     MKKMOD = "no";
     NIX_CFLAGS_COMPILE = [ "-Wa,--no-warn" ];
