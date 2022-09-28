@@ -500,7 +500,7 @@ in lib.makeScopeWithSplicing
     #
     # Actually works just fine in this derivation.
     postPatch = ''
-      substituteInPlace rpc_scan.c --replace WUNTRACED 2
+      substituteInPlace $BSD_PATH/rpc_scan.c --replace WUNTRACED 2
     '';
   };
 
@@ -517,6 +517,10 @@ in lib.makeScopeWithSplicing
 
       # HACK use NetBSD's for now
       buildPackages.netbsd.mtree
+    ];
+
+    patches = [
+      ./no-perms-BSD.include.dist.patch
     ];
 
     # The makefiles define INCSDIR per subdirectory, so we have to set

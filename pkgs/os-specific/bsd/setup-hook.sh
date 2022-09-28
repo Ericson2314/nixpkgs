@@ -61,10 +61,13 @@ setBSDSourceDir() {
   sourceRoot=$PWD/$sourceRoot
   export BSDSRCDIR=$sourceRoot
   export _SRC_TOP_=$BSDSRCDIR
-
   cd $sourceRoot
+}
+
+cdBSDPath() {
   if [ -d "$BSD_PATH" ]
     then sourceRoot=$sourceRoot/$BSD_PATH
+    cd $BSD_PATH
   fi
 }
 
@@ -104,6 +107,7 @@ moveUsrDir() {
 }
 
 postUnpackHooks+=(setBSDSourceDir)
+postPatchHooks+=(cdBSDPath)
 preConfigureHooks+=(addMakeFlags)
 preInstallHooks+=(includesPhase)
 fixupOutputHooks+=(moveUsrDir)

@@ -1,7 +1,7 @@
 diff --git a/Makefile b/Makefile
 index 22710f3d933..22effc848cf 100644
---- a/Makefile
-+++ b/Makefile
+--- a/lib/libnetbsd/Makefile
++++ b/lib/libnetbsd/Makefile
 @@ -9,6 +9,26 @@ CFLAGS+=	-I${.CURDIR}
  
  SRCS+=	efun.c sockaddr_snprintf.c strsuftoll.c util.c util.h

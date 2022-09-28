@@ -1,5 +1,5 @@
---- a/Makefile
-+++ b/Makefile
+--- a/lib/libc/Makefile
++++ b/lib/libc/Makefile
 @@ -194,7 +194,7 @@ SUBDIR.${MK_TESTS}+= tests
  # recording a build dependency
  CFLAGS+= -I${SRCTOP}/lib/libutil
