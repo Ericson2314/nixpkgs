@@ -491,7 +491,7 @@ in lib.makeScopeWithSplicing
   rpcgen = mkDerivation rec {
     path = "usr.bin/rpcgen";
     # for debugging
-    # makeFlags = defaultMakeFlags ++ [ "-d x" ];
+    # makeFlags = [ "-d x" ];
     # NIX_DEBUG = 7;
 
     # This is terrible! No idea why this macro definition got lost.
@@ -503,6 +503,133 @@ in lib.makeScopeWithSplicing
       substituteInPlace rpc_scan.c --replace WUNTRACED 2
     '';
   };
+
+  ##
+  ## START HEADERS
+  ##
+  include = mkDerivation {
+    path = "include";
+
+    nativeBuildInputs = with buildPackages.freebsd; [
+      bsdSetupHook freebsdSetupHook
+      makeMinimal
+      install mandoc groff rsync /*nbperf*/ rpcgen
+
+      # HACK use NetBSD's for now
+      buildPackages.netbsd.mtree
+    ];
+
+    # The makefiles define INCSDIR per subdirectory, so we have to set
+    # something else on the command line so those definitions aren't
+    # overridden.
+    postPatch = ''
+      find "$BSDSRCDIR" -name Makefile -exec \
+        sed -i -E \
+          -e 's_/usr/include_''${INCSDIR0}_' \
+          {} \;
+    '';
+
+    # multiple header dirs, see above
+    postConfigure = ''
+      makeFlags=''${makeFlags/INCSDIR/INCSDIR0}
+    '';
+
+    extraPaths = [
+      "contrib/libc-vis"
+      "sys/conf/newvers.sh"
+      "sys/sys/param.h"
+      "sys/dev"
+      "sys/fs/cd9660"
+      "sys/crypto/rijndael"
+      "sys/opencrypto"
+      "sys/contrib/ipfilter/netinet"
+      "sys/netpfil/pf"
+      "sys/rpc"
+      "sys/teken"
+      "sys/contrib/openzfs/include/sys"
+
+      "etc/mtree/BSD.include.dist"
+    ];
+    headersOnly = true;
+    meta.platforms = lib.platforms.freebsd;
+    makeFlags = [ "RPCGEN_CPP=${buildPackages.stdenv.cc.cc}/bin/cpp" ];
+  };
+
+  sys-headers = mkDerivation {
+    pname = "sys-headers";
+    path = "sys";
+
+    patches = [
+      # # Fix this error when building bootia32.efi and bootx64.efi:
+      # # error: PHDR segment not covered by LOAD segment
+      # ./no-dynamic-linker.patch
+
+      # # multiple header dirs, see above
+      # ./sys-headers-incsdir.patch
+    ];
+
+    # multiple header dirs, see above
+    inherit (self.include) postPatch;
+
+    CONFIG = "GENERIC";
+
+    propagatedBuildInputs = with self; [ include ];
+    nativeBuildInputs = with buildPackages.freebsd; [
+      bsdSetupHook freebsdSetupHook
+      makeMinimal install tsort lorder /*statHook*/ rsync # uudecode config genassym
+    ];
+
+    postConfigure = ''
+      pushd arch/$MACHINE/conf
+      config $CONFIG
+      popd
+    ''
+      # multiple header dirs, see above
+      + self.include.postConfigure;
+
+    makeFlags = [ "FIRMWAREDIR=$(out)/libdata/firmware" ];
+    hardeningDisable = [ "pic" ];
+    MKKMOD = "no";
+    NIX_CFLAGS_COMPILE = [ "-Wa,--no-warn" ];
+
+    postBuild = ''
+      make -C arch/$MACHINE/compile/$CONFIG $makeFlags
+    '';
+
+    postInstall = ''
+      cp arch/$MACHINE/compile/$CONFIG/freebsd $out
+    '';
+
+    meta.platforms = lib.platforms.freebsd;
+    #extraPaths = with self; [ "common" ];
+
+    installPhase = "includesPhase";
+    dontBuild = true;
+    noCC = true;
+  };
+
+  # The full kernel. We do the funny thing of overridding the headers to the
+  # full kernal and not vice versa to avoid infinite recursion -- the headers
+  # come earlier in the bootstrap.
+  sys = self.sys-headers.override {
+    pname = "sys";
+    installPhase = null;
+    noCC = false;
+    dontBuild = false;
+  };
+
+  headers = symlinkJoin {
+    name = "freebsd-headers-9.2";
+    paths = with self; [
+      include
+      sys-headers
+      #libpthread-headers
+    ];
+    meta.platforms = lib.platforms.freebsd;
+  };
+  ##
+  ## END HEADERS
+  ##
 
   libc = mkDerivation rec {
     pname = "libc";
@@ -537,6 +664,7 @@ in lib.makeScopeWithSplicing
 
       flex byacc rpcgen
     ];
+    buildInputs = with self; [ headers /*csu*/ ];
 
     MK_SYMVER = "yes";
     MK_SSP = "yes";
@@ -553,6 +681,8 @@ in lib.makeScopeWithSplicing
     MK_MALLOC_PRODUCTION = "yes";
 
     MK_TESTS = "no";
+
+    meta.platforms = lib.platforms.freebsd;
   };
 
 })
