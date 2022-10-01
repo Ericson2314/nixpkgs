@@ -677,8 +677,8 @@ in lib.makeScopeWithSplicing
       # make -C $BSDSRCDIR/lib/libpthread $makeFlags
       # make -C $BSDSRCDIR/lib/libpthread $makeFlags install
 
-      # make -C $BSDSRCDIR/lib/libm $makeFlags
-      # make -C $BSDSRCDIR/lib/libm $makeFlags install
+      make -C $BSDSRCDIR/lib/msun $makeFlags
+      make -C $BSDSRCDIR/lib/msun $makeFlags install
 
       # make -C $BSDSRCDIR/lib/libresolv $makeFlags
       # make -C $BSDSRCDIR/lib/libresolv $makeFlags install
