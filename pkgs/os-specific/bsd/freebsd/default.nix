@@ -504,6 +504,10 @@ in lib.makeScopeWithSplicing
     '';
   };
 
+  gencat = mkDerivation {
+    path = "usr.bin/gencat";
+  };
+
   ##
   ## START HEADERS
   ##
@@ -597,7 +601,7 @@ in lib.makeScopeWithSplicing
       makeMinimal
       boot-install
 
-      flex byacc rpcgen
+      flex byacc gencat rpcgen
     ];
     buildInputs = with self; [ include /*csu*/ ];
 
