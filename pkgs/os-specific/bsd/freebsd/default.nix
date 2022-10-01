@@ -202,7 +202,7 @@ in lib.makeScopeWithSplicing
         -C) ;;
         -o | -g) shift ;;
         -s) ;;
-        -m)
+        -m | -l)
           # handle next arg so not counted as path arg
           args+=("$1" "$2")
           shift
@@ -541,194 +541,17 @@ in lib.makeScopeWithSplicing
 
     extraPaths = [
       "contrib/libc-vis"
-      "sys/conf/newvers.sh"
-      "sys/sys/param.h"
-      "sys/dev"
-      "sys/fs/cd9660"
-      "sys/crypto/rijndael"
-      "sys/opencrypto"
-      "sys/contrib/ipfilter/netinet"
-      "sys/netpfil/pf"
-      "sys/rpc"
-      "sys/teken"
-      "sys/contrib/openzfs/include/sys"
-
       "etc/mtree/BSD.include.dist"
-
-      # Listed as LDIRS
-      "sys/bsm"
-      "sys/cam"
-      "sys/geom"
-      "sys/net"
-      "sys/net80211"
-      "sys/netgraph"
-      "sys/netinet"
-      "sys/netinet6"
-      "sys/netipsec"
-      "sys/netsmb"
-      "sys/nfs"
-      "sys/nfsclient"
-      "sys/nfsserver"
-      "sys/sys"
-      "sys/vm"
-
-      # Listd as LSUBDIRS
-      "sys/cam/ata"
-      "sys/cam/mmc"
-      "sys/cam/nvme"
-      "sys/cam/scsi"
-      "sys/dev/acpica"
-      "sys/dev/agp"
-      "sys/dev/an"
-      "sys/dev/ciss"
-      "sys/dev/filemon"
-      "sys/dev/firewire"
-      "sys/dev/hwpmc"
-      "sys/dev/hyperv"
-      "sys/dev/ic"
-      "sys/dev/iicbus"
-      "sys/dev/io"
-      "sys/dev/mfi"
-      "sys/dev/mmc"
-      "sys/dev/nvme"
-      "sys/dev/ofw"
-      "sys/dev/pbio"
-      "sys/dev/pci"
-      "sys/dev/ppbus"
-      "sys/dev/pwm"
-      "sys/dev/smbus"
-      "sys/dev/speaker"
-      "sys/dev/tcp_log"
-      "sys/dev/veriexec"
-      "sys/dev/vkbd"
-      "sys/fs/cuse"
-      "sys/fs/devfs"
-      "sys/fs/fdescfs"
-      "sys/fs/msdosfs"
-      "sys/fs/nfs"
-      "sys/fs/nullfs"
-      "sys/fs/procfs"
-      "sys/fs/smbfs"
-      "sys/fs/udf"
-      "sys/fs/unionfs"
-      "sys/geom/cache"
-      "sys/geom/concat"
-      "sys/geom/eli"
-      "sys/geom/gate"
-      "sys/geom/journal"
-      "sys/geom/label"
-      "sys/geom/mirror"
-      "sys/geom/mountver"
-      "sys/geom/multipath"
-      "sys/geom/nop"
-      "sys/geom/raid"
-      "sys/geom/raid3"
-      "sys/geom/shsec"
-      "sys/geom/stripe"
-      "sys/geom/virstor"
-      "sys/net/altq"
-      "sys/net/route"
-      "sys/netgraph/atm"
-      "sys/netgraph/netflow"
-      "sys/netinet/cc"
-      "sys/netinet/netdump"
-      "sys/netinet/tcp_stacks"
-      "sys/security/audit"
-      "sys/security/mac_biba"
-      "sys/security/mac_bsdextended"
-      "sys/security/mac_lomac"
-      "sys/security/mac_mls"
-      "sys/security/mac_partition"
-      "sys/security/mac_veriexec"
-      "sys/sys/disk"
-      "sys/ufs/ffs"
-      "sys/ufs/ufs"
-
-      "sys/${mkBsdArch stdenv}/include"
+      "sys"
     ];
     headersOnly = true;
     meta.platforms = lib.platforms.freebsd;
     makeFlags = [
+      "INSTALL=boot-install"
       "RPCGEN_CPP=${buildPackages.stdenv.cc.cc}/bin/cpp"
-      "INSTALL=boot-install"
     ];
   };
 
-  sys-headers = mkDerivation {
-    pname = "sys-headers";
-    path = "sys";
-
-    patches = [
-      # # Fix this error when building bootia32.efi and bootx64.efi:
-      # # error: PHDR segment not covered by LOAD segment
-      # ./no-dynamic-linker.patch
-
-      # # multiple header dirs, see above
-      # ./sys-headers-incsdir.patch
-    ];
-
-    # multiple header dirs, see above
-    inherit (self.include) postPatch;
-
-    CONFIG = "GENERIC";
-
-    propagatedBuildInputs = with self; [ include ];
-    nativeBuildInputs = with buildPackages.freebsd; [
-      bsdSetupHook freebsdSetupHook
-      makeMinimal install tsort lorder /*statHook*/ rsync # uudecode config genassym
-    ];
-
-    postConfigure = ''
-      pushd arch/$MACHINE/conf
-      config $CONFIG
-      popd
-    ''
-      # multiple header dirs, see above
-      + self.include.postConfigure;
-
-    makeFlags = [
-      "FIRMWAREDIR=$(out)/libdata/firmware"
-      "INSTALL=boot-install"
-    ];
-    hardeningDisable = [ "pic" ];
-    MKKMOD = "no";
-    NIX_CFLAGS_COMPILE = [ "-Wa,--no-warn" ];
-
-    postBuild = ''
-      make -C arch/$MACHINE/compile/$CONFIG $makeFlags
-    '';
-
-    postInstall = ''
-      cp arch/$MACHINE/compile/$CONFIG/freebsd $out
-    '';
-
-    meta.platforms = lib.platforms.freebsd;
-    #extraPaths = with self; [ "common" ];
-
-    installPhase = "includesPhase";
-    dontBuild = true;
-    noCC = true;
-  };
-
-  # The full kernel. We do the funny thing of overridding the headers to the
-  # full kernal and not vice versa to avoid infinite recursion -- the headers
-  # come earlier in the bootstrap.
-  sys = self.sys-headers.override {
-    pname = "sys";
-    installPhase = null;
-    noCC = false;
-    dontBuild = false;
-  };
-
-  headers = symlinkJoin {
-    name = "freebsd-headers-9.2";
-    paths = with self; [
-      include
-      sys-headers
-      #libpthread-headers
-    ];
-    meta.platforms = lib.platforms.freebsd;
-  };
   ##
   ## END HEADERS
   ##
@@ -756,7 +579,7 @@ in lib.makeScopeWithSplicing
     ];
 
     postPatch = ''
-      substituteInPlace Makefile --replace '.include <src.opts.mk>' ""
+      substituteInPlace $BSD_PATH/Makefile --replace '.include <src.opts.mk>' ""
     '';
 
     nativeBuildInputs = with buildPackages.freebsd; [
@@ -766,7 +589,7 @@ in lib.makeScopeWithSplicing
 
       flex byacc rpcgen
     ];
-    buildInputs = with self; [ headers /*csu*/ ];
+    buildInputs = with self; [ include /*csu*/ ];
 
     MK_SYMVER = "yes";
     MK_SSP = "yes";
