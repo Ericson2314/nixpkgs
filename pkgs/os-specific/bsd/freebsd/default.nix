@@ -510,6 +510,12 @@ in lib.makeScopeWithSplicing
   include = mkDerivation {
     path = "include";
 
+    extraPaths = [
+      "contrib/libc-vis"
+      "etc/mtree/BSD.include.dist"
+      "sys"
+    ];
+
     nativeBuildInputs = with buildPackages.freebsd; [
       bsdSetupHook freebsdSetupHook
       makeMinimal
@@ -534,22 +540,21 @@ in lib.makeScopeWithSplicing
           {} \;
     '';
 
+    makeFlags = [
+      "INSTALL=boot-install"
+      "RPCGEN_CPP=${buildPackages.stdenv.cc.cc}/bin/cpp"
+    ];
+
     # multiple header dirs, see above
     postConfigure = ''
       makeFlags=''${makeFlags/INCSDIR/INCSDIR0}
     '';
 
-    extraPaths = [
-      "contrib/libc-vis"
-      "etc/mtree/BSD.include.dist"
-      "sys"
-    ];
     headersOnly = true;
+
+    MK_HESIOD = "yes";
+
     meta.platforms = lib.platforms.freebsd;
-    makeFlags = [
-      "INSTALL=boot-install"
-      "RPCGEN_CPP=${buildPackages.stdenv.cc.cc}/bin/cpp"
-    ];
   };
 
   ##
@@ -560,11 +565,16 @@ in lib.makeScopeWithSplicing
     pname = "libc";
     path = "lib/libc";
     extraPaths = [
+      "etc/group"
+      "etc/master.passwd"
+      "etc/shells"
       "lib/libmd"
+      "lib/libutil"
       "lib/msun"
       "sys/kern"
       "sys/libkern"
       "sys/sys"
+      "sys/crypto/chacha20"
       "include/rpcsvc"
       "contrib/jemalloc"
       "contrib/gdtoa"
@@ -591,6 +601,13 @@ in lib.makeScopeWithSplicing
     ];
     buildInputs = with self; [ include /*csu*/ ];
 
+    makeFlags = [
+      "INSTALL=boot-install"
+
+      # lib/libc/gen/getgrent.c has sketchy cast from `void *` to enum
+      "MK_WERROR=no"
+    ];
+
     MK_SYMVER = "yes";
     MK_SSP = "yes";
     MK_NLS = "yes";
@@ -606,6 +623,46 @@ in lib.makeScopeWithSplicing
     MK_MALLOC_PRODUCTION = "yes";
 
     MK_TESTS = "no";
+
+    postInstall = ''
+      pushd ${self.include}
+      find . -type d -exec mkdir -p $out/\{} \;
+      find . \( -type f -o -type l \) -exec cp -pr \{} $out/\{} \;
+      popd
+
+      # pushd ''${self.csu}
+      # find . -type d -exec mkdir -p $out/\{} \;
+      # find . \( -type f -o -type l \) -exec cp -pr \{} $out/\{} \;
+      # popd
+
+      NIX_CFLAGS_COMPILE+=" -B$out/lib"
+      NIX_CFLAGS_COMPILE+=" -I$out/include"
+      NIX_LDFLAGS+=" -L$out/lib"
+
+      # make -C $BSDSRCDIR/lib/libpthread $makeFlags
+      # make -C $BSDSRCDIR/lib/libpthread $makeFlags install
+
+      # make -C $BSDSRCDIR/lib/libm $makeFlags
+      # make -C $BSDSRCDIR/lib/libm $makeFlags install
+
+      # make -C $BSDSRCDIR/lib/libresolv $makeFlags
+      # make -C $BSDSRCDIR/lib/libresolv $makeFlags install
+
+      # make -C $BSDSRCDIR/lib/librpcsvc $makeFlags
+      # make -C $BSDSRCDIR/lib/librpcsvc $makeFlags install
+
+      # make -C $BSDSRCDIR/lib/i18n_module $makeFlags
+      # make -C $BSDSRCDIR/lib/i18n_module $makeFlags install
+
+      make -C $BSDSRCDIR/lib/libutil $makeFlags
+      make -C $BSDSRCDIR/lib/libutil $makeFlags install
+
+      # make -C $BSDSRCDIR/lib/librt $makeFlags
+      # make -C $BSDSRCDIR/lib/librt $makeFlags install
+
+      # make -C $BSDSRCDIR/lib/libcrypt $makeFlags
+      # make -C $BSDSRCDIR/lib/libcrypt $makeFlags install
+    '';
 
     meta.platforms = lib.platforms.freebsd;
   };
