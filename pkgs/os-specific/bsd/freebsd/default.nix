@@ -571,6 +571,24 @@ in lib.makeScopeWithSplicing
   ## END HEADERS
   ##
 
+  csu = mkDerivation {
+    path = "lib/csu";
+    extraPaths = with self; [
+      "lib/Makefile.inc"
+      "lib/libc/include/libc_private.h"
+    ];
+    nativeBuildInputs = with buildPackages.freebsd; [
+      bsdSetupHook freebsdSetupHook
+      makeMinimal
+      install
+
+      flex byacc gencat
+    ];
+    buildInputs = with self; [ include ];
+    MK_TESTS = "no";
+    meta.platforms = lib.platforms.freebsd;
+  };
+
   libc = mkDerivation rec {
     pname = "libc";
     path = "lib/libc";
@@ -609,7 +627,7 @@ in lib.makeScopeWithSplicing
 
       flex byacc gencat rpcgen
     ];
-    buildInputs = with self; [ include /*csu*/ ];
+    buildInputs = with self; [ include csu ];
 
     makeFlags = [
       # lib/libc/gen/getgrent.c has sketchy cast from `void *` to enum
@@ -638,10 +656,10 @@ in lib.makeScopeWithSplicing
       find . \( -type f -o -type l \) -exec cp -pr \{} $out/\{} \;
       popd
 
-      # pushd ''${self.csu}
-      # find . -type d -exec mkdir -p $out/\{} \;
-      # find . \( -type f -o -type l \) -exec cp -pr \{} $out/\{} \;
-      # popd
+      pushd ${self.csu}
+      find . -type d -exec mkdir -p $out/\{} \;
+      find . \( -type f -o -type l \) -exec cp -pr \{} $out/\{} \;
+      popd
 
       NIX_CFLAGS_COMPILE+=" -B$out/lib"
       NIX_CFLAGS_COMPILE+=" -I$out/include"
