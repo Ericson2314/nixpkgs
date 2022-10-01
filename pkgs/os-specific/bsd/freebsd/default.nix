@@ -183,7 +183,7 @@ in lib.makeScopeWithSplicing
 
   # Wrap NetBSD's install
   boot-install = buildPackages.writeScriptBin "boot-install" ''
-    #!${stdenv.shell}
+    #!${runtimeShell}
 
     set -eu
 
@@ -361,7 +361,12 @@ in lib.makeScopeWithSplicing
   # install’s -D option. No alternative seems to exist in BSD install.
   install = let binstall = writeScript "binstall" ''
     #!${runtimeShell}
+
     set -eu
+
+    args=()
+    declare -i path_args=0
+
     while (( $# )); do
       if (( $# == 1 )); then
         if (( $path_args > 1)) || [[ "$1" = */ ]]; then
@@ -371,9 +376,10 @@ in lib.makeScopeWithSplicing
         fi
       fi
       case $1 in
+        -C) ;;
         -o | -g) shift ;;
         -s) ;;
-        -m)
+        -m | -l)
           # handle next arg so not counted as path arg
           args+=("$1" "$2")
           shift
@@ -386,6 +392,7 @@ in lib.makeScopeWithSplicing
       esac
       shift
     done
+
     @out@/bin/xinstall "''${args[@]}"
   ''; in mkDerivation {
     path = "usr.bin/xinstall";
@@ -523,7 +530,7 @@ in lib.makeScopeWithSplicing
     nativeBuildInputs = with buildPackages.freebsd; [
       bsdSetupHook freebsdSetupHook
       makeMinimal
-      boot-install
+      install
       mandoc groff rsync /*nbperf*/ rpcgen
 
       # HACK use NetBSD's for now
@@ -545,7 +552,6 @@ in lib.makeScopeWithSplicing
     '';
 
     makeFlags = [
-      "INSTALL=boot-install"
       "RPCGEN_CPP=${buildPackages.stdenv.cc.cc}/bin/cpp"
     ];
 
@@ -599,15 +605,13 @@ in lib.makeScopeWithSplicing
     nativeBuildInputs = with buildPackages.freebsd; [
       bsdSetupHook freebsdSetupHook
       makeMinimal
-      boot-install
+      install
 
       flex byacc gencat rpcgen
     ];
     buildInputs = with self; [ include /*csu*/ ];
 
     makeFlags = [
-      "INSTALL=boot-install"
-
       # lib/libc/gen/getgrent.c has sketchy cast from `void *` to enum
       "MK_WERROR=no"
     ];
