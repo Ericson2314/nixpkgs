@@ -614,6 +614,9 @@ in lib.makeScopeWithSplicing
     patches = [
       # Hack around broken propogating MAKEFLAGS to submake, just inline logic
       ./libc-msun-arch-subdir.patch
+
+      # Don't force -lcompiler-rt, we don't actually call it that
+      ./libc-no-force--lcompiler-rt.patch
     ];
 
     postPatch = ''
@@ -628,8 +631,10 @@ in lib.makeScopeWithSplicing
       flex byacc gencat rpcgen
     ];
     buildInputs = with self; [ include csu ];
+    NIX_CFLAGS_COMPILE = "-B${self.csu}/lib";
 
     makeFlags = [
+      "STRIP=-s" # flag to install, not command
       # lib/libc/gen/getgrent.c has sketchy cast from `void *` to enum
       "MK_WERROR=no"
     ];
@@ -680,8 +685,8 @@ in lib.makeScopeWithSplicing
       # make -C $BSDSRCDIR/lib/i18n_module $makeFlags
       # make -C $BSDSRCDIR/lib/i18n_module $makeFlags install
 
-      make -C $BSDSRCDIR/lib/libutil $makeFlags
-      make -C $BSDSRCDIR/lib/libutil $makeFlags install
+      # make -C $BSDSRCDIR/lib/libutil $makeFlags
+      # make -C $BSDSRCDIR/lib/libutil $makeFlags install
 
       # make -C $BSDSRCDIR/lib/librt $makeFlags
       # make -C $BSDSRCDIR/lib/librt $makeFlags install
