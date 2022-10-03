@@ -454,6 +454,7 @@ broken-packages:
   - BPS
   - braid
   - brain-bleep
+  - brassica
   - Bravo
   - brians-brain
   - brick-dropdownmenu
@@ -1137,6 +1138,7 @@ broken-packages:
   - disjoint-containers
   - disjoint-set
   - disjoint-set-stateful
+  - disk-bytes
   - Dist
   - distance
   - distributed-closure
@@ -2102,6 +2104,7 @@ broken-packages:
   - HDBC-postgresql-hstore
   - hdevtools
   - hdf
+  - hdf5
   - hDFA
   - hdigest
   - hdis86
@@ -2212,6 +2215,7 @@ broken-packages:
   - himg
   - hindley-milner
   - hindley-milner-type-check
+  - hinotify-conduit
   - hinquire
   - hinstaller
   - hinter
@@ -2604,7 +2608,11 @@ broken-packages:
   - ige
   - ignore
   - igraph
+  - ihaskell-charts
+  - ihaskell-diagrams
+  - ihaskell-gnuplot
   - ihaskell-parsec
+  - ihaskell-plot
   - ihaskell-widgets
   - ihp-hsx
   - illuminate
@@ -3939,7 +3947,6 @@ broken-packages:
   - polysemy-mocks
   - polysemy-readline
   - polysemy-scoped-fs
-  - polysemy-zoo
   - polytypeable
   - pomaps
   - pomohoro
@@ -3954,6 +3961,8 @@ broken-packages:
   - portager
   - porte
   - PortFusion
+  - portray-pretty
+  - portray-prettyprinter
   - positron
   - posix-acl
   - posix-api
@@ -4211,6 +4220,7 @@ broken-packages:
   - reanimate-svg
   - reasonable-lens
   - reason-export
+  - rec-def
   - record
   - record-encode
   - record-impl
@@ -4352,6 +4362,7 @@ broken-packages:
   - rivet-simple-deploy
   - RJson
   - Rlang-QQ
+  - rle
   - rlglue
   - RLP
   - rl-satton
@@ -4520,6 +4531,7 @@ broken-packages:
   - servant-namedargs
   - servant-nix
   - servant-pandoc
+  - servant-polysemy
   - servant-pool
   - servant-proto-lens
   - servant-purescript
@@ -4644,6 +4656,7 @@ broken-packages:
   - singnal
   - singular-factory
   - sink
+  - sint
   - sitepipe
   - sixfiguregroup
   - sized-grid
@@ -5050,6 +5063,7 @@ broken-packages:
   - tempodb
   - temporal-csound
   - tempus
+  - ten
   - tensor
   - tensorflow
   - tensorflow-opgen
@@ -5187,6 +5201,7 @@ broken-packages:
   - to-haskell
   - token-bucket
   - tokenify
+  - tokenizer
   - tokenizer-streaming
   - token-limiter
   - token-search
@@ -5196,6 +5211,7 @@ broken-packages:
   - tomato-rubato-openal
   - toml
   - toml-parser
+  - toml-reader-parse
   - tonalude
   - tonaparser
   - toodles
@@ -5280,6 +5296,7 @@ broken-packages:
   - twine
   - twirp
   - twisty
+  - twitchapi
   - twitter
   - twitter-feed
   - twitter-types
@@ -5311,6 +5328,7 @@ broken-packages:
   - type-of-html-static
   - typeparams
   - type-prelude
+  - type-reflection
   - type-rig
   - types-compat
   - type-settheory

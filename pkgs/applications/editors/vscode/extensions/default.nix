@@ -18,6 +18,7 @@
 , clojure-lsp
 , alejandra
 , millet
+, shfmt
 }:
 
 let
@@ -1088,6 +1089,14 @@ let
           version = "7.1.0";
           sha256 = "09z72mdr5bfdcb67xyzlv7lb9vyjlc3k9ackj4jgixfk40c68cnj";
         };
+
+        nativeBuildInputs = [ jq moreutils ];
+
+        postInstall = ''
+          cd "$out/$installPrefix"
+          jq '.contributes.configuration.properties."shellformat.path".default = "${shfmt}/bin/shfmt"' package.json | sponge package.json
+        '';
+
         meta = with lib; {
           downloadPage = "https://marketplace.visualstudio.com/items?itemName=foxundermoon.shell-format";
           homepage = "https://github.com/foxundermoon/vs-shell-format";
@@ -1199,6 +1208,16 @@ let
       };
 
       github = {
+        codespaces = buildVscodeMarketplaceExtension {
+          mktplcRef = {
+            publisher = "github";
+            name = "codespaces";
+            version = "1.10.6";
+            sha256 = "04d6lx8s6rwc6ry6flyw59hg9c4814s5wvi8ycxlwq4pl8n0imd7";
+          };
+          meta = { license = lib.licenses.unfree; };
+        };
+
         copilot = buildVscodeMarketplaceExtension {
           mktplcRef = {
             publisher = "github";
@@ -1433,6 +1452,8 @@ let
           maintainers = with maintainers; [ imgabe ];
         };
       };
+
+      jebbs.plantuml = callPackage ./jebbs.plantuml {};
 
       jnoortheen.nix-ide = buildVscodeMarketplaceExtension {
         mktplcRef = {
@@ -2638,8 +2659,8 @@ let
         mktplcRef = {
           name = "vim";
           publisher = "vscodevim";
-          version = "1.23.2";
-          sha256 = "sha256-QC+5FJYjWsEaao1ifgMTJyg7vZ5JUbNNJiV+OuiIaM0=";
+          version = "1.24.1";
+          sha256 = "00gq6mqqwqipc6d7di2x9mmi1lya11vhkkww9563avchavczb9sv";
         };
         meta = {
           license = lib.licenses.mit;
