@@ -4,7 +4,7 @@
 , bsdSetupHook, makeSetupHook
 , fetchgit, fetchurl, coreutils, groff, mandoc, byacc, flex, which
 , zlib, expat, libbsd, libmd
-, runCommand, writeScript, writeText, runtimeShell, symlinkJoin
+, runCommand, writeShellScript, writeText, symlinkJoin
 }:
 
 let
@@ -182,9 +182,7 @@ in lib.makeScopeWithSplicing
   };
 
   # Wrap NetBSD's install
-  boot-install = buildPackages.writeScriptBin "boot-install" ''
-    #!${runtimeShell}
-
+  boot-install = buildPackages.writeShellScriptBin "boot-install" ''
     set -eu
 
     args=()
@@ -359,9 +357,7 @@ in lib.makeScopeWithSplicing
 
   # HACK: to ensure parent directories exist. This emulates GNU
   # install’s -D option. No alternative seems to exist in BSD install.
-  install = let binstall = writeScript "binstall" ''
-    #!${runtimeShell}
-
+  install = let binstall = writeShellScript "binstall" ''
     set -eu
 
     args=()
