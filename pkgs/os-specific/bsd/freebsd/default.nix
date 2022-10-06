@@ -609,6 +609,22 @@ in lib.makeScopeWithSplicing
       "contrib/libc-pwcache"
       "contrib/libc-vis"
       "contrib/tzcode/stdtime"
+
+      # libthr
+      "lib/libthr"
+      "lib/libthread_db"
+      "libexec/rtld-elf"
+
+      # librpcsvc
+      "lib/librpcsvc"
+
+      # librt
+      "lib/librt"
+
+      # libcrypt
+      "lib/libcrypt"
+      "lib/libmd"
+      "sys/crypto/sha2"
     ];
 
     patches = [
@@ -617,6 +633,9 @@ in lib.makeScopeWithSplicing
 
       # Don't force -lcompiler-rt, we don't actually call it that
       ./libc-no-force--lcompiler-rt.patch
+
+      # Fix extra include dir to get rpcsvc headers.
+      ./librpcsvc-include-subdir.patch
     ];
 
     postPatch = ''
@@ -674,29 +693,23 @@ in lib.makeScopeWithSplicing
       NIX_CFLAGS_COMPILE+=" -I$out/include"
       NIX_LDFLAGS+=" -L$out/lib"
 
-      # make -C $BSDSRCDIR/lib/libpthread $makeFlags
-      # make -C $BSDSRCDIR/lib/libpthread $makeFlags install
+      make -C $BSDSRCDIR/lib/libthr $makeFlags
+      make -C $BSDSRCDIR/lib/libthr $makeFlags install
 
       make -C $BSDSRCDIR/lib/msun $makeFlags
       make -C $BSDSRCDIR/lib/msun $makeFlags install
 
-      # make -C $BSDSRCDIR/lib/libresolv $makeFlags
-      # make -C $BSDSRCDIR/lib/libresolv $makeFlags install
+      make -C $BSDSRCDIR/lib/librpcsvc $makeFlags
+      make -C $BSDSRCDIR/lib/librpcsvc $makeFlags install
 
-      # make -C $BSDSRCDIR/lib/librpcsvc $makeFlags
-      # make -C $BSDSRCDIR/lib/librpcsvc $makeFlags install
+      make -C $BSDSRCDIR/lib/libutil $makeFlags
+      make -C $BSDSRCDIR/lib/libutil $makeFlags install
 
-      # make -C $BSDSRCDIR/lib/i18n_module $makeFlags
-      # make -C $BSDSRCDIR/lib/i18n_module $makeFlags install
+      make -C $BSDSRCDIR/lib/librt $makeFlags
+      make -C $BSDSRCDIR/lib/librt $makeFlags install
 
-      # make -C $BSDSRCDIR/lib/libutil $makeFlags
-      # make -C $BSDSRCDIR/lib/libutil $makeFlags install
-
-      # make -C $BSDSRCDIR/lib/librt $makeFlags
-      # make -C $BSDSRCDIR/lib/librt $makeFlags install
-
-      # make -C $BSDSRCDIR/lib/libcrypt $makeFlags
-      # make -C $BSDSRCDIR/lib/libcrypt $makeFlags install
+      make -C $BSDSRCDIR/lib/libcrypt $makeFlags
+      make -C $BSDSRCDIR/lib/libcrypt $makeFlags install
     '';
 
     meta.platforms = lib.platforms.freebsd;
