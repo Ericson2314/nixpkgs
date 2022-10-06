@@ -450,10 +450,9 @@ in lib.makeScopeWithSplicing
     dontBuild = true;
     installPhase = ''
       mkdir -p "$out/bin" "$man/share/man"
-      mv "$BSDSRCDIR/${path}/lorder.sh" "$out/bin/lorder"
+      mv "lorder.sh" "$out/bin/lorder"
       chmod +x "$out/bin/lorder"
-      mv "$BSDSRCDIR/${path}/lorder.1" "$man/share/man"
-      exit 0;
+      mv "lorder.1" "$man/share/man"
     '';
     nativeBuildInputs = [ bsdSetupHook freebsdSetupHook ];
     buildInputs = [];
