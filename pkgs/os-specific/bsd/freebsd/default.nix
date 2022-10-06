@@ -236,7 +236,7 @@ in lib.makeScopeWithSplicing
       "sys/libkern"
       "sys/kern/subr_capability.c"
 
-	  # Take only individual headers, or else we will clobber native libc, etc.
+      # Take only individual headers, or else we will clobber native libc, etc.
 
       "sys/rpc/types.h"
 
@@ -271,13 +271,13 @@ in lib.makeScopeWithSplicing
       "sys/x86/include"
     ] ++ [
 
-	  "sys/sys/queue.h"
-	  "sys/sys/md5.h"
-	  "sys/sys/sbuf.h"
-	  "sys/sys/tree.h"
-	  "sys/sys/font.h"
-	  "sys/sys/consio.h"
-	  "sys/sys/fnv_hash.h"
+      "sys/sys/queue.h"
+      "sys/sys/md5.h"
+      "sys/sys/sbuf.h"
+      "sys/sys/tree.h"
+      "sys/sys/font.h"
+      "sys/sys/consio.h"
+      "sys/sys/fnv_hash.h"
 
       "sys/crypto/chacha20/_chacha.h"
       "sys/crypto/chacha20/chacha.h"
