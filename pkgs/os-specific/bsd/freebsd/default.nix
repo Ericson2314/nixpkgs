@@ -41,6 +41,39 @@ let
   }.${stdenv'.hostPlatform.parsed.cpu.name}
     or stdenv'.hostPlatform.parsed.cpu.name;
 
+  install-wrapper = ''
+    set -eu
+
+    args=()
+    declare -i path_args=0
+
+    while (( $# )); do
+      if (( $# == 1 )); then
+        if (( $path_args > 1)) || [[ "$1" = */ ]]; then
+          mkdir -p "$1"
+        else
+          mkdir -p "$(dirname "$1")"
+        fi
+      fi
+      case $1 in
+        -C) ;;
+        -o | -g) shift ;;
+        -s) ;;
+        -m | -l)
+          # handle next arg so not counted as path arg
+          args+=("$1" "$2")
+          shift
+          ;;
+        -*) args+=("$1") ;;
+        *)
+          path_args+=1
+          args+=("$1")
+          ;;
+      esac
+      shift
+    done
+  '';
+
 in lib.makeScopeWithSplicing
   splicePackages
   newScope
@@ -182,40 +215,10 @@ in lib.makeScopeWithSplicing
   };
 
   # Wrap NetBSD's install
-  boot-install = buildPackages.writeShellScriptBin "boot-install" ''
-    set -eu
-
-    args=()
-    declare -i path_args=0
-
-    while (( $# )); do
-      if (( $# == 1 )); then
-        if (( $path_args > 1)) || [[ "$1" = */ ]]; then
-          mkdir -p "$1"
-        else
-          mkdir -p "$(dirname "$1")"
-        fi
-      fi
-      case $1 in
-        -C) ;;
-        -o | -g) shift ;;
-        -s) ;;
-        -m | -l)
-          # handle next arg so not counted as path arg
-          args+=("$1" "$2")
-          shift
-          ;;
-        -*) args+=("$1") ;;
-        *)
-          path_args+=1
-          args+=("$1")
-          ;;
-      esac
-      shift
-    done
+  boot-install = buildPackages.writeShellScriptBin "boot-install" (install-wrapper + ''
 
     ${buildPackages.netbsd.install}/bin/xinstall "''${args[@]}"
-  '';
+  '');
 
   compat = mkDerivation rec {
     pname = "compat";
@@ -357,40 +360,10 @@ in lib.makeScopeWithSplicing
 
   # HACK: to ensure parent directories exist. This emulates GNU
   # install’s -D option. No alternative seems to exist in BSD install.
-  install = let binstall = writeShellScript "binstall" ''
-    set -eu
-
-    args=()
-    declare -i path_args=0
-
-    while (( $# )); do
-      if (( $# == 1 )); then
-        if (( $path_args > 1)) || [[ "$1" = */ ]]; then
-          mkdir -p "$1"
-        else
-          mkdir -p "$(dirname "$1")"
-        fi
-      fi
-      case $1 in
-        -C) ;;
-        -o | -g) shift ;;
-        -s) ;;
-        -m | -l)
-          # handle next arg so not counted as path arg
-          args+=("$1" "$2")
-          shift
-          ;;
-        -*) args+=("$1") ;;
-        *)
-          path_args+=1
-          args+=("$1")
-          ;;
-      esac
-      shift
-    done
+  install = let binstall = writeShellScript "binstall" (install-wrapper + ''
 
     @out@/bin/xinstall "''${args[@]}"
-  ''; in mkDerivation {
+  ''); in mkDerivation {
     path = "usr.bin/xinstall";
     extraPaths = with self; [ mtree.path ];
     nativeBuildInputs = with buildPackages.freebsd; [
