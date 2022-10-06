@@ -3,7 +3,7 @@
 , buildPackages, splicePackages, newScope
 , bsdSetupHook, makeSetupHook
 , fetchgit, fetchurl, coreutils, groff, mandoc, byacc, flex, which
-, zlib, expat, libbsd, libmd
+, zlib, expat, libmd, libelf
 , runCommand, writeShellScript, writeText, symlinkJoin
 }:
 
@@ -488,6 +488,28 @@ in lib.makeScopeWithSplicing
     path = "usr.bin/gencat";
   };
 
+  file2c = mkDerivation {
+    path = "usr.bin/file2c";
+    MK_TESTS = "no";
+  };
+
+  libnv = mkDerivation {
+    path = "lib/libnv";
+    extraPaths = [
+      "sys/contrib/libnv"
+      "sys/sys"
+    ];
+    MK_TESTS = "no";
+  };
+
+  libsbuf = mkDerivation {
+    path = "lib/libsbuf";
+    extraPaths = [
+      "sys/kern"
+    ];
+    MK_TESTS = "no";
+  };
+
   ##
   ## START HEADERS
   ##
@@ -686,6 +708,67 @@ in lib.makeScopeWithSplicing
     '';
 
     meta.platforms = lib.platforms.freebsd;
+  };
+
+  ##
+  ## Kernel
+  ##
+
+  config = mkDerivation {
+    path = "usr.sbin/config";
+    nativeBuildInputs = with buildPackages.freebsd; [
+      bsdSetupHook freebsdSetupHook
+      makeMinimal install mandoc groff
+
+      flex byacc file2c
+    ];
+    buildInputs = with self; compatIfNeeded ++ [ libnv libsbuf ];
+  };
+
+  ctfconvert = mkDerivation {
+    path = "cddl/usr.bin/ctfconvert";
+    extraPaths = [
+      "cddl/compat/opensolaris"
+      "cddl/contrib/opensolaris"
+      "sys/cddl/compat/opensolaris"
+      "sys/cddl/contrib/opensolaris"
+      "sys/contrib/openzfs"
+    ];
+    OPENSOLARIS_USR_DISTDIR = "$(SRCTOP)/cddl/contrib/opensolaris";
+    OPENSOLARIS_SYS_DISTDIR = "$(SRCTOP)/sys/cddl/contrib/opensolaris";
+    nativeBuildInputs = with buildPackages.freebsd; [
+      bsdSetupHook freebsdSetupHook
+      makeMinimal install mandoc groff
+
+      # flex byacc file2c
+    ];
+    buildInputs = with self; compatIfNeeded ++ [ libelf ];
+    meta.license = lib.licenses.cddl;
+  };
+
+  sys = mkDerivation rec {
+    path = "sys/kern";
+    extraPaths = [ "sys" ];
+
+    nativeBuildInputs = with buildPackages.freebsd; [
+      bsdSetupHook freebsdSetupHook
+      makeMinimal install mandoc groff
+
+      config rpcgen file2c
+    ];
+
+    makeFlags = [
+      "STRIP=-s" # flag to install, not command
+      "CWARNEXTRA="
+    ];
+
+    configurePhase = ''
+      cd $BSDSRCDIR/sys/${mkBsdArch stdenv}/conf
+      config GENERIC
+    '';
+    preBuild = ''
+      cd ../compile/GENERIC
+    '';
   };
 
 })
