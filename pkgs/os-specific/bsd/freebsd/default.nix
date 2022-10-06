@@ -98,7 +98,7 @@ in lib.makeScopeWithSplicing
 
     MACHINE_CPUARCH = MACHINE_ARCH;
 
-    BSD_PATH = attrs.path or null;
+    COMPONENT_PATH = attrs.path or null;
 
     strictDeps = true;
 
@@ -621,7 +621,7 @@ in lib.makeScopeWithSplicing
     ];
 
     postPatch = ''
-      substituteInPlace $BSD_PATH/Makefile --replace '.include <src.opts.mk>' ""
+      substituteInPlace $COMPONENT_PATH/Makefile --replace '.include <src.opts.mk>' ""
     '';
 
     nativeBuildInputs = with buildPackages.freebsd; [
