@@ -2,5 +2,5 @@
 getHostRole
 
 export NIX_LDFLAGS${role_post}+=" -legacy"
-export NIX_CFLAGS_COMPILE${role_post}+=" -I@out@/include0"
-export NIX_CFLAGS_COMPILE${role_post}+=" -I@out@/include1"
+export NIX_CFLAGS_COMPILE${role_post}+=" -isystem @out@/include0"
+export NIX_CFLAGS_COMPILE${role_post}+=" -isystem @out@/include1"

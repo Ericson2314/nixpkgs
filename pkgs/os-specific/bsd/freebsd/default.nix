@@ -2,8 +2,8 @@
 , pkgsBuildBuild, pkgsBuildHost, pkgsBuildTarget, pkgsHostHost, pkgsTargetTarget
 , buildPackages, splicePackages, newScope
 , bsdSetupHook, makeSetupHook
-, fetchgit, fetchurl, coreutils, groff, mandoc, byacc, flex, which
-, zlib, expat, libmd, libelf, libdwarf_0_4
+, fetchgit, fetchurl, coreutils, groff, mandoc, byacc, flex, which, m4
+, zlib, expat, libmd
 , runCommand, writeShellScript, writeText, symlinkJoin
 }:
 
@@ -312,6 +312,11 @@ in lib.makeScopeWithSplicing
       ./compat-setup-hook.sh
     ];
 
+    # This one has an ifdefed `#include_next` that makes it annoying.
+    postInstall = ''
+      rm ''${!outputDev}/include0/libelf.h
+    '';
+
     nativeBuildInputs = with buildPackages.freebsd; [
       bsdSetupHook freebsdSetupHook
       makeMinimal
@@ -506,6 +511,46 @@ in lib.makeScopeWithSplicing
     path = "lib/libsbuf";
     extraPaths = [
       "sys/kern"
+    ];
+    MK_TESTS = "no";
+  };
+
+  libelf = mkDerivation {
+    path = "lib/libelf";
+    extraPaths = [
+      "contrib/elftoolchain/libelf"
+      "contrib/elftoolchain/common"
+      "sys/sys/elf32.h"
+      "sys/sys/elf64.h"
+      "sys/sys/elf_common.h"
+    ];
+    BOOTSTRAPPING = !stdenv.isFreeBSD;
+    nativeBuildInputs = with buildPackages.freebsd; [
+      bsdSetupHook freebsdSetupHook
+      makeMinimal install mandoc groff
+
+      m4
+    ];
+    MK_TESTS = "no";
+  };
+
+  libdwarf = mkDerivation {
+    path = "lib/libdwarf";
+    extraPaths = [
+      "contrib/elftoolchain/libdwarf"
+      "contrib/elftoolchain/common"
+      "sys/sys/elf32.h"
+      "sys/sys/elf64.h"
+      "sys/sys/elf_common.h"
+    ];
+    nativeBuildInputs = with buildPackages.freebsd; [
+      bsdSetupHook freebsdSetupHook
+      makeMinimal install mandoc groff
+
+      m4
+    ];
+    buildInputs = with self; compatIfNeeded ++ [
+      libelf
     ];
     MK_TESTS = "no";
   };
@@ -725,6 +770,26 @@ in lib.makeScopeWithSplicing
     buildInputs = with self; compatIfNeeded ++ [ libnv libsbuf ];
   };
 
+  libspl = mkDerivation {
+    path = "cddl/lib/libspl";
+    extraPaths = [
+      "sys/contrib/openzfs/lib/libspl"
+      "sys/contrib/openzfs/include"
+
+      "cddl/compat/opensolaris/include"
+      "sys/contrib/openzfs/module/icp/include"
+      "sys/modules/zfs"
+    ];
+    # nativeBuildInputs = with buildPackages.freebsd; [
+    #   bsdSetupHook freebsdSetupHook
+    #   makeMinimal install mandoc groff
+
+    #   flex byacc file2c
+    # ];
+    # buildInputs = with self; compatIfNeeded ++ [ libnv libsbuf ];
+    meta.license = lib.licenses.cddl;
+  };
+
   ctfconvert = mkDerivation {
     path = "cddl/usr.bin/ctfconvert";
     extraPaths = [
@@ -743,13 +808,14 @@ in lib.makeScopeWithSplicing
       # flex byacc file2c
     ];
     buildInputs = with self; compatIfNeeded ++ [
-      libelf libdwarf_0_4 zlib
+      libelf libdwarf zlib libspl
     ];
-    CFLAGS = "-I${libdwarf_0_4}/include/libdwarf-0";
     meta.license = lib.licenses.cddl;
   };
 
-  sys = mkDerivation rec {
+  sys = mkDerivation (let
+    cfg = "MINIMAL";
+  in rec {
     path = "sys/kern";
     extraPaths = [ "sys" ];
 
@@ -757,7 +823,7 @@ in lib.makeScopeWithSplicing
       bsdSetupHook freebsdSetupHook
       makeMinimal install mandoc groff
 
-      config rpcgen file2c ctfconvert
+      config rpcgen file2c #ctfconvert
     ];
 
     makeFlags = [
@@ -765,13 +831,18 @@ in lib.makeScopeWithSplicing
       "CWARNEXTRA="
     ];
 
+    MK_CTF = "no";
+
     configurePhase = ''
       cd $BSDSRCDIR/sys/${mkBsdArch stdenv}/conf
-      config GENERIC
+      sed -i ${cfg} \
+        -e 's/WITH_CTF=1/WITH_CTF=0/' \
+        -e '/KDTRACE/d'
+      config ${cfg}
     '';
     preBuild = ''
-      cd ../compile/GENERIC
+      cd ../compile/${cfg}
     '';
-  };
+  });
 
 })
