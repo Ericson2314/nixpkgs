@@ -3,7 +3,7 @@
 , buildPackages, splicePackages, newScope
 , bsdSetupHook, makeSetupHook
 , fetchgit, fetchurl, coreutils, groff, mandoc, byacc, flex, which
-, zlib, expat, libmd, libelf
+, zlib, expat, libmd, libelf, libdwarf_0_4
 , runCommand, writeShellScript, writeText, symlinkJoin
 }:
 
@@ -742,7 +742,10 @@ in lib.makeScopeWithSplicing
 
       # flex byacc file2c
     ];
-    buildInputs = with self; compatIfNeeded ++ [ libelf ];
+    buildInputs = with self; compatIfNeeded ++ [
+      libelf libdwarf_0_4 zlib
+    ];
+    CFLAGS = "-I${libdwarf_0_4}/include/libdwarf-0";
     meta.license = lib.licenses.cddl;
   };
 
@@ -754,7 +757,7 @@ in lib.makeScopeWithSplicing
       bsdSetupHook freebsdSetupHook
       makeMinimal install mandoc groff
 
-      config rpcgen file2c
+      config rpcgen file2c ctfconvert
     ];
 
     makeFlags = [
