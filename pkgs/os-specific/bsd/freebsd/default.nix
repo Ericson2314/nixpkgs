@@ -10,14 +10,14 @@
 let
   inherit (buildPackages.buildPackages) rsync;
 
-  version = "13.0.0";
+  version = "13.1.0";
 
   # `BuildPackages.fetchgit` avoids some probably splicing-caused infinite
   # recursion.
   freebsdSrc = buildPackages.fetchgit {
     url = "https://git.FreeBSD.org/src.git";
     rev = "release/${version}";
-    sha256 = "1r5v9i3ajgqmkrvgp4pdz98g2q6dagzjb2hxpbwcwndisvz28rnr";
+    sha256 = "14nhk0kls83xfb64d5xy14vpi6k8laswjycjg80indq9pkcr2rlv";
   };
 
   freebsdSetupHook = makeSetupHook {
@@ -252,6 +252,7 @@ in lib.makeScopeWithSplicing
       "include/getopt.h"
       "include/nl_types.h"
       "include/elf.h"
+      "sys/sys/ctf.h"
 
       # Listed in Makekfile as SYSINC
 
