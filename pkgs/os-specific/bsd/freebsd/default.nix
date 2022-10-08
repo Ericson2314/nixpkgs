@@ -121,7 +121,7 @@ in lib.makeScopeWithSplicing
     HOST_SH = stdenv'.shell;
 
     # Since STRIP below is the flag
-    STRIPBIN="${stdenv.cc.bintools.targetPrefix}strip";
+    STRIPBIN = "${stdenv.cc.bintools.targetPrefix}strip";
 
     makeFlags = [
       "STRIP=-s" # flag to install, not command
