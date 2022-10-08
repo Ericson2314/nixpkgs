@@ -14,4 +14,4 @@ while (( $# )); do
     shift
 done
 
-"${args[@]}"
+exec "${args[@]}"
