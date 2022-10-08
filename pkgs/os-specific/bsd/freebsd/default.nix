@@ -2,7 +2,7 @@
 , pkgsBuildBuild, pkgsBuildHost, pkgsBuildTarget, pkgsHostHost, pkgsTargetTarget
 , buildPackages, splicePackages, newScope
 , bsdSetupHook, makeSetupHook
-, fetchgit, fetchurl, coreutils, groff, mandoc, byacc, flex, which, m4
+, fetchgit, fetchurl, coreutils, groff, mandoc, byacc, flex, which, m4, gawk, substituteAll, runtimeShell
 , zlib, expat, libmd
 , runCommand, writeShellScript, writeText, symlinkJoin
 }:
@@ -119,6 +119,9 @@ in lib.makeScopeWithSplicing
     buildInputs = with self; compatIfNeeded;
 
     HOST_SH = stdenv'.shell;
+
+    # Since STRIP below is the flag
+    STRIPBIN="${stdenv.cc.bintools.targetPrefix}strip";
 
     makeFlags = [
       "STRIP=-s" # flag to install, not command
@@ -442,6 +445,9 @@ in lib.makeScopeWithSplicing
   ## END BOOTSTRAPPING
   ##
 
+  ##
+  ## START COMMAND LINE TOOLS
+  ##
   make = mkDerivation {
     path = "contrib/bmake";
     version = "9.2";
@@ -555,6 +561,25 @@ in lib.makeScopeWithSplicing
     ];
     MK_TESTS = "no";
   };
+
+  uudecode = mkDerivation {
+    path = "usr.bin/uudecode";
+    MK_TESTS = "no";
+  };
+
+  config = mkDerivation {
+    path = "usr.sbin/config";
+    nativeBuildInputs = with buildPackages.freebsd; [
+      bsdSetupHook freebsdSetupHook
+      makeMinimal install mandoc groff
+
+      flex byacc file2c
+    ];
+    buildInputs = with self; compatIfNeeded ++ [ libnv libsbuf ];
+  };
+  ##
+  ## END COMMAND LINE TOOLS
+  ##
 
   ##
   ## START HEADERS
@@ -760,17 +785,6 @@ in lib.makeScopeWithSplicing
   ## Kernel
   ##
 
-  config = mkDerivation {
-    path = "usr.sbin/config";
-    nativeBuildInputs = with buildPackages.freebsd; [
-      bsdSetupHook freebsdSetupHook
-      makeMinimal install mandoc groff
-
-      flex byacc file2c
-    ];
-    buildInputs = with self; compatIfNeeded ++ [ libnv libsbuf ];
-  };
-
   libspl = mkDerivation {
     path = "cddl/lib/libspl";
     extraPaths = [
@@ -814,32 +828,69 @@ in lib.makeScopeWithSplicing
     meta.license = lib.licenses.cddl;
   };
 
+  xargs-j = substituteAll {
+    name = "xargs-j";
+    shell = runtimeShell;
+    src = ../xargs-j.sh;
+    dir = "bin";
+    isExecutable = true;
+  };
+
   sys = mkDerivation (let
     cfg = "MINIMAL";
   in rec {
-    path = "sys/kern";
-    extraPaths = [ "sys" ];
+    path = "sys";
 
     nativeBuildInputs = with buildPackages.freebsd; [
       bsdSetupHook freebsdSetupHook
       makeMinimal install mandoc groff
 
-      config rpcgen file2c #ctfconvert
+      config rpcgen file2c gawk uudecode xargs-j
+      #ctfconvert
     ];
 
-    makeFlags = [
-      "STRIP=-s" # flag to install, not command
-      "CWARNEXTRA="
+    patches = [
+      ./sys-gnu-date.patch
+      ./sys-no-explicit-intrinsics-dep.patch
     ];
+
+    # --dynamic-linker /red/herring is used when building the kernel.
+    NIX_ENFORCE_PURITY = 0;
+
+    AWK = "${buildPackages.gawk}/bin/awk";
+
+    CWARNEXTRA = "-Wno-error=shift-negative-value -Wno-address-of-packed-member";
 
     MK_CTF = "no";
 
+    KODIR = "${builtins.placeholder "out"}/kernel";
+    KMODDIR = "${builtins.placeholder "out"}/kernel";
+    DTBDIR = "${builtins.placeholder"out"}/dbt";
+
+    KERN_DEBUGDIR = "${builtins.placeholder "out"}/debug";
+    KERN_DEBUGDIR_KODIR = "${KERN_DEBUGDIR}/kernel";
+    KERN_DEBUGDIR_KMODDIR = "${KERN_DEBUGDIR}/kernel";
+
+    skipIncludesPhase = true;
+
     configurePhase = ''
-      cd $BSDSRCDIR/sys/${mkBsdArch stdenv}/conf
+      runHook preConfigure
+
+      for f in conf/kmod.mk contrib/dev/acpica/acpica_prep.sh; do
+        substituteInPlace "$f" --replace 'xargs -J' 'xargs-j '
+      done
+
+      for f in conf/*.mk; do
+        substituteInPlace "$f" --replace 'KERN_DEBUGDIR}''${' 'KERN_DEBUGDIR_'
+      done
+
+      cd ${mkBsdArch stdenv}/conf
       sed -i ${cfg} \
         -e 's/WITH_CTF=1/WITH_CTF=0/' \
         -e '/KDTRACE/d'
       config ${cfg}
+
+      runHook postConfigure
     '';
     preBuild = ''
       cd ../compile/${cfg}
