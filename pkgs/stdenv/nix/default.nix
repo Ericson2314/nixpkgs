@@ -34,6 +34,8 @@ bootStages ++ [
         shell = prevStage.bash + "/bin/sh";
       };
 
+      rustLib = import ../../build-support/rust/lib { inherit lib; };
+
       shell = prevStage.bash + "/bin/sh";
 
       fetchurlBoot = prevStage.stdenv.fetchurlBoot;

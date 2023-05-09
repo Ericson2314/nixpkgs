@@ -210,6 +210,7 @@ in
       shell = "${bootstrapTools}/bin/bash";
       fetchurlBoot = null;
       cc = null;
+      rustLib = import ../../build-support/rust/lib { inherit lib; };
       overrides = self: super: {
       };
     };
@@ -229,6 +230,7 @@ in
         shell;
       fetchurlBoot = prevStage.fetchurl;
       cc = null;
+      rustLib = import ../../build-support/rust/lib { inherit lib; };
     };
   })
 
@@ -268,6 +270,8 @@ in
                            outPath = prevStage.bootstrapTools; };
         };
       };
+
+      rustLib = import ../../build-support/rust/lib { inherit lib; };
 
       preHook = "export NIX_NO_SELF_RPATH=1";
     };

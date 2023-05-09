@@ -179,6 +179,8 @@ let
 
         inherit cc;
 
+        rustLib = import ../../build-support/rust/lib { inherit lib; };
+
         # The stdenvs themselves don't use mkDerivation, so I need to specify this here
         __stdenvImpureHostDeps = commonImpureHostDeps;
         __extraImpureHostDeps = commonImpureHostDeps;
@@ -1214,6 +1216,8 @@ in
       extraBuildInputs = [ prevStage.darwin.CF ];
 
       inherit cc;
+
+      rustLib = import ../../build-support/rust/lib { inherit lib; };
 
       shell = cc.shell;
 

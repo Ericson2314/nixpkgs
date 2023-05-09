@@ -2,7 +2,6 @@
 , stdenv
 , fetchFromGitLab
 , fetchpatch
-, writeText
 , rustPlatform
 , meson
 , ninja
@@ -205,14 +204,7 @@ stdenv.mkDerivation rec {
   ) ++ [
     (lib.mesonOption "sodium-source" "system")
     (lib.mesonEnable "doc" enableDocumentation)
-  ] ++ (let
-    crossFile = writeText "cross-file.conf" ''
-      [binaries]
-      rust = [ 'rustc', '--target', '${rust.toRustTargetSpec stdenv.hostPlatform}' ]
-    '';
-  in lib.optionals (stdenv.buildPlatform != stdenv.hostPlatform) [
-    "--cross-file=${crossFile}"
-  ]);
+  ];
 
   # turn off all auto plugins since we use a list of plugins we generate
   mesonAutoFeatures = "disabled";

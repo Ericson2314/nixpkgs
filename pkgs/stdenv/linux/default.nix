@@ -202,6 +202,8 @@ let
           '';
         });
 
+        rustLib = import ../../build-support/rust/lib { inherit lib; };
+
         overrides = self: super: (overrides self super) // { fetchurl = thisStdenv.fetchurlBoot; };
       };
 
@@ -622,6 +624,8 @@ in
       shell = cc.shell;
 
       inherit (prevStage.stdenv) fetchurlBoot;
+
+      rustLib = import ../../build-support/rust/lib { inherit lib; };
 
       extraAttrs = {
         inherit bootstrapTools;

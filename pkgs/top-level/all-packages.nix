@@ -16956,6 +16956,8 @@ with pkgs;
   };
   rust = rust_1_72;
 
+  rustLib = import ../build-support/rust/lib { inherit lib; };
+
   mrustc = callPackage ../development/compilers/mrustc { };
   mrustc-minicargo = callPackage ../development/compilers/mrustc/minicargo.nix { };
   mrustc-bootstrap = callPackage ../development/compilers/mrustc/bootstrap.nix {

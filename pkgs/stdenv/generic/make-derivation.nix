@@ -1,4 +1,4 @@
-{ lib, config }:
+{ lib, config, rustLib }:
 
 stdenv:
 
@@ -394,13 +394,17 @@ else let
             needs_exe_wrapper = ${lib.boolToString (!stdenv.buildPlatform.canExecute stdenv.hostPlatform)}
 
             [host_machine]
-            system = '${stdenv.targetPlatform.parsed.kernel.name}'
-            cpu_family = '${cpuFamily stdenv.targetPlatform}'
-            cpu = '${stdenv.targetPlatform.parsed.cpu.name}'
-            endian = ${if stdenv.targetPlatform.isLittleEndian then "'little'" else "'big'"}
+            system = '${stdenv.hostPlatform.parsed.kernel.name}'
+            cpu_family = '${cpuFamily stdenv.hostPlatform}'
+            cpu = '${stdenv.hostPlatform.parsed.cpu.name}'
+            endian = ${if stdenv.hostPlatform.isLittleEndian then "'little'" else "'big'"}
 
             [binaries]
             llvm-config = 'llvm-config-native'
+            rust = ['rustc', '--target', '${rustLib.toRustTargetSpec stdenv.hostPlatform}']
+            # We can't just provide a --target option like we do for rustc:
+            # https://github.com/mesonbuild/meson/issues/11805
+            bindgen = '${stdenv.hostPlatform.config}-bindgen'
           '';
           crossFlags = lib.optionals (stdenv.hostPlatform != stdenv.buildPlatform) [ "--cross-file=${crossFile}" ];
         in crossFlags ++ mesonFlags;

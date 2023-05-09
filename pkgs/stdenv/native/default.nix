@@ -104,6 +104,8 @@ let
       fetchurlBoot = fetchurl;
 
       inherit shell cc overrides config;
+
+      rustLib = import ../../build-support/rust/lib { inherit lib; };
     };
 
 in

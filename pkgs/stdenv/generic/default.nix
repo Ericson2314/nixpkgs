@@ -19,6 +19,8 @@ argsStdenv@{ name ? "stdenv", preHook ? "", initialPath
 
 , setupScript ? ./setup.sh
 
+, rustLib
+
 , extraNativeBuildInputs ? []
 , extraBuildInputs ? []
 , __stdenvImpureHostDeps ? []
@@ -52,7 +54,7 @@ argsStdenv@{ name ? "stdenv", preHook ? "", initialPath
 
 , # The implementation of `mkDerivation`, parameterized with the final stdenv so we can tie the knot.
   # This is convient to have as a parameter so the stdenv "adapters" work better
-  mkDerivationFromStdenv ? import ./make-derivation.nix { inherit lib config; }
+  mkDerivationFromStdenv ? import ./make-derivation.nix { inherit lib config rustLib; }
 }:
 
 let
