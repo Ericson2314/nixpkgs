@@ -1,12 +1,18 @@
-{ rust-bindgen-unwrapped, zlib, bash, runCommand, runCommandCC }:
+{ lib, stdenv, rust-bindgen-unwrapped
+, zlib, bash, runCommand, runCommandCC
+}:
+
 let
   clang = rust-bindgen-unwrapped.clang;
-  self = runCommand "rust-bindgen-${rust-bindgen-unwrapped.version}"
+  targetPrefix = lib.optionalString (stdenv.hostPlatform != stdenv.targetPlatform) "${stdenv.targetPlatform.config}-";
+
+  self = runCommand "${targetPrefix}rust-bindgen-${rust-bindgen-unwrapped.version}"
     {
       #for substituteAll
       inherit bash;
       unwrapped = rust-bindgen-unwrapped;
       libclang = clang.cc.lib;
+      target = stdenv.targetPlatform.config;
       meta = rust-bindgen-unwrapped.meta // {
         longDescription = rust-bindgen-unwrapped.meta.longDescription + ''
           This version of bindgen is wrapped with the required compiler flags
@@ -36,12 +42,17 @@ let
       };
     }
     # if you modify the logic to find the right clang flags, also modify rustPlatform.bindgenHook
-    ''
+    (''
     mkdir -p $out/bin
     export cincludes="$(< ${clang}/nix-support/cc-cflags) $(< ${clang}/nix-support/libc-cflags)"
     export cxxincludes="$(< ${clang}/nix-support/libcxx-cxxflags)"
+    export targetFlags=""
     substituteAll ${./wrapper.sh} $out/bin/bindgen
     chmod +x $out/bin/bindgen
-  '';
+  '' + lib.optionalString (stdenv.hostPlatform != stdenv.targetPlatform) ''
+    targetFlags="-target ${stdenv.targetPlatform.config}"
+    substituteAll ${./wrapper.sh} $out/bin/${targetPrefix}bindgen
+    chmod +x $out/bin/${targetPrefix}bindgen
+  '');
 in
 self
