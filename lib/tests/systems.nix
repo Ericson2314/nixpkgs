@@ -133,7 +133,7 @@ lib.runTests (
       "x86_64-openbsd"
       "x86_64-netbsd"
       "x86_64-cygwin"
-      "x86_64-solaris"
+      "x86_64-solaris2.11"
       "x86_64-windows"
       "x86_64-none"
       "x86_64-uefi"
@@ -158,7 +158,7 @@ lib.runTests (
     ];
     testredox = mseteq redox [ "x86_64-redox" ];
     testgnu = mseteq gnu linux; # ++ kfreebsd ++ ...
-    testillumos = mseteq illumos [ "x86_64-solaris" ];
+    testillumos = mseteq illumos [ "x86_64-solaris2.11" ];
     testlinux = mseteq linux [
       "aarch64-linux"
       "arc-linux"

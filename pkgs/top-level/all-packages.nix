@@ -5675,6 +5675,8 @@ with pkgs;
       netbsd.headers
     else if libc == "cygwin" then
       cygwin.newlib-cygwin-headers
+    else if libc == "slibc" then
+      illumos.headers
     else
       null;
 
@@ -5721,6 +5723,8 @@ with pkgs;
       openbsd.libc
     else if libc == "nblibc" then
       netbsd.libc
+    #else if name == "slibc" then
+    #  illumos.lc
     else if libc == "wasilibc" then
       wasilibc
     else if libc == "relibc" then
@@ -10947,6 +10951,8 @@ with pkgs;
   netbsd = recurseIntoAttrs (callPackage ../os-specific/bsd/netbsd { });
 
   openbsd = recurseIntoAttrs (callPackage ../os-specific/bsd/openbsd { });
+
+  illumos = callPackage ../os-specific/illumos { };
 
   radicle-node-unstable = callPackage ../by-name/ra/radicle-node/unstable.nix { };
 

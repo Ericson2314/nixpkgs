@@ -365,7 +365,9 @@ rec {
       kernel = kernels.linux;
     };
     isSunOS = {
-      kernel = kernels.solaris;
+      kernel = {
+        name = "solaris";
+      };
     };
     isFreeBSD = {
       kernel = {

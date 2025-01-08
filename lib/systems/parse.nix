@@ -597,9 +597,19 @@ rec {
         execFormat = elf;
         families = { inherit bsd; };
       };
+      illumos = {
+        execFormat = elf;
+        families = { };
+      };
       solaris = {
         execFormat = elf;
         families = { };
+      };
+      "solaris2.11" = {
+        execFormat = elf;
+        families = { };
+        name = "solaris";
+        version = "2.11";
       };
       wasip1 = {
         execFormat = wasm;
@@ -874,6 +884,7 @@ rec {
           || hasPrefix "freebsd" thirdComponent
           || hasPrefix "netbsd" thirdComponent
           || hasPrefix "openbsd" thirdComponent
+          || hasPrefix "solaris" thirdComponent
           || hasPrefix "genode" thirdComponent
           || hasPrefix "wasm32" (head l)
         then
