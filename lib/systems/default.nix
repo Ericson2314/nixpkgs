@@ -145,6 +145,8 @@ let
               "oblibc"
             else if final.isNetBSD then
               "nblibc"
+            else if final.isSunOS then
+              "slibc"
             else if final.isAvr then
               "avrlibc"
             else if final.isGhcjs then

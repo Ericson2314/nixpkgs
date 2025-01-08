@@ -3,6 +3,7 @@
   stdenv,
   targetPackages,
   fetchurl,
+  fetchFromGitHub,
   fetchpatch,
   noSysDirs,
   langC ? true,
@@ -219,14 +220,23 @@ pipe
       name = "${crossNameAddon}${name}-${version}";
       version = baseVersion;
 
-      src = fetchurl {
-        url =
-          if isSnapshot then
-            "mirror://gcc/snapshots/${majorVersion}-${snapDate}/gcc-${majorVersion}-${snapDate}.tar.xz"
-          else
-            "mirror://gcc/releases/gcc-${version}/gcc-${version}.tar.xz";
-        ${if is10 || is11 || is13 then "hash" else "sha256"} = gccVersions.srcHashForVersion version;
-      };
+      src =
+        if stdenv.targetPlatform.parsed.kernel.name == "solaris" then
+          fetchFromGitHub {
+            owner = "illumos";
+            repo = "gcc";
+            tag = "gcc-14.2.0-il-1";
+            hash = "sha256-fjLmiKb/35Px0q+hM9GcZ3tsgabE1YfzXGpgmBewASU=";
+          }
+        else
+          fetchurl {
+            url =
+              if isSnapshot then
+                "mirror://gcc/snapshots/${majorVersion}-${snapDate}/gcc-${majorVersion}-${snapDate}.tar.xz"
+              else
+                "mirror://gcc/releases/gcc-${version}/gcc-${version}.tar.xz";
+            ${if is10 || is11 || is13 then "hash" else "sha256"} = gccVersions.srcHashForVersion version;
+          };
 
       inherit patches;
 

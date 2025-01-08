@@ -8195,6 +8195,8 @@ with pkgs;
       pkgs.freebsd.include
     else if libc == "nblibc" then
       netbsd.headers
+    else if libc == "slibc" then
+      illumos.headers
     else
       null;
 
@@ -8239,6 +8241,8 @@ with pkgs;
       openbsd.libc
     else if libc == "nblibc" then
       netbsd.libc
+    #else if name == "slibc" then
+    #  illumos.lc
     else if libc == "wasilibc" then
       wasilibc
     else if libc == "relibc" then
@@ -16826,6 +16830,8 @@ with pkgs;
   netbsd = callPackage ../os-specific/bsd/netbsd { };
 
   openbsd = callPackage ../os-specific/bsd/openbsd { };
+
+  illumos = callPackage ../os-specific/illumos { };
 
   bcompare = libsForQt5.callPackage ../applications/version-management/bcompare { };
 

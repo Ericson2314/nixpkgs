@@ -352,7 +352,7 @@ rec {
     useLLVM = true;
   };
 
-  # BSDs
+  # Other Unices
 
   aarch64-freebsd = {
     config = "aarch64-unknown-freebsd";
@@ -376,6 +376,15 @@ rec {
 
   x86_64-openbsd = {
     config = "x86_64-unknown-openbsd";
+    useLLVM = true;
+  };
+
+  x86_64-illumos = {
+    config = "x86_64-unknown-solaris2.11";
+  };
+
+  x86_64-illumos-llvm = {
+    config = "x86_64-unknown-solaris";
     useLLVM = true;
   };
 
