@@ -34,8 +34,9 @@ let
     "i686-genode"
     "x86_64-genode"
 
-    # illumos
+    # Solaris, Illumos
     "x86_64-solaris"
+    "x86_64-solaris2.11"
 
     # JS
     "javascript-ghcjs"
