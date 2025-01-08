@@ -18384,6 +18384,8 @@ with pkgs;
 
   openbsd = callPackage ../os-specific/bsd/openbsd { };
 
+  illumos = callPackage ../os-specific/illumos { };
+
   alibuild = callPackage ../development/tools/build-managers/alibuild {
     python = python3;
   };
