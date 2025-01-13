@@ -1,5 +1,7 @@
 {
   lib,
+  stdenvNoLibc,
+  stdenvNoCC,
   makeScopeWithSplicing',
   generateSplicesForMkScope,
 }:
@@ -16,6 +18,19 @@ makeScopeWithSplicing' {
     lib.packagesFromDirectoryRecursive {
       callPackage = self.callPackage;
       directory = ./pkgs;
+    }
+    // {
+      stdenvLibcMinimal = stdenvNoLibc.override (old: {
+        cc = old.cc.override {
+          libc = self.libcMinimal;
+          noLibc = false;
+          bintools = old.cc.bintools.override {
+            libc = self.libcMinimal;
+            noLibc = false;
+            sharedLibraryLoader = null;
+          };
+        };
+      });
     }
   );
 }

@@ -3,13 +3,13 @@
   stdenv,
   stdenvNoCC,
   stdenvNoLibc,
-  #stdenvLibcMinimal,
+  stdenvLibcMinimal,
   runCommand,
   rsync,
   source,
   illumosSetupHook,
   make,
-#install,
+  install,
 #tsort,
 #lorder,
 }:
@@ -22,8 +22,8 @@ lib.makeOverridable (
         stdenvNoCC
       else if attrs.noLibc or false then
         stdenvNoLibc
-      #else if attrs.libcMinimal or false then
-      #  stdenvLibcMinimal
+      else if attrs.libcMinimal or false then
+        stdenvLibcMinimal
       else
         stdenv;
   in
@@ -48,6 +48,7 @@ lib.makeOverridable (
       nativeBuildInputs = [
         illumosSetupHook
         make
+        install
       ] ++ (attrs.extraNativeBuildInputs or [ ]);
 
       COMPONENT_PATH = attrs.path or null;
@@ -56,7 +57,7 @@ lib.makeOverridable (
 
       meta = with lib; {
         maintainers = with maintainers; [ ericson2314 ];
-        #platforms = platforms.illumos;
+        platforms = platforms.illumos;
         license = licenses.cddl;
       };
     }

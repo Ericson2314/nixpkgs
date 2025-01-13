@@ -1,8 +1,12 @@
 {
+  lib,
   mkDerivation,
 
   source,
   fetchpatch,
+
+  illumosSetupHook,
+  make,
 }:
 
 mkDerivation {
@@ -37,7 +41,14 @@ mkDerivation {
     "ROOTONBLDMAN1ONBLD=${builtins.placeholder "man"}/man/man1"
   ];
 
+  nativeBuildInputs = [
+    illumosSetupHook
+    make
+  ];
+
   preInstall = ''
     mkdir -p $out/bin $man/man/man1
   '';
+
+  meta.platforms = lib.platforms.unix;
 }
