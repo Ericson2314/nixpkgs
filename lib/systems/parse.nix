@@ -609,6 +609,12 @@ rec {
         execFormat = elf;
         families = { };
       };
+      "solaris2.11" = {
+        execFormat = elf;
+        families = { };
+        name = "solaris";
+        version = "2.11";
+      };
       wasi = {
         execFormat = wasm;
         families = { };
@@ -843,6 +849,7 @@ rec {
           || hasPrefix "freebsd" (elemAt l 2)
           || hasPrefix "netbsd" (elemAt l 2)
           || hasPrefix "openbsd" (elemAt l 2)
+          || hasPrefix "solaris" (elemAt l 2)
           || hasPrefix "genode" (elemAt l 2)
           || hasPrefix "wasm32" (elemAt l 0)
         then

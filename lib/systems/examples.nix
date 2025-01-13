@@ -380,7 +380,7 @@ rec {
   };
 
   x86_64-illumos = {
-    config = "x86_64-unknown-illumos";
+    config = "x86_64-unknown-solaris2.11";
   };
 
   #

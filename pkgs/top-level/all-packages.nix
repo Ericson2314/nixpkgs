@@ -8224,6 +8224,8 @@ with pkgs;
       targetPackages.windows.mingw_w64_headers or windows.mingw_w64_headers
     else if libc == "nblibc" then
       targetPackages.netbsd.headers or netbsd.headers
+    else if libc == "slibc" then
+      targetPackages.illumos.headers or illumos.headers
     else
       null;
 
@@ -8269,8 +8271,7 @@ with pkgs;
       targetPackages.openbsd.libc or openbsd.libc
     else if name == "nblibc" then
       targetPackages.netbsd.libc or netbsd.libc
-    else if name == "ilibc" then
-      targetPackages.illumos.libc or illumos.libc
+    #else if name == "slibc" then targetPackages.illumos.libc or illumos.libc
     else if name == "wasilibc" then
       targetPackages.wasilibc or wasilibc
     else if name == "relibc" then

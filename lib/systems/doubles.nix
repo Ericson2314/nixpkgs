@@ -24,11 +24,8 @@ let
     "i686-genode"
     "x86_64-genode"
 
-    # illumos
-    "x86_64-illumos"
-
-    # Solaris
-    "x86_64-solaris"
+    # Solaris, Illumos
+    "x86_64-solaris2.11"
 
     # JS
     "javascript-ghcjs"
@@ -182,10 +179,7 @@ in
       kernel = parse.kernels.linux;
       abi = parse.abis.gnuabielfv2;
     });
-  illumos = filterDoubles (matchAttrs {
-    kernel = parse.kernels.illumos;
-  });
-  sunos = filterDoubles predicates.isSunOS;
+  illumos = filterDoubles predicates.isSunOS;
   linux = filterDoubles predicates.isLinux;
   netbsd = filterDoubles predicates.isNetBSD;
   openbsd = filterDoubles predicates.isOpenBSD;

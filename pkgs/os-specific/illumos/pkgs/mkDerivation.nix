@@ -10,8 +10,7 @@
   illumosSetupHook,
   make,
   install,
-#tsort,
-#lorder,
+  version,
 }:
 
 lib.makeOverridable (
@@ -30,7 +29,7 @@ lib.makeOverridable (
   stdenv'.mkDerivation (
     rec {
       pname = "${attrs.pname or (baseNameOf attrs.path)}-illumos";
-      version = "0";
+      inherit version;
       src = runCommand "${pname}-filtered-src" { nativeBuildInputs = [ rsync ]; } ''
         for p in ${lib.concatStringsSep " " ([ attrs.path ] ++ attrs.extraPaths or [ ])}; do
           set -x

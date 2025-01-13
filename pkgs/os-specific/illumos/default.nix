@@ -21,6 +21,8 @@ makeScopeWithSplicing' {
       directory = ./pkgs;
     }
     // {
+      version = "2.11";
+
       stdenvLibcMinimal = stdenvNoLibc.override (old: {
         cc = old.cc.override {
           libc = self.libcMinimal;
@@ -33,7 +35,7 @@ makeScopeWithSplicing' {
         };
       });
 
-      include = self.callPackage ./pkgs/include.nix {
+      head = self.callPackage ./pkgs/head.nix {
         inherit (buildPackages.netbsd) rpcgen;
       };
     }
