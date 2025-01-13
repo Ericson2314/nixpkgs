@@ -1,0 +1,28 @@
+diff --git a/usr/src/Makefile.master.64 b/usr/src/Makefile.master.64
+index 82aedf6a7a..a3536d0e6e 100644
+--- a/usr/src/Makefile.master.64
++++ b/usr/src/Makefile.master.64
+@@ -58,23 +58,6 @@ LDLIBS.lib =	$(LDLIBS64)
+ #
+ GCCLIBDIR=	$(GCCLIBDIR64)
+ 
+-#
+-# Override Makefile.master's settings
+-#
+-CC=		$(CC64)
+-CCC=		$(CCC64)
+-CPP=		$(CPP64)
+-AS=		$(AS64)
+-LD=		$(LD64)
+-NATIVECC=	$(NATIVECC64)
+-NATIVECCC=	$(NATIVECCC64)
+-NATIVECPP=	$(NATIVECPP64)
+-NATIVEAS=	$(NATIVEAS64)
+-NATIVELD=	$(NATIVELD64)
+-
+-BUILD.SO=	$(BUILD64.SO)
+-BUILDCCC.SO=	$(BUILDCCC64.SO)
+-
+ #
+ # ld(1) requires the -64 option to create a 64-bit filter solely from a mapfile
+ #
