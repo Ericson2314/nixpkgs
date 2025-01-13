@@ -7,7 +7,6 @@
   runCommand,
   rsync,
   source,
-  bsdSetupHook,
   illumosSetupHook,
   make,
 #install,
@@ -47,7 +46,6 @@ lib.makeOverridable (
       extraPaths = [ ];
 
       nativeBuildInputs = [
-        bsdSetupHook
         illumosSetupHook
         make
       ] ++ (attrs.extraNativeBuildInputs or [ ]);
