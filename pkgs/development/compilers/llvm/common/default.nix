@@ -255,7 +255,7 @@ let
 
       bintoolsNoLibc = wrapBintoolsWith {
         bintools = tools.bintools-unwrapped;
-        libc = targetPackages.preLibcHeaders;
+        libc = if stdenv.targetPlatform.useLLVM or false then null else targetPackages.preLibcHeaders;
       };
 
       bintools = wrapBintoolsWith { bintools = tools.bintools-unwrapped; };

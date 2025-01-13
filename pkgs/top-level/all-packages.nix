@@ -6999,7 +6999,7 @@ with pkgs;
   });
   binutilsNoLibc = wrapBintoolsWith {
     bintools = binutils-unwrapped;
-    libc = targetPackages.preLibcHeaders;
+    libc = if stdenv.targetPlatform.useLLVM or false then null else targetPackages.preLibcHeaders;
   };
 
   libbfd = callPackage ../development/tools/misc/binutils/libbfd.nix { };
@@ -7053,7 +7053,7 @@ with pkgs;
       null;
   bintoolsNoLibc = wrapBintoolsWith {
     bintools = bintools-unwrapped;
-    libc = targetPackages.preLibcHeaders;
+    libc = if stdenv.targetPlatform.useLLVM then null else targetPackages.preLibcHeaders;
   };
   bintools = wrapBintoolsWith {
     bintools = bintools-unwrapped;
@@ -8190,7 +8190,9 @@ with pkgs;
       inherit (stdenv.hostPlatform) libc;
     in
     if stdenv.hostPlatform.isMinGW then
-      windows.mingw_w64_headers or fallback
+      windows.mingw_w64_headers
+    else if libc == "fblibc" then
+      pkgs.freebsd.include
     else if libc == "nblibc" then
       netbsd.headers
     else
