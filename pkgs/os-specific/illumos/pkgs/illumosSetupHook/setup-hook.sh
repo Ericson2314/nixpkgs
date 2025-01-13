@@ -1,9 +1,18 @@
-addIllumosMakeFlags() {
-  prependToVar makeFlags "MANDIR=${!outputMan}/share/man"
+setIllumosSourceDir() {
+  sourceRoot=$PWD/$sourceRoot
+  export SRC=$sourceRoot/usr/src
+  cd "$sourceRoot"
 }
 
-setIllumosSrcVariable() {
-  export SRC="$BSDSRCDIR/usr/src"
+cdIllumosPath() {
+  if [ -d "$COMPONENT_PATH" ]
+    then sourceRoot=$sourceRoot/$COMPONENT_PATH
+    cd "$COMPONENT_PATH"
+  fi
+}
+
+addIllumosMakeFlags() {
+  prependToVar makeFlags "MANDIR=${!outputMan}/share/man"
 }
 
 fixIllumosInstallDirs() {
@@ -15,13 +24,6 @@ fixIllumosInstallDirs() {
       {} \;
 }
 
-includesPhase() {
-  # Nuke this from BSD setup hook
-  #
-  # TODO: separate the "build package within monorepo of makefiles" part of the
-  # rest of BSD setup hook, and share just that with illumos.
-  :
-}
-
+postUnpackHooks+=(setIllumosSourceDir)
+postPatchHooks+=(cdIllumosPath fixIllumosInstallDirs)
 preConfigureHooks+=(addIllumosMakeFlags)
-postPatchHooks+=(setIllumosSrcVariable fixIllumosInstallDirs)
