@@ -179,7 +179,14 @@ pipe ((callFile ./common/builder.nix {}) ({
   pname = "${crossNameAddon}${name}";
   inherit version;
 
-  src = fetchurl {
+  src = if stdenv.targetPlatform.parsed.kernel.name == "solaris"
+  then fetchFromGitHub {
+    owner = "illumos";
+    repo = "gcc";
+    tag = "gcc-14.2.0-il-1";
+    hash = "sha256-fjLmiKb/35Px0q+hM9GcZ3tsgabE1YfzXGpgmBewASU=";
+  }
+  else fetchurl {
     url = "mirror://gcc/${
       # TODO: Remove this before 25.05.
       if version == "14-20241116" then
