@@ -383,6 +383,11 @@ rec {
     config = "x86_64-unknown-solaris2.11";
   };
 
+  x86_64-illumos-llvm = {
+    config = "x86_64-unknown-solaris";
+    useLLVM = true;
+  };
+
   #
   # WASM
   #
