@@ -9090,6 +9090,7 @@ with pkgs;
     else if name == "fblibc" then targetPackages.freebsd.libc or freebsd.libc
     else if name == "oblibc" then targetPackages.openbsd.libc or openbsd.libc
     else if name == "nblibc" then targetPackages.netbsd.libc or netbsd.libc
+    else if name == "ilibc" then targetPackages.illumos.libc or illumos.libc
     else if name == "wasilibc" then targetPackages.wasilibc or wasilibc
     else if name == "relibc" then targetPackages.relibc or relibc
     else throw "Unknown libc ${name}";

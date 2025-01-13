@@ -331,6 +331,7 @@ rec {
     netbsd   = { execFormat = elf;     families = { inherit bsd; }; };
     none     = { execFormat = unknown; families = { }; };
     openbsd  = { execFormat = elf;     families = { inherit bsd; }; };
+    illumos  = { execFormat = elf;     families = { }; };
     solaris  = { execFormat = elf;     families = { }; };
     wasi     = { execFormat = wasm;    families = { }; };
     redox    = { execFormat = elf;     families = { }; };

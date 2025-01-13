@@ -61,6 +61,10 @@ lib.makeOverridable (
         license = licenses.cddl;
       };
     }
+    // lib.optionalAttrs (attrs.headersOnly or false) {
+      installPhase = "includesPhase";
+      dontBuild = true;
+    }
     // (builtins.removeAttrs attrs [ "extraNativeBuildInputs" ])
   )
 )
