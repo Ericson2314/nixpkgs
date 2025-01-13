@@ -13,7 +13,7 @@
   jq,
   libcxx,
   linuxHeaders,
-  freebsd,
+  preLibcHeaders,
 
   # Some platforms have switched to using compiler-rt, but still want a
   # libgcc.a for ABI compat purposes. The use case would be old code that
@@ -123,7 +123,7 @@ stdenv.mkDerivation (finalAttrs: {
   ++ lib.optionals stdenv.hostPlatform.isDarwin [ jq ];
   buildInputs =
     lib.optional (stdenv.hostPlatform.isLinux && stdenv.hostPlatform.isRiscV) linuxHeaders
-    ++ lib.optional (stdenv.hostPlatform.isFreeBSD) freebsd.include;
+    ++ lib.optional (preLibcHeaders != null) preLibcHeaders;
 
   env = {
     NIX_CFLAGS_COMPILE = toString (
