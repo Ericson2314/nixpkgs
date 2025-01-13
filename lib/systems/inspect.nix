@@ -296,14 +296,17 @@ rec {
         families = { inherit (kernelFamilies) darwin; };
       };
     };
-    isUnix = [
-      isBSD
-      isDarwin
-      isLinux
-      isSunOS
-      isCygwin
-      isRedox
-    ];
+    isUnix =
+      [
+        isBSD
+        isDarwin
+        isLinux
+      ]
+      ++ isSunOS
+      ++ [
+        isCygwin
+        isRedox
+      ];
 
     isMacOS = {
       kernel = kernels.macos;
@@ -314,9 +317,10 @@ rec {
     isLinux = {
       kernel = kernels.linux;
     };
-    isSunOS = {
-      kernel = kernels.solaris;
-    };
+    isSunOS = [
+      { kernel = kernels.illumos; }
+      { kernel = kernels.solaris; }
+    ];
     isFreeBSD = {
       kernel = {
         name = "freebsd";

@@ -25,6 +25,9 @@ let
     "x86_64-genode"
 
     # illumos
+    "x86_64-illumos"
+
+    # Solaris
     "x86_64-solaris"
 
     # JS
@@ -179,7 +182,10 @@ in
       kernel = parse.kernels.linux;
       abi = parse.abis.gnuabielfv2;
     });
-  illumos = filterDoubles predicates.isSunOS;
+  illumos = filterDoubles (matchAttrs {
+    kernel = parse.kernels.illumos;
+  });
+  sunos = filterDoubles predicates.isSunOS;
   linux = filterDoubles predicates.isLinux;
   netbsd = filterDoubles predicates.isNetBSD;
   openbsd = filterDoubles predicates.isOpenBSD;

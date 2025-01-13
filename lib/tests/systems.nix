@@ -131,6 +131,7 @@ lib.runTests (
       "x86_64-openbsd"
       "x86_64-netbsd"
       "x86_64-cygwin"
+      "x86_64-illumos"
       "x86_64-solaris"
       "x86_64-windows"
       "x86_64-none"
@@ -158,7 +159,10 @@ lib.runTests (
     testgnu = mseteq gnu (
       linux # ++ kfreebsd ++ ...
     );
-    testillumos = mseteq illumos [ "x86_64-solaris" ];
+    testillumos = mseteq illumos [
+      "x86_64-illumos"
+      "x86_64-solaris"
+    ];
     testlinux = mseteq linux [
       "aarch64-linux"
       "armv5tel-linux"

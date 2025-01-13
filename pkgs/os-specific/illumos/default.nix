@@ -4,6 +4,7 @@
   stdenvNoCC,
   makeScopeWithSplicing',
   generateSplicesForMkScope,
+  buildPackages,
 }:
 
 let
@@ -31,6 +32,10 @@ makeScopeWithSplicing' {
           };
         };
       });
+
+      include = self.callPackage ./pkgs/include.nix {
+        inherit (buildPackages.netbsd) rpcgen;
+      };
     }
   );
 }
