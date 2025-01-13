@@ -730,7 +730,9 @@ let
 
       bintoolsNoLibc = wrapBintoolsWith {
         bintools = tools.bintools-unwrapped;
-        libc = preLibcCrossHeaders;
+        libc = if stdenv.targetPlatform.useLLVM or false
+          then null
+          else preLibcCrossHeaders;
       };
 
       bintools = wrapBintoolsWith { bintools = tools.bintools-unwrapped; };
