@@ -14,6 +14,7 @@
 }:
 
 mkDerivation {
+  name = "crt-amd64";
   noLibc = true;
   path = "usr/src/lib/crt/amd64";
 
@@ -34,10 +35,11 @@ mkDerivation {
     (fetchpatch {
       name = "linux-support.patch";
       url = "https://github.com/illumos/illumos-gate/compare/${source.rev}...Ericson2314:illumos-gate:libc-hack.diff";
-      hash = "sha256-j3eDNMmO71N4pTD6kHQPpu8GXymy6hFp/in2TEeFGro=";
+      hash = "sha256-T0Cyy1Q1NPqocQA77bNpDnRp8PjuiV/9Bf6rg84aTTc=";
     })
-    ../patches/no-64-special-tools.patch
-    ../patches/clang-skip-flags.patch
+    ../../patches/no-64-special-tools.patch
+    ../../patches/clang-skip-flags.patch
+    ./no-compat-links.patch
   ];
 
   nativeBuildInputs = [
@@ -48,4 +50,8 @@ mkDerivation {
   ];
 
   buildInputs = [ headers ];
+
+  preInstall = ''
+    mkdir -p $out/lib
+  '';
 }
