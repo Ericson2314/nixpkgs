@@ -4,6 +4,8 @@
   symlinkJoin,
   head,
   sys,
+  sys-intel,
+  #sys-i86pc,
   version,
 }:
 
@@ -15,6 +17,8 @@ symlinkJoin rec {
   paths = [
     head
     sys
+    sys-intel
+    #sys-i86pc
   ];
 
   meta.platforms = lib.platforms.illumos;

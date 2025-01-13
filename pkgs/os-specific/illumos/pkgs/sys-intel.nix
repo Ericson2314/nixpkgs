@@ -10,8 +10,8 @@
   nawk,
 }:
 mkDerivation {
-  name = "sys";
-  path = "usr/src/uts/common/sys";
+  name = "sys-intel";
+  path = "usr/src/uts/intel/sys";
   noCC = true;
 
   extraPaths = [
@@ -19,12 +19,6 @@ mkDerivation {
     "usr/src/Makefile.native"
     "usr/src/Makefile.smatch"
     "usr/src/Makefile.psm"
-
-    "usr/src/uts/Makefile.uts"
-    "usr/src/uts/common/os/privs.awk"
-    "usr/src/uts/common/os/priv_defs"
-    "usr/src/uts/common/io/usb/usbdevs2h.awk"
-    "usr/src/uts/common/io/usb/usbdevs"
   ];
 
   patches = [
