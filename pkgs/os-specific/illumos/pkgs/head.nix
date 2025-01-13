@@ -10,7 +10,7 @@
   rpcgen,
 }:
 mkDerivation {
-  name = "include";
+  name = "head";
   path = "usr/src/head";
   noCC = true;
 
