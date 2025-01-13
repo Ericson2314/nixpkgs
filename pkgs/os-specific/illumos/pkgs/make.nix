@@ -32,7 +32,7 @@ stdenv.mkDerivation {
     (fetchpatch {
       name = "linux-support.patch";
       url = "https://github.com/illumos/illumos-gate/compare/${source.rev}...Ericson2314:illumos-gate:linux-dmake.diff";
-      hash = "sha256-iTtLU5mMGuaQEs+wrdYT3XzJB3vv3dCPo2Ia7vB1MIk=";
+      hash = "sha256-KwuJTS9wQ/WqLl4wJVQfzZQ50rDKGjgY4VoHIuf69Xw=";
       relative = dir;
       postFetch = ''
         sed -i $out -e 's_a//dev/null_/dev/null_'
