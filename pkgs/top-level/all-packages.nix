@@ -7033,7 +7033,7 @@ with pkgs;
   });
   binutilsNoLibc = wrapBintoolsWith {
     bintools = binutils-unwrapped;
-    libc = preLibcCrossHeaders;
+    libc = if stdenv.targetPlatform.useLLVM or false then null else preLibcCrossHeaders;
   };
 
   libbfd = callPackage ../development/tools/misc/binutils/libbfd.nix { };
@@ -7087,7 +7087,7 @@ with pkgs;
       null;
   bintoolsNoLibc = wrapBintoolsWith {
     bintools = bintools-unwrapped;
-    libc = preLibcCrossHeaders;
+    libc = if stdenv.targetPlatform.useLLVM then null else preLibcCrossHeaders;
   };
   bintools = wrapBintoolsWith {
     bintools = bintools-unwrapped;
@@ -8216,76 +8216,91 @@ with pkgs;
   };
 
   # These are used when buiding compiler-rt / libgcc, prior to building libc.
-  preLibcCrossHeaders =
+  preLibcChooser =
+    platform: pkgs: fallback:
     let
-      inherit (stdenv.targetPlatform) libc;
+      inherit (platform) libc;
     in
-    if stdenv.targetPlatform.isMinGW then
-      targetPackages.windows.mingw_w64_headers or windows.mingw_w64_headers
+    if platform.isMinGW then
+      pkgs.windows.mingw_w64_headers or fallback
+    else if libc == "fblibc" then
+      pkgs.freebsd.include or fallback
     else if libc == "nblibc" then
-      targetPackages.netbsd.headers or netbsd.headers
+      pkgs.netbsd.headers or fallback
     else if libc == "slibc" then
-      targetPackages.illumos.headers or illumos.headers
+      pkgs.illumos.headers or fallback
     else
       null;
 
+  # fallback `{}`, i.e. there is no fallback.
+  preLibcHeaders = preLibcChooser stdenv.hostPlatform pkgs { };
+
+  # fallback to current package set's pre-libc headers if missing
+  preLibcCrossHeaders = preLibcChooser stdenv.targetPlatform targetPackages preLibcHeaders;
+
   # We can choose:
-  libcCrossChooser =
-    name:
-    # libc is hackily often used from the previous stage. This `or`
-    # hack fixes the hack, *sigh*.
-    if name == null then
+  libcChooser =
+    platform: pkgs: fallback:
+    let
+      inherit (platform) libc;
+      # libc is hackily often used from the previous stage. This `or`
+      # hack fixes the hack, *sigh*.
+    in
+    if libc == null then
       null
-    else if name == "glibc" then
-      targetPackages.glibcCross or glibcCross
-    else if name == "bionic" then
-      targetPackages.bionic or bionic
-    else if name == "uclibc" then
-      targetPackages.uclibc or uclibc
-    else if name == "avrlibc" then
-      targetPackages.avrlibc or avrlibc
-    else if name == "newlib" && stdenv.targetPlatform.isMsp430 then
-      targetPackages.msp430Newlib or msp430Newlib
-    else if name == "newlib" && stdenv.targetPlatform.isVc4 then
-      targetPackages.vc4-newlib or vc4-newlib
-    else if name == "newlib" && stdenv.targetPlatform.isOr1k then
-      targetPackages.or1k-newlib or or1k-newlib
-    else if name == "newlib" then
-      targetPackages.newlib or newlib
-    else if name == "newlib-nano" then
-      targetPackages.newlib-nano or newlib-nano
-    else if name == "musl" then
-      targetPackages.muslCross or muslCross
-    else if name == "msvcrt" then
-      targetPackages.windows.mingw_w64 or windows.mingw_w64
-    else if name == "ucrt" then
-      targetPackages.windows.mingw_w64 or windows.mingw_w64
-    else if name == "libSystem" then
-      if stdenv.targetPlatform.useiOSPrebuilt then
-        targetPackages.darwin.iosSdkPkgs.libraries or darwin.iosSdkPkgs.libraries
+    else if libc == "glibc" then
+      pkgs.glibcCross or fallback
+    else if libc == "bionic" then
+      pkgs.bionic or fallback
+    else if libc == "uclibc" then
+      pkgs.uclibc or fallback
+    else if libc == "avrlibc" then
+      pkgs.avrlibc or fallback
+    else if libc == "newlib" && platform.isMsp430 then
+      pkgs.msp430Newlib or fallback
+    else if libc == "newlib" && platform.isVc4 then
+      pkgs.vc4-newlib or fallback
+    else if libc == "newlib" && platform.isOr1k then
+      pkgs.or1k-newlib or fallback
+    else if libc == "newlib" then
+      pkgs.newlib or fallback
+    else if libc == "newlib-nano" then
+      pkgs.newlib-nano or fallback
+    else if libc == "musl" then
+      pkgs.muslCross or fallback
+    else if libc == "msvcrt" then
+      pkgs.windows.mingw_w64 or fallback
+    else if libc == "ucrt" then
+      pkgs.windows.mingw_w64 or fallback
+    else if libc == "libSystem" then
+      if platform.useiOSPrebuilt then
+        pkgs.darwin.iosSdkPkgs.libraries or fallback
       else
-        targetPackages.darwin.libSystem or darwin.libSystem
-    else if name == "fblibc" then
-      targetPackages.freebsd.libc or freebsd.libc
-    else if name == "oblibc" then
-      targetPackages.openbsd.libc or openbsd.libc
-    else if name == "nblibc" then
-      targetPackages.netbsd.libc or netbsd.libc
-    #else if name == "slibc" then targetPackages.illumos.libc or illumos.libc
-    else if name == "wasilibc" then
-      targetPackages.wasilibc or wasilibc
-    else if name == "relibc" then
-      targetPackages.relibc or relibc
+        pkgs.darwin.libSystem or fallback
+    else if libc == "fblibc" then
+      pkgs.freebsd.libc or fallback
+    else if libc == "oblibc" then
+      pkgs.openbsd.libc or fallback
+    else if libc == "nblibc" then
+      pkgs.netbsd.libc or fallback
+    #else if libc == "slibc" then pkgs.illumos.libc or fallback
+    else if libc == "wasilibc" then
+      pkgs.wasilibc or fallback
+    else if libc == "relibc" then
+      pkgs.relibc or fallback
     else if name == "llvm" then
-      targetPackages.llvmPackages_20.libc or llvmPackages_20.libc
+      pkgs.llvmPackages_20.libc
     else
-      throw "Unknown libc ${name}";
+      throw "Unknown libc ${libc}";
 
   libcCross =
     if stdenv.targetPlatform == stdenv.buildPlatform then
       null
     else
-      libcCrossChooser stdenv.targetPlatform.libc;
+      libcChooser stdenv.targetPlatform targetPackages
+        # Someday this expression below will be used to define `libc =`,
+        # and we will get rid of these `*Cross*` attributes.
+        (libcChooser stdenv.hostPlatform pkgs { });
 
   threadsCross =
     lib.optionalAttrs (stdenv.targetPlatform.isMinGW && !(stdenv.targetPlatform.useLLVM or false))

@@ -14,7 +14,7 @@
   jq,
   libcxx,
   linuxHeaders,
-  freebsd,
+  preLibcCrossHeaders,
   libxcrypt,
 
   # Some platforms have switched to using compiler-rt, but still want a
@@ -145,7 +145,7 @@ stdenv.mkDerivation (finalAttrs: {
     ++ lib.optionals stdenv.hostPlatform.isDarwin [ jq ];
   buildInputs =
     lib.optional (stdenv.hostPlatform.isLinux && stdenv.hostPlatform.isRiscV) linuxHeaders
-    ++ lib.optional (stdenv.hostPlatform.isFreeBSD) freebsd.include;
+    ++ lib.optional (preLibcCrossHeaders != null) preLibcCrossHeaders;
 
   env = {
     NIX_CFLAGS_COMPILE = toString (
