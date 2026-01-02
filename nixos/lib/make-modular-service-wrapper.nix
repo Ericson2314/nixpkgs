@@ -36,6 +36,7 @@ in
     type = lib.types.submodule {
       imports = [ package.serviceOptions ];
       options.enable = enableOption;
+      config.package = lib.mkDefault package;
     };
     default = { };
     description = "Configuration for ${name}";

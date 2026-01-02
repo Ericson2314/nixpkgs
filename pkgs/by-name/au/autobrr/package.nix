@@ -57,7 +57,7 @@ let
     '';
   };
 in
-buildGoModule rec {
+buildGoModule (finalAttrs: {
   inherit
     autobrr-web
     pname
@@ -86,11 +86,18 @@ buildGoModule rec {
   versionCheckProgram = "${placeholder "out"}/bin/autobrrctl";
   versionCheckProgramArg = "version";
 
-  passthru.updateScript = nix-update-script {
-    extraArgs = [
-      "--subpackage"
-      "autobrr-web"
-    ];
+  passthru = {
+    serviceOptions = import ./service-options.nix;
+    services.default = {
+      imports = [ ./service.nix ];
+      thisService.package = lib.mkDefault finalAttrs.finalPackage;
+    };
+    updateScript = nix-update-script {
+      extraArgs = [
+        "--subpackage"
+        "autobrr-web"
+      ];
+    };
   };
 
   meta = {
@@ -102,4 +109,4 @@ buildGoModule rec {
     mainProgram = "autobrr";
     platforms = with lib.platforms; darwin ++ freebsd ++ linux;
   };
-}
+})

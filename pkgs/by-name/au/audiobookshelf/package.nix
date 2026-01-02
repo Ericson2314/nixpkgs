@@ -56,7 +56,7 @@ let
   };
 
 in
-buildNpmPackage {
+buildNpmPackage (finalAttrs: {
   pname = "audiobookshelf";
 
   inherit src;
@@ -82,6 +82,11 @@ buildNpmPackage {
   '';
 
   passthru = {
+    serviceOptions = import ./service-options.nix;
+    services.default = {
+      imports = [ ./service.nix ];
+      thisService.package = lib.mkDefault finalAttrs.finalPackage;
+    };
     tests.basic = nixosTests.audiobookshelf;
     updateScript = ./update.sh;
   };
@@ -99,4 +104,4 @@ buildNpmPackage {
     platforms = lib.platforms.linux;
     mainProgram = "audiobookshelf";
   };
-}
+})

@@ -5,14 +5,14 @@
   nixosTests,
 }:
 
-buildGoModule rec {
+buildGoModule (finalAttrs: {
   pname = "blocky";
   version = "0.28.2";
 
   src = fetchFromGitHub {
     owner = "0xERR0R";
     repo = "blocky";
-    rev = "v${version}";
+    rev = "v${finalAttrs.version}";
     hash = "sha256-GLVyPb2Qyn1jnRz+e74dFzL/AMloKqSe1BUUAGTquWA=";
   };
 
@@ -25,10 +25,17 @@ buildGoModule rec {
   ldflags = [
     "-s"
     "-w"
-    "-X github.com/0xERR0R/blocky/util.Version=${version}"
+    "-X github.com/0xERR0R/blocky/util.Version=${finalAttrs.version}"
   ];
 
-  passthru.tests = { inherit (nixosTests) blocky; };
+  passthru = {
+    serviceOptions = import ./service-options.nix;
+    services.default = {
+      imports = [ ./service.nix ];
+      thisService.package = lib.mkDefault finalAttrs.finalPackage;
+    };
+    tests = { inherit (nixosTests) blocky; };
+  };
 
   meta = {
     description = "Fast and lightweight DNS proxy as ad-blocker for local network with many features";
@@ -38,4 +45,4 @@ buildGoModule rec {
     maintainers = with lib.maintainers; [ ratsclub ];
     mainProgram = "blocky";
   };
-}
+})
