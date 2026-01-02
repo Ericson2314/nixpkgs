@@ -6,78 +6,32 @@
 }:
 
 let
-  inherit (lib)
-    mkAliasOptionModule
-    mkEnableOption
-    mkIf
-    mkOption
-    mkRenamedOptionModule
-    types
-    ;
-
+  makeModularServiceWrapper = import ../../../lib/make-modular-service-wrapper.nix { inherit lib; };
   cfg = config.services.redlib;
 in
 {
   imports = [
-    (mkRenamedOptionModule
-      [
-        "services"
-        "libreddit"
-      ]
-      [
-        "services"
-        "redlib"
-      ]
+    (lib.mkRenamedOptionModule
+      [ "services" "libreddit" ]
+      [ "services" "redlib" ]
     )
-  ]
-  ++
-    map
-      (
-        opt:
-        mkAliasOptionModule
-          [
-            "services"
-            "redlib"
-            opt
-          ]
-          [
-            "system"
-            "services"
-            "redlib"
-            "thisService"
-            opt
-          ]
-      )
-      [
-        "package"
-        "address"
-        "port"
-        "settings"
-      ];
+    (makeModularServiceWrapper {
+      name = "redlib";
+      package = pkgs.redlib;
+      enableOption = lib.mkEnableOption "private front-end for Reddit";
+      meta.maintainers = with lib.maintainers; [ Guanran928 ];
+    })
+  ];
 
-  options = {
-    services.redlib = {
-      enable = mkEnableOption "Private front-end for Reddit";
-
-      openFirewall = mkOption {
-        type = types.bool;
-        default = false;
-        description = "Open ports in the firewall for the redlib web interface";
-      };
-    };
+  options.services.redlib.openFirewall = lib.mkOption {
+    type = lib.types.bool;
+    default = false;
+    description = "Open ports in the firewall for the redlib web interface";
   };
 
-  config = mkIf cfg.enable {
-    system.services.redlib = {
-      imports = [ pkgs.redlib.services.default ];
-    };
-
-    networking.firewall = mkIf cfg.openFirewall {
+  config = lib.mkIf cfg.enable {
+    networking.firewall = lib.mkIf cfg.openFirewall {
       allowedTCPPorts = [ cfg.port ];
     };
-  };
-
-  meta = {
-    maintainers = with lib.maintainers; [ Guanran928 ];
   };
 }

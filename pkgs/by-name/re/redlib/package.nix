@@ -65,6 +65,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
   };
 
   passthru = {
+    serviceOptions = import ./service-options.nix;
     services.default = {
       imports = [ ./service.nix ];
       thisService.package = lib.mkDefault finalAttrs.finalPackage;
