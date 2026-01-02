@@ -11,7 +11,7 @@
   ...
 }:
 let
-  cfg = config.php-fpm;
+  cfg = config.thisService;
   format = formats.iniWithGlobalSection { };
   configFile = format.generate "php-fpm.conf" {
     globalSection = lib.filterAttrs (_: v: !lib.isAttrs v) cfg.settings;
@@ -80,7 +80,7 @@ in
 {
   _class = "service";
 
-  options.php-fpm = {
+  options.thisService = {
     package = lib.mkOption {
       type = lib.types.package;
       description = "PHP package to use for php-fpm";
@@ -152,7 +152,7 @@ in
   };
 
   config = {
-    php-fpm.settings = {
+    thisService.settings = {
       error_log = "syslog";
       daemonize = false;
     };

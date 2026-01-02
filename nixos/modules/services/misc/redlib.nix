@@ -44,7 +44,7 @@ in
             "system"
             "services"
             "redlib"
-            "redlib"
+            "thisService"
             opt
           ]
       )

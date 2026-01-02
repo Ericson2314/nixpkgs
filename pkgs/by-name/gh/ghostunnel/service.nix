@@ -18,14 +18,14 @@ let
     optional
     types
     ;
-  cfg = config.ghostunnel;
+  cfg = config.thisService;
 
 in
 {
   # https://nixos.org/manual/nixos/unstable/#modular-services
   _class = "service";
   options = {
-    ghostunnel = {
+    thisService = {
       package = mkOption {
         description = "Package to use for ghostunnel";
         defaultText = "The ghostunnel package that provided this module.";
@@ -158,12 +158,12 @@ in
         message = ''
           At least one access control flag is required.
           Set at least one of:
-            - ${options.ghostunnel.disableAuthentication}
-            - ${options.ghostunnel.allowAll}
-            - ${options.ghostunnel.allowCN}
-            - ${options.ghostunnel.allowOU}
-            - ${options.ghostunnel.allowDNS}
-            - ${options.ghostunnel.allowURI}
+            - ${options.thisService.disableAuthentication}
+            - ${options.thisService.allowAll}
+            - ${options.thisService.allowCN}
+            - ${options.thisService.allowOU}
+            - ${options.thisService.allowDNS}
+            - ${options.thisService.allowURI}
         '';
         assertion =
           cfg.disableAuthentication
@@ -175,7 +175,7 @@ in
       }
     ];
 
-    ghostunnel = {
+    thisService = {
       # Clients should not be authenticated with the public root certificates
       # (afaict, it doesn't make sense), so we only provide that default when
       # client cert auth is disabled.

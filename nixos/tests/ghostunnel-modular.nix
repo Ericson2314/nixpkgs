@@ -18,7 +18,7 @@
       {
         system.services."ghostunnel-plain-old" = {
           imports = [ pkgs.ghostunnel.services.default ];
-          ghostunnel = {
+          thisService = {
             listen = "0.0.0.0:443";
             cert = "/root/service-cert.pem";
             key = "/root/service-key.pem";
@@ -29,7 +29,7 @@
         };
         system.services."ghostunnel-client-cert" = {
           imports = [ pkgs.ghostunnel.services.default ];
-          ghostunnel = {
+          thisService = {
             listen = "0.0.0.0:1443";
             cert = "/root/service-cert.pem";
             key = "/root/service-key.pem";

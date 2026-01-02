@@ -22,7 +22,7 @@
           {
             root = "${testdir}/web";
             locations."~ \\.php$".extraConfig = ''
-              fastcgi_pass unix:${config.system.services.php-fpm.php-fpm.settings.foobar.listen};
+              fastcgi_pass unix:${config.system.services.php-fpm.thisService.settings.foobar.listen};
               fastcgi_index index.php;
               include ${config.services.nginx.package}/conf/fastcgi_params;
               include ${pkgs.nginx}/conf/fastcgi.conf;
@@ -36,7 +36,7 @@
 
       system.services.php-fpm = {
         imports = [ php.services.default ];
-        php-fpm = {
+        thisService = {
           package = php;
           settings = {
             foobar = {

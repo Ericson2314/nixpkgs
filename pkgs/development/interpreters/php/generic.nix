@@ -406,7 +406,7 @@ let
                   inherit formats coreutils;
                 })
               ];
-              php-fpm.package = lib.mkDefault finalAttrs.finalPackage;
+              thisService.package = lib.mkDefault finalAttrs.finalPackage;
             };
           };
 

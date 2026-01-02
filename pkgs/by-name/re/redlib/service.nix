@@ -13,7 +13,7 @@ let
     types
     ;
 
-  cfg = config.redlib;
+  cfg = config.thisService;
 
   boolToString' = b: if b then "on" else "off";
 in
@@ -21,7 +21,7 @@ in
   _class = "service";
 
   options = {
-    redlib = {
+    thisService = {
       package = lib.options.mkModularPackageOption "redlib" { };
 
       address = mkOption {

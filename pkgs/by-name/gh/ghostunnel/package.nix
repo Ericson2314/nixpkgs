@@ -37,7 +37,7 @@ buildGoModule rec {
     imports = [
       (lib.modules.importApply ./service.nix { })
     ];
-    ghostunnel.package = ghostunnel; # FIXME: finalAttrs.finalPackage
+    thisService.package = ghostunnel; # FIXME: finalAttrs.finalPackage
   };
 
   meta = {

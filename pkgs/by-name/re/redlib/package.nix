@@ -67,7 +67,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
   passthru = {
     services.default = {
       imports = [ ./service.nix ];
-      redlib.package = lib.mkDefault finalAttrs.finalPackage;
+      thisService.package = lib.mkDefault finalAttrs.finalPackage;
     };
     tests = nixosTests.redlib;
     updateScript = nix-update-script { extraArgs = [ "--version=branch" ]; };
