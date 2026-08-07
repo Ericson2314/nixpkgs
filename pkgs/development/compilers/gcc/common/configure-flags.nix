@@ -71,6 +71,16 @@ let
         if targetPackages.stdenv.cc.bintools.isLLVM then binutils else targetPackages.stdenv.cc.bintools
       }/bin/${targetPlatform.config}-as"
     ]
+    # gcc's Solaris support assumes the Solaris link-editor unless told
+    # otherwise, and picks libgcc/config/t-slibgcc-sld -- which passes
+    # `-Wl,-M,libgcc-unwind.map` and writes that mapfile in `$mapfile_version 2`
+    # syntax. GNU ld understands neither. Until illumos' own ld is packaged, say
+    # explicitly that we are using GNU binutils so gcc picks the version-script
+    # path instead.
+    ++ lib.optionals targetPlatform.isIllumos [
+      "--with-gnu-as"
+      "--with-gnu-ld"
+    ]
     ++ (
       if withoutTargetLibc then
         [
