@@ -81,7 +81,16 @@ let
   inherit (_systemInfo) buildIsHost hostIsTarget;
 
   gccVersions = import ./versions.nix;
-  version = gccVersions.fromMajorMinor majorMinorVersion;
+
+  # illumos needs its own GCC fork, which carries the ABI and runtime-linker
+  # support the platform depends on. It only exists for 14.x, so anything else
+  # falls back to upstream GCC (and will very likely not work for illumos).
+  useIllumosFork = stdenv.targetPlatform.isIllumos && majorMinorVersion == "14";
+
+  # The fork is based on 14.2.0, not the 14.2.1 snapshot nixpkgs otherwise
+  # tracks for GCC 14. These must agree: `postPatch` below asserts that
+  # `baseVersion` matches the tree's own gcc/BASE-VER.
+  version = if useIllumosFork then "14.2.0" else gccVersions.fromMajorMinor majorMinorVersion;
 
   majorVersion = versions.major version;
   is13 = majorVersion == "13";
@@ -217,7 +226,7 @@ pipe
       version = baseVersion;
 
       src =
-        if stdenv.targetPlatform.parsed.kernel.name == "solaris" then
+        if useIllumosFork then
           fetchFromGitHub {
             owner = "illumos";
             repo = "gcc";

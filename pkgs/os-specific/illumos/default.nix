@@ -23,6 +23,12 @@ makeScopeWithSplicing' {
     // {
       version = "2.11";
 
+      # TODO: build the real `libc.so.1` (with PICS, mapfile-vers and commpage)
+      # and point this at it. Until then the bootstrap libc doubles as the final
+      # one, which is enough to get the rest of the package set evaluating and
+      # building, but is not a complete libc.
+      libc = self.libcMinimal;
+
       stdenvLibcMinimal = stdenvNoLibc.override (old: {
         cc = old.cc.override {
           libc = self.libcMinimal;
