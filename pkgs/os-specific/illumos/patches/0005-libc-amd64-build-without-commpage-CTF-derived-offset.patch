@@ -28,7 +28,7 @@ index ba71bcfdbd..bf9bb899d5 100644
 @@ -39,8 +39,8 @@ VERS=		.1
  TARGET_ARCH=	amd64
  
- # include comm page definitions (bootstrap)
+ # include comm page definitions
 -include $(SRC)/lib/commpage/Makefile.shared.com
 -include $(SRC)/lib/commpage/Makefile.shared.targ
 +#include $(SRC)/lib/commpage/Makefile.shared.com
