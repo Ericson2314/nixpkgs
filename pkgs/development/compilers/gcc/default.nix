@@ -95,6 +95,12 @@ let
   # ships pre-built; those need flex and bison to regenerate.
   fromVCS = useIllumosFork;
 
+  # Whether the `withoutTargetLibc` stage is nonetheless being given real libc
+  # headers (see configure-flags.nix). When it is, gcc's generated syslimits.h
+  # must chain to the system limits.h, so LIMITS_H_TEST has to stay true.
+  usePreLibcHeaders =
+    withoutTargetLibc && stdenv.targetPlatform.isIllumos && preLibcHeaders != null;
+
   # The fork is based on 14.2.0, not the 14.2.1 snapshot nixpkgs otherwise
   # tracks for GCC 14. These must agree: `postPatch` below asserts that
   # `baseVersion` matches the tree's own gcc/BASE-VER.
@@ -340,6 +346,21 @@ pipe
         libcCross
         crossMingw
         ;
+    }
+    // lib.optionalAttrs usePreLibcHeaders {
+      # This stage has real libc headers despite `withoutTargetLibc`, so gcc's
+      # generated syslimits.h must chain to the system limits.h -- otherwise
+      # identifiers like PATH_MAX are undefined when building libgcc.
+      #
+      # common/builder.nix appends `LIMITS_H_TEST=false` in preConfigure, and
+      # the last assignment on make's command line wins, so this has to come
+      # later. It is set here rather than in builder.nix so that no other
+      # target's derivation changes.
+      preBuild = ''
+        makeFlagsArray+=( 'LIMITS_H_TEST=true' )
+      '';
+    }
+    // {
 
       inherit (callFile ./common/dependencies.nix { })
         depsBuildBuild
