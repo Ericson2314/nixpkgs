@@ -17,12 +17,12 @@ The `cerror.S` change is a genuine portability fix and stands on its own;
 the makefile changes are bootstrap scaffolding to be undone once a real
 `libc.so.1` is built.
 ---
- usr/src/lib/libc/amd64/Makefile     | 10 +++++-----
+ usr/src/lib/libc/amd64/Makefile     | 13 ++++++++-----
  usr/src/lib/libc/amd64/crt/cerror.S |  2 +-
- 2 files changed, 6 insertions(+), 6 deletions(-)
+ 2 files changed, 9 insertions(+), 6 deletions(-)
 
 diff --git a/usr/src/lib/libc/amd64/Makefile b/usr/src/lib/libc/amd64/Makefile
-index ba71bcfdbd..bf9bb899d5 100644
+index ba71bcfdbd..d8f9a24bd2 100644
 --- a/usr/src/lib/libc/amd64/Makefile
 +++ b/usr/src/lib/libc/amd64/Makefile
 @@ -39,8 +39,8 @@ VERS=		.1
@@ -36,7 +36,7 @@ index ba71bcfdbd..bf9bb899d5 100644
  
  # objects are grouped by source directory
  
-@@ -1215,10 +1215,10 @@ genassym: $(GENASSYM_C)
+@@ -1215,10 +1215,13 @@ genassym: $(GENASSYM_C)
  	$(NATIVECC) $(NATIVE_CFLAGS) -Iinc -I$(LIBCDIR)/inc $(CPPFLAGS.native) \
  		$(LDFLAGS.native) -o $@ $(GENASSYM_C)
  
@@ -45,8 +45,11 @@ index ba71bcfdbd..bf9bb899d5 100644
  
 -assym.h: $(OFFSETS) genassym
 -	$(OFFSETS_CREATE) <$(OFFSETS) >$@
-+assym.h: #$(OFFSETS) genassym
-+	#$(OFFSETS_CREATE) <$(OFFSETS) >$@
++# $(OFFSETS_CREATE) needs ctfstabs, which is not available when cross-building,
++# so assym.h is generated from genassym alone. Note that the prerequisite on
++# genassym itself must be kept: commenting out the whole list stops genassym
++# from ever being built, and the recipe then runs a ./genassym that is absent.
++assym.h: genassym
  	./genassym >>$@
  
  # derived C source and related explicit dependencies

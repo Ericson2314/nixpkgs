@@ -45,6 +45,10 @@ makeScopeWithSplicing' {
         };
       });
 
+      uts-headers = self.callPackage ./pkgs/uts-headers.nix {
+        inherit (buildPackages.netbsd) rpcgen;
+      };
+
       head = self.callPackage ./pkgs/head.nix {
         inherit (buildPackages.netbsd) rpcgen;
       };
