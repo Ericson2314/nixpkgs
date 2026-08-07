@@ -5723,8 +5723,8 @@ with pkgs;
       openbsd.libc
     else if libc == "nblibc" then
       netbsd.libc
-    #else if name == "slibc" then
-    #  illumos.lc
+    else if libc == "slibc" then
+      illumos.libc
     else if libc == "wasilibc" then
       wasilibc
     else if libc == "relibc" then
