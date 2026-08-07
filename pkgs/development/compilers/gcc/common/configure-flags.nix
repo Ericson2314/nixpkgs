@@ -5,6 +5,7 @@
 
   withoutTargetLibc,
   libcCross,
+  preLibcHeaders ? null,
   threadsCross,
   version,
 
@@ -75,7 +76,17 @@ let
         [
           "--disable-libssp"
           "--disable-nls"
-          "--without-headers"
+          # illumos' libgcc includes Solaris-specific sources (config/sol2/gmon.c)
+          # that need real libc headers -- `inhibit_libc`, which `--without-headers`
+          # implies, makes tsystem.h skip <unistd.h> and the build fails on
+          # STDERR_FILENO and profil(). Point it at the header-only package
+          # instead; using libcCross here would be circular.
+          (
+            if targetPlatform.isIllumos && preLibcHeaders != null then
+              "--with-headers=${lib.getDev preLibcHeaders}/include"
+            else
+              "--without-headers"
+          )
           "--disable-threads"
           "--disable-libgomp"
           "--disable-libquadmath"

@@ -46,6 +46,9 @@
   enablePlugin ? _systemInfo.buildIsHost, # Whether to support user-supplied plug-ins
   name ? "gcc",
   libcCross ? null,
+  # Headers usable before libc itself is built; see `preLibcHeaders` in
+  # all-packages.nix. Needed by targets whose libgcc wants libc headers.
+  preLibcHeaders ? null,
   threadsCross ? { }, # for MinGW
   withoutTargetLibc ? stdenv.targetPlatform.libc == null,
   flex,
@@ -86,6 +89,11 @@ let
   # support the platform depends on. It only exists for 14.x, so anything else
   # falls back to upstream GCC (and will very likely not work for illumos).
   useIllumosFork = stdenv.targetPlatform.isIllumos && majorMinorVersion == "14";
+
+  # The illumos fork is fetched from git, not from a release tarball, so it is
+  # missing the generated sources (gengtype-lex.cc and friends) that a tarball
+  # ships pre-built; those need flex and bison to regenerate.
+  fromVCS = useIllumosFork;
 
   # The fork is based on 14.2.0, not the 14.2.1 snapshot nixpkgs otherwise
   # tracks for GCC 14. These must agree: `postPatch` below asserts that
@@ -128,6 +136,7 @@ let
     inherit
       majorVersion
       isSnapshot
+      fromVCS
       version
       buildPlatform
       hostPlatform
@@ -175,6 +184,7 @@ let
       langRust
       lib
       libcCross
+      preLibcHeaders
       libmpc
       libucontext
       libxcrypt
