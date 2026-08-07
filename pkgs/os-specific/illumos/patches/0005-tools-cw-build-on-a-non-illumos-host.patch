@@ -9,8 +9,8 @@ cross-build. It needs `<stdint.h>` explicitly under glibc, and its makefile
 assumes illumos-only build machinery.
 ---
  usr/src/tools/cw/Makefile | 9 +++++----
- usr/src/tools/cw/cw.c     | 2 ++
- 2 files changed, 7 insertions(+), 4 deletions(-)
+ usr/src/tools/cw/cw.c     | 9 ++++++++-
+ 2 files changed, 13 insertions(+), 5 deletions(-)
 
 diff --git a/usr/src/tools/cw/Makefile b/usr/src/tools/cw/Makefile
 index 8f68590f31..05dd956c94 100644
@@ -41,7 +41,7 @@ index 8f68590f31..05dd956c94 100644
  $(ROOTONBLDMAN1ONBLDFILES) := FILEMODE=      644
  CSTD=	$(CSTD_GNU99)
 diff --git a/usr/src/tools/cw/cw.c b/usr/src/tools/cw/cw.c
-index 47ae68f945..a3e63ecbc4 100644
+index 47ae68f945..aef1fad7ca 100644
 --- a/usr/src/tools/cw/cw.c
 +++ b/usr/src/tools/cw/cw.c
 @@ -152,8 +152,10 @@
@@ -55,3 +55,17 @@ index 47ae68f945..a3e63ecbc4 100644
  #include <sys/stat.h>
  #include <sys/types.h>
  #include <sys/utsname.h>
+@@ -752,7 +754,12 @@ do_gcc(cw_ictx_t *ctx)
+ 				break;
+ 			}
+ 
+-#if defined(__x86)
++/*
++ * __x86 is a Studio predefined macro; gcc and clang spell it __i386__ or
++ * __x86_64__. Accept all three so cw still maps -Wu,-save_args when it is
++ * itself built by a non-Studio compiler, e.g. when cross-building from Linux.
++ */
++#if defined(__x86) || defined(__i386__) || defined(__x86_64__)
+ 			if (strcmp(arg, "-Wu,-save_args") == 0) {
+ 				newae(ctx->i_ae, "-msave-args");
+ 				break;

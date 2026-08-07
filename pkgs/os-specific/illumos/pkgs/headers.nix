@@ -3,8 +3,10 @@
   stdenvNoLibc,
   symlinkJoin,
   head,
-  sys,
+  uts-headers,
   sys-intel,
+  libtsol-headers,
+
   #sys-i86pc,
   version,
 }:
@@ -16,8 +18,10 @@ symlinkJoin rec {
 
   paths = [
     head
-    sys
+    uts-headers
     sys-intel
+    libtsol-headers
+
     #sys-i86pc
   ];
 

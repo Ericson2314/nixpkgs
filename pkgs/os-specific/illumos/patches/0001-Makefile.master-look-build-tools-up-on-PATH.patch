@@ -33,11 +33,11 @@ them overridable -- and so is not upstreamable as-is. Making each tool
 overridable via the `$(POUND_SIGN)` idiom already used elsewhere in this
 file would be the upstreamable form.
 ---
- usr/src/Makefile.master | 161 ++++++++++++++++++++--------------------
- 1 file changed, 80 insertions(+), 81 deletions(-)
+ usr/src/Makefile.master | 184 +++++++++++++++++++++-------------------
+ 1 file changed, 99 insertions(+), 85 deletions(-)
 
 diff --git a/usr/src/Makefile.master b/usr/src/Makefile.master
-index 1fcfccae63..14b56b3cf8 100644
+index 1fcfccae63..67380aa2d6 100644
 --- a/usr/src/Makefile.master
 +++ b/usr/src/Makefile.master
 @@ -37,7 +37,7 @@
@@ -252,7 +252,7 @@ index 1fcfccae63..14b56b3cf8 100644
  GNUXGETFLAGS= --add-comments=TRANSLATION_NOTE --keyword=_ \
  	--strict --no-location --omit-header
  BUILD.po= $(XGETTEXT) $(XGETFLAGS) -d $(<F) $<.i ;\
-@@ -745,8 +740,12 @@ NATIVE_MACH64=	$(MACH64)
+@@ -745,34 +740,53 @@ NATIVE_MACH64=	$(MACH64)
  # environment.
  GNU_ROOT=		/usr
  
@@ -267,7 +267,24 @@ index 1fcfccae63..14b56b3cf8 100644
  
  CW_CC_COMPILERS=	$(PRIMARY_CC:%=--primary %) $(SHADOW_CCS:%=--shadow %)
  CW_CCC_COMPILERS=	$(PRIMARY_CCC:%=--primary %) $(SHADOW_CCCS:%=--shadow %)
-@@ -756,23 +755,23 @@ CW_LINKER=		--linker $(LD)
+ 
+ CW_LINKER=		--linker $(LD)
+ 
++# The NATIVE* compilers build programs that run on the machine doing the
++# build, not on the target. When cross-compiling these are different
++# compilers, so they come from $CC_FOR_BUILD/$CXX_FOR_BUILD rather than
++# $CC/$CXX. They fall back to the target compiler, which is correct for a
++# native build where the two coincide.
++NATIVE_PRIMARY_CC_PATH:sh = command -v "$CC_FOR_BUILD" 2>/dev/null || command -v "$CC" 2>/dev/null || :
++NATIVE_PRIMARY_CCC_PATH:sh = command -v "$CXX_FOR_BUILD" 2>/dev/null || command -v "$CXX" 2>/dev/null || :
++
++NATIVE_PRIMARY_CC=	gcc10,$(NATIVE_PRIMARY_CC_PATH),gnu
++NATIVE_PRIMARY_CCC=	gcc10,$(NATIVE_PRIMARY_CCC_PATH),gnu
++
++CW_NATIVE_CC_COMPILERS=		$(NATIVE_PRIMARY_CC:%=--primary %)
++CW_NATIVE_CCC_COMPILERS=	$(NATIVE_PRIMARY_CCC:%=--primary %)
++
++
  # Specify platform compiler versions for languages
  # that we use (currently only c and c++).
  #
@@ -286,18 +303,22 @@ index 1fcfccae63..14b56b3cf8 100644
 +BUILD_LD:sh=		command -v $LD || :
  BUILD_AS=		$(BUILD_CC)
  
- NATIVEBUILD_CC=		$(NATIVE_CW) $(CWOPTS) --tag native $(CW_LINKER) \
- 	$(CW_CC_COMPILERS) --
- NATIVEBUILD_CCC=	$(NATIVE_CW) $(CWOPTS) --tag native -C $(CW_LINKER) \
- 	$(CW_CCC_COMPILERS) --
+-NATIVEBUILD_CC=		$(NATIVE_CW) $(CWOPTS) --tag native $(CW_LINKER) \
+-	$(CW_CC_COMPILERS) --
+-NATIVEBUILD_CCC=	$(NATIVE_CW) $(CWOPTS) --tag native -C $(CW_LINKER) \
+-	$(CW_CCC_COMPILERS) --
 -NATIVEBUILD_CPP=	/usr/lib/cpp
 -NATIVEBUILD_LD=		$(ONBLD_TOOLS)/bin/$(MACH64)/ld
++NATIVEBUILD_CC=		$(NATIVE_CW) $(CWOPTS) --tag native \
++	$(CW_NATIVE_CC_COMPILERS) --
++NATIVEBUILD_CCC=	$(NATIVE_CW) $(CWOPTS) --tag native -C \
++	$(CW_NATIVE_CCC_COMPILERS) --
 +NATIVEBUILD_CPP=	$(NATIVEBUILD_CC) -E
 +NATIVEBUILD_LD:sh=		command -v $LD_FOR_BUILD || :
  NATIVEBUILD_AS=		$(NATIVEBUILD_CC)
  
  $(MACH)_CC=		$(BUILD_CC)
-@@ -959,8 +958,8 @@ BOOTBANNER3=
+@@ -959,8 +973,8 @@ BOOTBANNER3=
  BOOTBANNER4=
  BOOTBANNER5=
  
