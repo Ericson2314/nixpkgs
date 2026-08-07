@@ -1,3 +1,16 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Fri, 7 Aug 2026 17:30:48 -0400
+Subject: [PATCH] lib/crt/Makefile.com: drop the /usr/ccs/lib compat links
+
+Same problem as the `/usr/ccs/bin` links in `cmd/Makefile.cmd`: the
+`values-*.o` compatibility symlinks point across prefixes into a unified
+filesystem root that a per-component Nix build does not have, and with
+`ROOT=` empty the rules would write to the real `/usr/ccs/lib`.
+---
+ usr/src/lib/crt/Makefile.com | 15 ++-------------
+ 1 file changed, 2 insertions(+), 13 deletions(-)
+
 diff --git a/usr/src/lib/crt/Makefile.com b/usr/src/lib/crt/Makefile.com
 index 8384fc09fa..12dde06185 100644
 --- a/usr/src/lib/crt/Makefile.com

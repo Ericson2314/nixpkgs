@@ -1,0 +1,65 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Fri, 7 Aug 2026 17:30:31 -0400
+Subject: [PATCH] libc/amd64: build without commpage, CTF-derived offsets, or
+ Sun `as`
+
+Three separate obstacles to building libc off illumos:
+
+- The comm page makefiles assume the full in-tree build; skip them for now.
+- `assym.h` is normally produced by `$(OFFSETS_CREATE)` from `offsets.in`,
+  which needs `ctfstabs`. `genassym` alone covers what the bootstrap needs.
+- `cerror.S` opens a comment with a bare `/`, which only the Sun assembler
+  accepts. `//` means the same thing to it and is also understood by the
+  GNU assembler.
+
+The `cerror.S` change is a genuine portability fix and stands on its own;
+the makefile changes are bootstrap scaffolding to be undone once a real
+`libc.so.1` is built.
+---
+ usr/src/lib/libc/amd64/Makefile     | 10 +++++-----
+ usr/src/lib/libc/amd64/crt/cerror.S |  2 +-
+ 2 files changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/usr/src/lib/libc/amd64/Makefile b/usr/src/lib/libc/amd64/Makefile
+index ba71bcfdbd..bf9bb899d5 100644
+--- a/usr/src/lib/libc/amd64/Makefile
++++ b/usr/src/lib/libc/amd64/Makefile
+@@ -39,8 +39,8 @@ VERS=		.1
+ TARGET_ARCH=	amd64
+ 
+ # include comm page definitions
+-include $(SRC)/lib/commpage/Makefile.shared.com
+-include $(SRC)/lib/commpage/Makefile.shared.targ
++#include $(SRC)/lib/commpage/Makefile.shared.com
++#include $(SRC)/lib/commpage/Makefile.shared.targ
+ 
+ # objects are grouped by source directory
+ 
+@@ -1215,10 +1215,10 @@ genassym: $(GENASSYM_C)
+ 	$(NATIVECC) $(NATIVE_CFLAGS) -Iinc -I$(LIBCDIR)/inc $(CPPFLAGS.native) \
+ 		$(LDFLAGS.native) -o $@ $(GENASSYM_C)
+ 
+-OFFSETS = $(LIBCDIR)/$(MACH)/offsets.in
++#OFFSETS = $(LIBCDIR)/$(MACH)/offsets.in
+ 
+-assym.h: $(OFFSETS) genassym
+-	$(OFFSETS_CREATE) <$(OFFSETS) >$@
++assym.h: #$(OFFSETS) genassym
++	#$(OFFSETS_CREATE) <$(OFFSETS) >$@
+ 	./genassym >>$@
+ 
+ # derived C source and related explicit dependencies
+diff --git a/usr/src/lib/libc/amd64/crt/cerror.S b/usr/src/lib/libc/amd64/crt/cerror.S
+index f019a4a1b1..f0604e0aae 100644
+--- a/usr/src/lib/libc/amd64/crt/cerror.S
++++ b/usr/src/lib/libc/amd64/crt/cerror.S
+@@ -26,7 +26,7 @@
+ 
+ 	.file	"cerror.s"
+ 
+-/ C return sequence which sets errno, returns -1.
++// C return sequence which sets errno, returns -1.
+ 
+ #include <SYS.h>
+ 

@@ -1,9 +1,6 @@
 {
   mkDerivation,
 
-  source,
-  fetchpatch,
-
   cw,
 
   libelf,
@@ -28,14 +25,6 @@ mkDerivation {
   outputs = [
     "out"
     "man"
-  ];
-
-  patches = [
-    (fetchpatch {
-      name = "linux-support.patch";
-      url = "https://github.com/illumos/illumos-gate/compare/${source.rev}...Ericson2314:illumos-gate:cw-hack.diff";
-      hash = "sha256-6D5f5PyWTqLpQZrMc1n1iW2XcrE8PNdcv714dK0ZZo0=";
-    })
   ];
 
   makeFlags = [

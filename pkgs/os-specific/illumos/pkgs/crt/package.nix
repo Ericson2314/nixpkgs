@@ -2,9 +2,6 @@
   lib,
   mkDerivation,
 
-  source,
-  fetchpatch,
-
   illumosSetupHook,
   make,
   cw,
@@ -29,17 +26,6 @@ mkDerivation {
     "usr/src/lib/crt"
 
     "usr/src/lib/libc/inc/xpg6.h"
-  ];
-
-  patches = [
-    (fetchpatch {
-      name = "linux-support.patch";
-      url = "https://github.com/illumos/illumos-gate/compare/${source.rev}...Ericson2314:illumos-gate:libc-hack.diff";
-      hash = "sha256-T0Cyy1Q1NPqocQA77bNpDnRp8PjuiV/9Bf6rg84aTTc=";
-    })
-    ../../patches/no-64-special-tools.patch
-    ../../patches/clang-skip-flags.patch
-    ./no-compat-links.patch
   ];
 
   nativeBuildInputs = [
