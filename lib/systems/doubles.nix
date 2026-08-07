@@ -34,8 +34,12 @@ let
     "i686-genode"
     "x86_64-genode"
 
-    # Solaris, Illumos
-    "x86_64-solaris"
+    # illumos
+    #
+    # The unversioned `x86_64-solaris` double used to live here, but nothing ever
+    # supported it: there was no stdenv and no packages. illumos uses the versioned
+    # `solaris2.11` triple that GCC and binutils expect, so that is the only one we
+    # carry.
     "x86_64-solaris2.11"
 
     # JS
@@ -205,7 +209,7 @@ in
       kernel = parse.kernels.linux;
       abi = parse.abis.gnuabielfv2;
     });
-  illumos = filterDoubles predicates.isSunOS;
+  illumos = filterDoubles predicates.isIllumos;
   linux = filterDoubles predicates.isLinux;
   netbsd = filterDoubles predicates.isNetBSD;
   openbsd = filterDoubles predicates.isOpenBSD;

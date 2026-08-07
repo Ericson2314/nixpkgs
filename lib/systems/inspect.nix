@@ -369,6 +369,16 @@ rec {
         name = "solaris";
       };
     };
+    # illumos and Oracle Solaris 11 share the `solaris2.11` kernel triple, so this
+    # cannot fully distinguish them. It does distinguish the versioned target we
+    # actually support from the legacy unversioned `solaris` double, which is what
+    # matters in practice: nixpkgs has no Oracle Solaris support.
+    isIllumos = {
+      kernel = {
+        name = "solaris";
+        version = "2.11";
+      };
+    };
     isFreeBSD = {
       kernel = {
         name = "freebsd";
