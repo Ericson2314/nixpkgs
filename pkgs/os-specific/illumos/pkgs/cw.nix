@@ -2,9 +2,6 @@
   lib,
   mkDerivation,
 
-  source,
-  fetchpatch,
-
   illumosSetupHook,
   make,
 }:
@@ -26,14 +23,6 @@ mkDerivation {
   outputs = [
     "out"
     "man"
-  ];
-
-  patches = [
-    (fetchpatch {
-      name = "linux-support.patch";
-      url = "https://github.com/illumos/illumos-gate/compare/${source.rev}...Ericson2314:illumos-gate:cw-hack.diff";
-      hash = "sha256-HL21JPRrN2pwiLX4fY41t+6Z0CB9JLKEsbpGtLqwNs0=";
-    })
   ];
 
   makeFlags = [

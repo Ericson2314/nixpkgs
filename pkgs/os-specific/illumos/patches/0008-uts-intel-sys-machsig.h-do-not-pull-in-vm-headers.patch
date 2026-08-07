@@ -1,0 +1,25 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Fri, 7 Aug 2026 17:30:32 -0400
+Subject: [PATCH] uts/intel/sys/machsig.h: do not pull in `vm/` headers
+
+`machsig.h` is installed as part of the userland header set that libc is
+built against, but it includes a `vm/` header that is kernel-only and is not
+installed. Nothing in the userland use of this file needs it.
+---
+ usr/src/uts/intel/sys/machsig.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/usr/src/uts/intel/sys/machsig.h b/usr/src/uts/intel/sys/machsig.h
+index 52696a09dc..3d199a6f6e 100644
+--- a/usr/src/uts/intel/sys/machsig.h
++++ b/usr/src/uts/intel/sys/machsig.h
+@@ -47,7 +47,7 @@ extern "C" {
+ 
+ #if !defined(_POSIX_C_SOURCE) || defined(_XPG4_2) || defined(__EXTENSIONS__)
+ 
+-#if !defined(_XPG4_2) || defined(__EXTENSIONS__)
++#if defined(_KERNEL)
+ #include <vm/faultcode.h>
+ #endif
+ 

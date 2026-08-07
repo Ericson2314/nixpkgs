@@ -2,7 +2,6 @@
   stdenv,
 
   source,
-  fetchpatch,
 
   pkg-config,
   cmake,
@@ -28,22 +27,21 @@ stdenv.mkDerivation {
     "man"
   ];
 
-  patches = [
-    (fetchpatch {
-      name = "linux-support.patch";
-      url = "https://github.com/illumos/illumos-gate/compare/${source.rev}...Ericson2314:illumos-gate:linux-dmake.diff";
-      hash = "sha256-KwuJTS9wQ/WqLl4wJVQfzZQ50rDKGjgY4VoHIuf69Xw=";
-      relative = dir;
-      postFetch = ''
-        sed -i $out -e 's_a//dev/null_/dev/null_'
-      '';
-    })
-  ];
+  # dmake is not built by the illumos build system here, but by a CMake port of
+  # it (the illumos-gate `linux-dmake` branch), so this one keeps a single
+  # whole-tree patch rather than going through `filterPatches`.
+  patches = [ ./linux-dmake.patch ];
 
   postPatch = ''
     cp ${source}/usr/src/OPENSOLARIS.LICENSE COPYING
     mkdir -p man/man1
     cp ${source}/usr/src/man/man1/make.1 man/man1/make.1
+
+    # The dmake port asks for `cmake_minimum_required(VERSION 2.8)`, and CMake
+    # has since removed compatibility with anything below 3.5.
+    substituteInPlace CMakeLists.txt \
+      --replace-fail 'cmake_minimum_required(VERSION 2.8)' \
+                     'cmake_minimum_required(VERSION 3.5)'
   '';
 
   nativeBuildInputs = [

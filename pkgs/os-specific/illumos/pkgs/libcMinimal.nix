@@ -5,9 +5,6 @@
   mkDerivation,
   buildPackages,
 
-  fetchpatch,
-  source,
-
   illumosSetupHook,
   make,
   install,
@@ -42,16 +39,6 @@ mkDerivation {
     "usr/src/lib/Makefile.targ"
     "usr/src/lib/libc"
     "usr/src/lib/commpage"
-  ];
-
-  patches = [
-    (fetchpatch {
-      name = "linux-support.patch";
-      url = "https://github.com/illumos/illumos-gate/compare/${source.rev}...Ericson2314:illumos-gate:libc-hack.diff";
-      hash = "sha256-T0Cyy1Q1NPqocQA77bNpDnRp8PjuiV/9Bf6rg84aTTc=";
-    })
-    ../patches/no-64-special-tools.patch
-    ../patches/clang-skip-flags.patch
   ];
 
   nativeBuildInputs = [
