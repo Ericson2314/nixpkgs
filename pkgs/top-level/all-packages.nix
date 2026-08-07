@@ -10942,6 +10942,8 @@ with pkgs;
     meta.license = lib.licenses.mit;
   } ../os-specific/bsd/setup-hook.sh;
 
+  filterPatches = callPackage ../build-support/filter-patches { };
+
   freebsd = recurseIntoAttrs (callPackage ../os-specific/bsd/freebsd { });
 
   netbsd = recurseIntoAttrs (callPackage ../os-specific/bsd/netbsd { });
