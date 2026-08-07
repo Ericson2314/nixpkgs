@@ -12,6 +12,7 @@
   byacc,
   #gencat,
   cw,
+  lorder,
 
   crt,
   headers,
@@ -47,6 +48,9 @@ mkDerivation {
     install
     #gencat
     cw
+    # libc builds its archive as `ar q $@ \`lorder ... | tsort\``; tsort comes
+    # from coreutils in stdenv, but lorder is illumos' own.
+    lorder
     (buildPackages.writeShellScriptBin "arch" "echo ${stdenv.buildPlatform.uname.processor}")
     (buildPackages.writeShellScriptBin "mach" "echo ${stdenv.hostPlatform.uname.processor}")
   ];
@@ -64,6 +68,10 @@ mkDerivation {
   makeFlags = [
     "COMPILER_VERSION=clang"
     "LIBC_TAGS=no"
+    # The libc_pic.a rule runs `mcs -d -n .SUNW_ctf` to strip CTF from the
+    # archive. CTF generation is disabled for the cross build, so there is
+    # nothing to strip, and mcs itself is not packaged yet (it needs libelf).
+    "MCS=:"
     "HOST_ARCH=${stdenv.buildPlatform.uname.processor}"
     "TARGET_ARCH=${stdenv.hostPlatform.uname.processor}"
     "HOST_MACH=${stdenv.buildPlatform.uname.processor}"
