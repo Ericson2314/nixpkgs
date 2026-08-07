@@ -8,6 +8,7 @@
   buildFreebsd,
   patchesRoot,
   writeText,
+  filterPatches,
   buildPackages,
 }:
 
@@ -41,7 +42,7 @@ lib.packagesFromDirectoryRecursive {
         ]
       )
     );
-    inherit lib writeText;
+    inherit lib filterPatches;
   };
 
   # The manual callPackages below should in principle be unnecessary, but are
