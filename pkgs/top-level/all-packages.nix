@@ -3241,7 +3241,9 @@ with pkgs;
   gerbilPackages-unstable = pkgs.gerbil-support.gerbilPackages-unstable; # NB: don't recurseIntoAttrs for (unstable!) libraries
   glow-lang = pkgs.gerbilPackages-unstable.glow-lang;
 
-  default-gcc-version = 15;
+  # illumos needs its own GCC fork (see pkgs/development/compilers/gcc), which
+  # only exists for 14.x.
+  default-gcc-version = if stdenv.targetPlatform.isIllumos then 14 else 15;
   gcc = pkgs.${"gcc${toString default-gcc-version}"};
   gccFun = callPackage ../development/compilers/gcc;
   gcc-unwrapped = gcc.cc;
