@@ -191,7 +191,15 @@ mkDerivation {
   # does not undo a GCC configured --enable-default-pie, which this one is. The
   # kernel is compiled -mcmodel=kernel (cw's translation of -xmodel=kernel) and
   # "code model kernel does not support PIC mode", so say so explicitly.
-  NIX_CFLAGS_COMPILE = "-fno-pie";
+  #
+  # --param=min-pagesize=0: i86pc/io/pci/pci_prd_i86pc.c's mps_probe() reads the
+  # BIOS data area through absolute pointers (`*((ushort_t *)(0x413))`), which
+  # GCC >= 14 flags as -Warray-bounds "outside array bounds ... likely at
+  # address zero". uts/i86pc/Makefile.rules already passes exactly this to
+  # silence it, but as `-_gcc14=--param=min-pagesize=0`, and cw only forwards
+  # those to the compiler it was told is primary -- which the illumos stdenv
+  # declares as `gcc10`, so a GCC 14 cross compiler never sees them.
+  NIX_CFLAGS_COMPILE = "-fno-pie --param=min-pagesize=0";
 
   # None of nixpkgs' default hardening applies to a kernel, and `pie` actively
   # breaks it: the cc-wrapper's -fPIE is incompatible with the -mcmodel=kernel
@@ -286,6 +294,80 @@ mkDerivation {
     runHook postBuild
   '';
 
+  # The loadable modules startup_modules() and vfs_mountroot() reach for, in
+  # dependency order. Each entry is a directory under uts; the module's own
+  # Makefile knows its class, so `install.targ` puts it in the right place
+  # under $(ROOT) -- kernel/fs/amd64/specfs,
+  # platform/i86pc/kernel/drv/amd64/rootnex, and so on.
+  kmods = [
+    # startup.c:1515 onwards halts if any of these four are missing. specfs
+    # links -Nfs/fifofs, so fifofs has to exist first.
+    #
+    # The -N entries in each module's LDFLAGS are hard dependencies that krtld
+    # resolves at modload() time, so they have to be here too: specfs needs
+    # fs/fifofs, procfs needs fs/namefs, and fs/dev needs misc/dls, which in
+    # turn needs misc/mac.
+    "intel/fifofs"
+    "intel/specfs"
+    "intel/devfs"
+    "intel/mac"
+    "intel/dls"
+    "intel/dev"
+    "intel/namefs"
+    "intel/procfs"
+
+    # setup_ddi() roots the device tree at rootnex. rootnex links
+    # -N misc/iommulib -N misc/acpica, so both have to be loadable too.
+    "intel/acpica"
+    "intel/iommulib"
+    "i86pc/rootnex"
+
+    # impl_setup_ddi() (i86pc/os/ddi_impl.c:2610) creates a "ramdisk" devinfo
+    # node for the boot archive and ASSERTs that ndi_devi_bind_driver()
+    # succeeds. The assertion is unconditional in a DEBUG kernel, so drv/ramdisk
+    # is a hard requirement, not a convenience.
+    "intel/ramdisk"
+
+    # impl_bus_initialprobe() (i86pc/os/ddi_impl.c) panics unless
+    # misc/pci_autoconfig and drv/isa load, and modloads misc/acpidev on the
+    # way. pci_autoconfig needs misc/pcie and misc/pci_prd; pcie needs
+    # misc/busra; isa needs all three.
+    "intel/busra"
+    "i86pc/pci_prd"
+    "i86pc/pcie"
+    "intel/pci_autoconfig"
+    "i86pc/acpidev"
+    "i86pc/isa"
+
+    # i_ddi_init_root() (common/os/autoconf.c:462) attaches the "options" and
+    # "pseudo" nodes by name and then enumerates pseudo's .conf children. With
+    # no drv/pseudo the attach returns NULL and i_ndi_make_spec_children()
+    # asserts on it; the giveaway earlier in the log is "add_spec: No major
+    # number for pseudo".
+    "intel/options"
+    "intel/pseudo"
+
+    # dispinit() instantiates the scheduling classes named in
+    # common/disp/disp.c's class table; TS is the default one and pulls in its
+    # dispatch-parameter table, and SDC is what the kernel's own taskq threads
+    # run under.
+    "intel/TS"
+    "intel/TS_DPTBL"
+    "intel/SDC"
+
+    # psm_modload() (startup.c:1649) loads every module under
+    # platform/i86pc/kernel/mach; uppc is the plain 8259/8254 one that works
+    # without an APIC.
+    "i86pc/uppc"
+
+    # main() calls vfs_mountroot() almost immediately after startup, and
+    # rootconf() (common/fs/vfs.c:4512) panics unless it can modload the root
+    # filesystem named by the "fstype" boot property -- "ufs" by default.
+    # ufs links -Nfs/specfs -Nmisc/fssnap_if.
+    "intel/fssnap_if"
+    "intel/ufs"
+  ];
+
   installPhase = ''
     runHook preInstall
 
@@ -298,6 +380,30 @@ mkDerivation {
     # link uses `-e dboot_image`, and uts/i86pc/unix/Makefile:181 turns it into
     # an object with elfextract -- but it is useful to have on its own.
     cp i86pc/unix/dboot/debug64/dboot "$out/platform/i86pc/kernel/amd64/dboot"
+
+    # The rest of the modules. `install.targ` rather than `install`: same
+    # BUILD_TYPE recursion problem as `def` above. ROOT is prepended as empty
+    # by illumosSetupHook's addIllumosMakeFlags, so it has to be re-set here,
+    # after flagsArray, to win.
+    local flagsArray=()
+    concatTo flagsArray makeFlags makeFlagsArray
+    export BUILD_TYPE=DBG64
+
+    # $(INS) is `install`, which resolves to $(ONBLD)/install.bin -- and the
+    # `install` derivation is *cross*-built, so on the build machine the shell
+    # falls through to coreutils' install, which has neither -f nor a
+    # -s-with-a-directory. Nothing here needs install(1)'s semantics: these are
+    # plain file copies into $out. Note the escaped `$`: make, not the shell,
+    # has to expand $@/$</$(@D).
+    flagsArray+=(
+      "INS.dir=mkdir -p \$@"
+      "INS.file=mkdir -p \$(@D); rm -f \$@; cp \$< \$@"
+      "INS.conffile=mkdir -p \$(@D); rm -f \$@; cp \$(SRC_CONFFILE) \$@"
+    )
+
+    for m in $kmods; do
+      ( cd "$m" && make "''${flagsArray[@]}" IPCTF_TARGET= "ROOT=$out" install.targ )
+    done
 
     runHook postInstall
   '';
