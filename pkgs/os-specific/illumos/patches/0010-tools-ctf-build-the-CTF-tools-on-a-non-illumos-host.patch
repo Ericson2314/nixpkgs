@@ -70,11 +70,23 @@ against a foreign libc and a foreign link-editor.
   which does not exist here; `-DCTF_ZLIB_PATH` lets the build name it.
   `$LIBCTF_DECOMPRESSOR` still overrides at run time either way.
 
+- `lib/libctf/common/ctf_elfwrite.c`: elfutils' libelf checks, in
+  `elf_update()`, that every section with a non-zero, non-one `sh_entsize`
+  has an `sh_size` that is a multiple of it -- including sections it is only
+  copying through. illumos' link-editor emits `.rodata` as `SHF_MERGE` with
+  `sh_entsize` 8 and a size that is not a multiple of 8, so writing merged
+  CTF into `libc.so.1` failed with `ELF_E_INVALID_SHENTSIZE`, which libctf
+  reports as the opaque "Elf library failure". Set `ELF_F_PERMISSIVE`, the
+  escape hatch elfutils provides for exactly this; illumos' own libelf has
+  no such check. Relocatable kernel modules never hit it, which is why the
+  kernel build was unaffected.
+
 The vendored libdwarf needs no source changes: its `config.h` is autoconf
 output whose only illumos-specific entries (`HAVE_SYS_ELF_386_H` and friends)
 are never tested, and the one place that includes `<sys/elf_386.h>`,
 `pro_incl.h`, guards it with `#if defined(sun)`.
 ---
+ usr/src/lib/libctf/common/ctf_elfwrite.c  |  20 +++
  usr/src/lib/libctf/common/ctf_lib.c       |  20 ++-
  usr/src/tools/ctf/Makefile.ctf            |  14 +-
  usr/src/tools/ctf/Makefile.ctf.native     | 138 +++++++++++++++++
@@ -89,7 +101,7 @@ are never tested, and the one place that includes `<sys/elf_386.h>`,
  usr/src/tools/ctf/native/sys/elf.h        |  31 ++++
  usr/src/tools/ctf/native/thread.h         |  83 +++++++++++
  usr/src/tools/ctf/stabs/Makefile.com      |   7 +
- 14 files changed, 774 insertions(+), 11 deletions(-)
+ 15 files changed, 794 insertions(+), 11 deletions(-)
  create mode 100644 usr/src/tools/ctf/Makefile.ctf.native
  create mode 100644 usr/src/tools/ctf/native/native_compat.h
  create mode 100644 usr/src/tools/ctf/native/native_support.c
@@ -97,6 +109,37 @@ are never tested, and the one place that includes `<sys/elf_386.h>`,
  create mode 100644 usr/src/tools/ctf/native/sys/elf.h
  create mode 100644 usr/src/tools/ctf/native/thread.h
 
+diff --git a/usr/src/lib/libctf/common/ctf_elfwrite.c b/usr/src/lib/libctf/common/ctf_elfwrite.c
+index dfefbf6861..629f9b7a0d 100644
+--- a/usr/src/lib/libctf/common/ctf_elfwrite.c
++++ b/usr/src/lib/libctf/common/ctf_elfwrite.c
+@@ -68,6 +68,26 @@ ctf_write_elf(ctf_file_t *fp, Elf *src, Elf *dst, int flags)
+ 		goto out;
+ 	}
+ 
++#ifdef CTF_NATIVE_COMPAT
++	/*
++	 * elfutils' libelf validates, in elf_update(), that every section with
++	 * a non-zero, non-one sh_entsize has an sh_size that is a multiple of
++	 * it -- and it applies that to sections it is merely copying through,
++	 * not just to ones it has been asked to lay out.  illumos' link-editor
++	 * emits .rodata as SHF_MERGE with sh_entsize 8 while letting sh_size
++	 * be whatever the merged contents came to, so libc.so.1 trips the
++	 * check and the whole write fails with ELF_E_INVALID_SHENTSIZE, which
++	 * libctf reports as the far less helpful "Elf library failure".
++	 *
++	 * ELF_F_PERMISSIVE is exactly the escape hatch elfutils provides for
++	 * this: it suppresses the consistency checks on data libelf did not
++	 * generate itself.  Nothing here depends on those sections' contents,
++	 * so there is nothing to get wrong.  illumos' own libelf never had the
++	 * check, which is why this is needed only for the foreign-host build.
++	 */
++	(void) elf_flagelf(dst, ELF_C_SET, ELF_F_PERMISSIVE);
++#endif
++
+ 	if (gelf_newehdr(dst, gelf_getclass(src)) == 0) {
+ 		ret = ctf_set_errno(fp, ECTF_ELF);
+ 		goto out;
 diff --git a/usr/src/lib/libctf/common/ctf_lib.c b/usr/src/lib/libctf/common/ctf_lib.c
 index 4cb5ce0ac5..a7a153da4d 100644
 --- a/usr/src/lib/libctf/common/ctf_lib.c

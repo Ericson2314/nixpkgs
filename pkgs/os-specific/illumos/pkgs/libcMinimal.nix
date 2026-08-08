@@ -12,6 +12,7 @@
   genoffsets,
   ctfstabs,
   ctfconvert,
+  ctfmerge,
   nawk,
 
   crt,
@@ -62,10 +63,17 @@ mkDerivation {
     # port/gen/new_list.c is generated with nawk.
     nawk
     # $(OFFSETS_CREATE) = genoffsets -s ctfstabs -r ctfconvert cw ... ; it
-    # generates commpage/cp_offsets.h from offsets.in.
+    # turns lib/libc/i386/offsets.in into assym.h. genoffsets compiles the
+    # #include lines from offsets.in into an object, runs ctfconvert over its
+    # DWARF, and lets ctfstabs read the struct layouts back out of the CTF --
+    # so the offsets that libc's assembly uses come from the *target*
+    # compiler's own idea of the layout rather than from a hand-written list.
     genoffsets
     ctfstabs
+    # Every PIC object gets a CTF section (Makefile.lib:208), and
+    # libc.so.1 gets them all merged into one (Makefile.lib:209).
     ctfconvert
+    ctfmerge
   ];
 
   # genassym is compiled and then *run* during the build to emit assym.h, so it
@@ -124,7 +132,33 @@ mkDerivation {
   makeFlags = [
     "COMPILER_VERSION=clang"
     "LIBC_TAGS=no"
-
+    # mkDerivation's `libMakeFlags` already pass MCS=: and LDFLAGS.native=, and
+    # set POST_PROCESS_O/POST_PROCESS_SO to `:` because most libraries here are
+    # built without CTF. libc is the exception, so override just those two.
+    #
+    # Makefile.master:983 leaves POST_PROCESS_O empty and Makefile.lib:191
+    # appends "; $(CTFCONVERT_POST)" to it, so the expanded recipe line starts
+    # with a bare `;`, which the shell rejects. Restate the macro as just the
+    # hook, dropping the leading separator. It has to stay a *reference* rather
+    # than being resolved here: CTFCONVERT_POST is a target-conditional macro
+    # (Makefile.lib:208 sets it to $(CTFCONVERT_O) for $(PICS) and leaves it
+    # `:` elsewhere), so it must be expanded in the context of each target.
+    #
+    # This is what turns CTF back on: every pics/*.o then gets ctfconvert run
+    # over the DWARF that $(CTF_FLAGS) asked for (amd64/Makefile:1046 adds
+    # -g -gdwarf-4 -gstrict-dwarf to CFLAGS64).
+    "POST_PROCESS_O=$(CTFCONVERT_POST)"
+    # Likewise for the shared library, where CTFMERGE_POST is
+    # $(CTFMERGE_LIB) = ctfmerge -t -f -L VERSION -o libc.so.1 $(PICS):
+    # the per-object containers are merged into one .SUNW_ctf section with
+    # duplicate types coalesced.
+    #
+    # POST_PROCESS_SO is not empty upstream -- Makefile.master:987 also runs
+    # $(STRIP_STABS) and $(ELFSIGN_OBJECT). Both are dropped deliberately.
+    # $(STRIP) here is GNU strip from the cross toolchain, which rewrites
+    # rather than edits in place (see the STRIP_STABS note in unix.nix), and
+    # there is no signing key to elfsign with.
+    "POST_PROCESS_SO=$(CTFMERGE_POST)"
     # genassym runs on the build machine but reports the *target*'s struct
     # offsets, so it is compiled by the host compiler against illumos headers.
     # Makefile.master defaults CPPFLAGS.native to -I/usr/include, which is not

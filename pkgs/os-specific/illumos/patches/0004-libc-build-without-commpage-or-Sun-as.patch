@@ -1,16 +1,11 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: John Ericson <John.Ericson@Obsidian.Systems>
 Date: Fri, 7 Aug 2026 17:30:31 -0400
-Subject: [PATCH] libc: build without commpage, CTF-derived offsets, or Sun
- `as`
+Subject: [PATCH] libc: build without commpage or Sun `as`
 
 Several obstacles to building libc off illumos:
 
 - The comm page makefiles assume the full in-tree build; skip them for now.
-- `assym.h` is normally produced by `$(OFFSETS_CREATE)` from `offsets.in`,
-  which needs `ctfstabs`. `genassym` alone covers what the bootstrap needs.
-  Note the prerequisite on genassym must be kept: commenting out the whole
-  list stops genassym from being built at all.
 - `cerror.S` opens a comment with a bare `/`, which only the Sun assembler
   accepts. `//` means the same to it and to the GNU assembler.
 - Keep `$(CPPFLAGS.first)` when redefining CPPFLAGS. Makefile.master
@@ -22,13 +17,24 @@ Several obstacles to building libc off illumos:
   relative to the including file, so the -I adds nothing -- but it does put
   libc private regex.h ahead of the public <regex.h>, which defines
   regex_t and the REG_* codes that regcomp.c needs.
+- `BUILD.AR` orders members with `lorder(1) | tsort(1)`. lorder parses
+  `nm(1)` output in Solaris' format, which GNU nm does not quite match: the
+  dependency pairs come out unbalanced, tsort rejects the input, and the
+  archive silently comes out empty. The ordering is not needed -- `ar -ts`
+  runs immediately afterwards and writes a symbol index.
+- `plockstat_stub.c` supplies the `__dtrace_plockstat___*` symbols that
+  would otherwise come from a `dtrace -G`-generated `plockstat.o`.
+
+`assym.h` is left as upstream has it: `$(OFFSETS_CREATE)` from
+`$(MACH)/offsets.in` plus the `genassym` output appended.  That needs
+`ctfstabs`/`ctfconvert`/`genoffsets`, which are now built for a non-illumos
+host, so there is no reason to hand-write the struct offsets.
 ---
  usr/src/lib/libc/Makefile.targ                |  2 -
- usr/src/lib/libc/amd64/Makefile               | 34 ++++++++++----
+ usr/src/lib/libc/amd64/Makefile               | 25 +++++++++---
  usr/src/lib/libc/amd64/crt/cerror.S           |  2 +-
- usr/src/lib/libc/amd64/genassym.c             | 46 +++++++++++++++++++
- .../lib/libc/port/threads/plockstat_stub.c    | 38 +++++++++++++++
- 5 files changed, 111 insertions(+), 11 deletions(-)
+ .../lib/libc/port/threads/plockstat_stub.c    | 38 +++++++++++++++++++
+ 4 files changed, 59 insertions(+), 8 deletions(-)
  create mode 100644 usr/src/lib/libc/port/threads/plockstat_stub.c
 
 diff --git a/usr/src/lib/libc/Makefile.targ b/usr/src/lib/libc/Makefile.targ
@@ -52,7 +58,7 @@ index ebb8af11e3..742aaa805f 100644
  	$(POST_PROCESS_O)
  
 diff --git a/usr/src/lib/libc/amd64/Makefile b/usr/src/lib/libc/amd64/Makefile
-index ba71bcfdbd..48b2e10ed1 100644
+index ba71bcfdbd..42b26cd444 100644
 --- a/usr/src/lib/libc/amd64/Makefile
 +++ b/usr/src/lib/libc/amd64/Makefile
 @@ -870,7 +870,8 @@ THREADSOBJS=			\
@@ -102,23 +108,6 @@ index ba71bcfdbd..48b2e10ed1 100644
  
  # extra files for the clean target
  CLEANFILES +=			\
-@@ -1215,10 +1230,13 @@ genassym: $(GENASSYM_C)
- 	$(NATIVECC) $(NATIVE_CFLAGS) -Iinc -I$(LIBCDIR)/inc $(CPPFLAGS.native) \
- 		$(LDFLAGS.native) -o $@ $(GENASSYM_C)
- 
--OFFSETS = $(LIBCDIR)/$(MACH)/offsets.in
-+#OFFSETS = $(LIBCDIR)/$(MACH)/offsets.in
- 
--assym.h: $(OFFSETS) genassym
--	$(OFFSETS_CREATE) <$(OFFSETS) >$@
-+# $(OFFSETS_CREATE) needs ctfstabs, which is not available when cross-building,
-+# so assym.h is generated from genassym alone. Note that the prerequisite on
-+# genassym itself must be kept: commenting out the whole list stops genassym
-+# from ever being built, and the recipe then runs a ./genassym that is absent.
-+assym.h: genassym
- 	./genassym >>$@
- 
- # derived C source and related explicit dependencies
 diff --git a/usr/src/lib/libc/amd64/crt/cerror.S b/usr/src/lib/libc/amd64/crt/cerror.S
 index f019a4a1b1..f0604e0aae 100644
 --- a/usr/src/lib/libc/amd64/crt/cerror.S
@@ -132,70 +121,6 @@ index f019a4a1b1..f0604e0aae 100644
  
  #include <SYS.h>
  
-diff --git a/usr/src/lib/libc/amd64/genassym.c b/usr/src/lib/libc/amd64/genassym.c
-index b20d944c05..ad950693ed 100644
---- a/usr/src/lib/libc/amd64/genassym.c
-+++ b/usr/src/lib/libc/amd64/genassym.c
-@@ -28,7 +28,9 @@
- #include <stdio.h>
- #include <stddef.h>
- #include <signal.h>
-+#include <setjmp.h>
- #include <ucontext.h>
-+#include "libc_int.h"
- #include <sys/stack.h>
- #include <sys/synch.h>
- #include <sys/synch32.h>
-@@ -61,5 +63,49 @@ main(void)
- 	(void) printf("#define\tRAX_OFF\t0x%x\n", REG_RAX * 8);
- 	(void) printf("#define\tRSP_OFF\t0x%x\n", REG_RSP * 8);
- 
-+	/*
-+	 * The values below are normally produced from $(LIBCDIR)/$(MACH)/
-+	 * offsets.in by $(OFFSETS_CREATE), which drives ctfstabs and so needs
-+	 * CTF data. That is not available when cross-building, so emit them
-+	 * here instead -- they are all plain sizeof/offsetof over the same
-+	 * headers ctfstabs would have read. Keep this list in sync with
-+	 * offsets.in.
-+	 */
-+	(void) printf("#define\tSIZEOF_TLS_T\t0x%zx\n", sizeof (tls_t));
-+	(void) printf("#define\tSIZEOF_UCONTEXT_T\t0x%zx\n",
-+	    sizeof (ucontext_t));
-+	(void) printf("#define\tSIZEOF_SIGJMP_BUF\t0x%zx\n",
-+	    sizeof (sigjmp_buf));
-+
-+	(void) printf("#define\tTI_MODULEID\t0x%zx\n",
-+	    offsetof(TLS_index, ti_moduleid));
-+	(void) printf("#define\tTI_TLSOFFSET\t0x%zx\n",
-+	    offsetof(TLS_index, ti_tlsoffset));
-+
-+	(void) printf("#define\tTLS_DATA\t0x%zx\n", offsetof(tls_t, tls_data));
-+
-+	(void) printf("#define\tSS_SP\t0x%zx\n", offsetof(stack_t, ss_sp));
-+	(void) printf("#define\tSS_SIZE\t0x%zx\n", offsetof(stack_t, ss_size));
-+
-+	(void) printf("#define\tUC_MCONTEXT_GREGS\t0x%zx\n",
-+	    offsetof(ucontext_t, uc_mcontext.gregs));
-+
-+	(void) printf("#define\tUL_TLSENT\t0x%zx\n",
-+	    offsetof(ulwp_t, ul_tlsent));
-+	(void) printf("#define\tUL_NTLSENT\t0x%zx\n",
-+	    offsetof(ulwp_t, ul_ntlsent));
-+	(void) printf("#define\tUL_USTACK\t0x%zx\n",
-+	    offsetof(ulwp_t, ul_ustack));
-+	(void) printf("#define\tUL_VFORK\t0x%zx\n",
-+	    offsetof(ulwp_t, ul_vfork));
-+	(void) printf("#define\tUL_SCHEDCTL_CALLED\t0x%zx\n",
-+	    offsetof(ulwp_t, ul_schedctl_called));
-+	(void) printf("#define\tUL_SCHEDCTL\t0x%zx\n",
-+	    offsetof(ulwp_t, ul_schedctl));
-+	(void) printf("#define\tUL_SIGLINK\t0x%zx\n",
-+	    offsetof(ulwp_t, ul_siglink));
-+	(void) printf("#define\tUL_SIGMASK\t0x%zx\n",
-+	    offsetof(ulwp_t, ul_sigmask));
-+
- 	return (0);
- }
 diff --git a/usr/src/lib/libc/port/threads/plockstat_stub.c b/usr/src/lib/libc/port/threads/plockstat_stub.c
 new file mode 100644
 index 0000000000..75833a662d
