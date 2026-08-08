@@ -6,6 +6,8 @@
   uts-headers,
   sys-intel,
   libtsol-headers,
+  libmd-headers,
+  libscf-headers,
 
   #sys-i86pc,
   version,
@@ -21,6 +23,8 @@ symlinkJoin rec {
     uts-headers
     sys-intel
     libtsol-headers
+    libmd-headers
+    libscf-headers
 
     #sys-i86pc
   ];
