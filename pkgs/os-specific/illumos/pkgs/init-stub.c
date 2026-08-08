@@ -4,9 +4,11 @@
  * filesystem.  illumos' real init needs -lpam -lbsm -lcontract -lscf, none of
  * which is ported yet.
  *
- * NOTE: as of this commit the kernel does not get this far -- it stops in
- * consconfig(), see the log in boot-qemu.sh -- so nothing below has ever been
- * observed to execute.  It is the target, not a passing test.
+ * This does get exec'd and does execute.  The console writes below are *not*
+ * how that is checked, though -- console output, kernel and user alike, goes
+ * nowhere after consconfig(); see the log in boot-qemu.sh.  The
+ * uadmin(A_SHUTDOWN, AD_POWEROFF) at the end is the check: the machine powers
+ * itself off and qemu exits.
  *
  * Freestanding on purpose: raw `syscall` traps, so nothing here depends on
  * libc, crt1.o or ld.so.1.  Syscall numbers are from

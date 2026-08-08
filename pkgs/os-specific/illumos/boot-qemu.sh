@@ -48,32 +48,54 @@
 # expect and want ("strplumb: failed to initialize drv/dld" -- the IP stack is
 # not packaged), and then consconfig().
 #
-# That is where it stops, and the honest description of the stopping point is:
-# *the console goes away and the boot does not visibly get any further*. What
-# is known:
+# consconfig() completes, main() forks init, and init runs: `/sbin/init` is
+# exec'd and executes user instructions. Two independent checks, because the
+# console makes this much harder to see than it should be (below):
 #
-#   * The last line on either console is the strplumb one. Nothing appears
-#     afterwards on serial or on VGA -- verified by screendumping the VGA text
-#     console through the qemu monitor on a serial-console boot, and by
-#     booting with the console on VGA instead. So the loss is in consconfig(),
-#     not in the choice of console.
-#   * The machine is not wedged and not idle. Sampling RIP through the qemu
-#     monitor shows it cycling through sysp_ischar() (uts/i86pc/os/machdep.c)
-#     and an indirect call into a module, i.e. the busy loop inside
-#     prom_getchar(). Something has called prom_getchar() and is waiting for a
-#     keypress that cannot arrive, because the same broken plumbing that ate
-#     the output eats the input. prom_reboot_prompt(), reached from halt() via
-#     prom_exit_to_mon(), is the obvious candidate, and halt("unix: Could not
-#     start init") is the obvious caller -- but that is inference, not proof.
-#   * init is definitely *not* running. Booting an init that is nothing but an
-#     infinite userland `nop` loop still leaves every RIP sample at CPL=0, so
-#     no user code has executed. That rules out "it booted fine and is just
-#     quiet".
+#   * `illumos.init-stub` ends in uadmin(A_SHUTDOWN, AD_POWEROFF). The machine
+#     powers off and qemu exits after about 13 seconds instead of sitting
+#     there until the harness kills it. Nothing but that syscall does that.
+#   * Booting an init that is nothing but an infinite userland `nop` loop and
+#     sampling registers through the qemu monitor gives RIP=0x000000000040007c
+#     at CPL=3 -- the process's own text, in user mode.
 #
-# So: root filesystem solved, init not reached. The next thing to chase is why
-# consconfig_setup_polledio()/the console stream come up dead -- most likely a
-# console device that never attaches, which would also explain a subsequent
-# halt().
+# and the kernel says so itself, if you can see it: with prom_io_use_kernel()
+# stubbed out (below) the tail of the boot is
+#
+#     strplumb: failed to initialize drv/dld
+#     NOTICE: MPO disabled because memory is interleaved
+#
+#     syncing file systems... done
+#
+# -- the uadmin() shutdown path, reached only from user mode.
+#
+# The one thing that is still wrong, and the thing to fix next: **after
+# consconfig(), kernel console output goes nowhere.** The last line you see on
+# either console is the strplumb one, on serial and on VGA alike (checked by
+# screendumping the VGA text console through the qemu monitor during a
+# serial-console boot, and by booting with the console on VGA instead). It is
+# not a hang -- everything above still happens, silently.
+#
+# The mechanism is understood. console_putchar() falls back to prom_putchar()
+# until a user process has the console stream open, prom_putchar() goes through
+# `sysp`, and consconfig_init_input() calls prom_io_use_kernel()
+# (common/io/consconfig_dacf.c:1499) which repoints `sysp` at kern_sysp --
+# sysp_putchar/sysp_getchar/sysp_ischar in uts/i86pc/os/machdep.c, all of which
+# route to cons_polledio. In this configuration that polled console does not
+# reach the emulated 16550, so output is dropped on the floor and input never
+# arrives. Stubbing prom_io_use_kernel() out to a no-op, so that `sysp` stays
+# on the boot console, brings every message back; that is a debugging hack, not
+# a fix, but it is how the ENOEXEC below was found, and it is worth a couple of
+# minutes to anyone debugging anything past this point.
+#
+# (Historical note, because it cost real time: before exec/elfexec was
+# packaged, this same silence hid an exec failure. The kernel was busy-looping
+# in sysp_ischar() from prom_getchar(), reached from prom_reboot_prompt() via
+# prom_exit_to_mon() from halt("unix: Could not start init") -- confirmed by
+# attaching gdb to the qemu gdbstub, where the backtrace showed
+# prom_reboot_prompt on a thread_start stack, i.e. the init thread rather than
+# main()'s. With prom_io_use_kernel() stubbed, the kernel says so itself:
+# "WARNING: exec(/sbin/init) failed with errno 8".)
 #
 # Notes:
 #
@@ -133,7 +155,11 @@ mkdir -p "$work/ba/etc" "$work/iso/boot/grub" \
 # output out that way -- the module Makefiles' own $(ROOTMODULE) rules put them
 # there -- so copy those two trees across whole. ($out/lib/libgenunix.so is
 # deliberately left out: it is a link-time stub, not a loadable module.)
-cp -RL --no-preserve=mode "$unix/kernel" "$unix/platform" "$work/ba/"
+# ($out/usr comes along too: kobj's module search path is "/system/boot/kernel
+# /platform/i86pc/kernel /kernel /usr/kernel", and a couple of modules install
+# themselves under $(USR_EXEC_DIR) rather than the root one -- shbinexec, for
+# instance.)
+cp -RL --no-preserve=mode "$unix/kernel" "$unix/platform" "$unix/usr" "$work/ba/"
 cp "$src/uts/intel/os/name_to_sysnum" "$src/uts/intel/os/minor_perm" \
    "$src/uts/intel/os/driver_classes" "$src/uts/intel/os/dacf.conf" \
    "$work/ba/etc/"

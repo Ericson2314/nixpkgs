@@ -9,11 +9,6 @@
 # needed to demonstrate that the kernel can exec a process out of the root
 # filesystem -- which is the milestone this exists to reach.
 #
-# As of this commit the kernel does not actually reach init -- it stops in
-# consconfig() -- so this is aspirational: it is checked in so that the boot
-# image has something to exec, and so that the next person does not have to
-# reinvent it.
-#
 # The C is freestanding (raw `syscall` traps, `-nostdlib`), so this needs
 # nothing from the illumos userland at all: no libc, no crt1.o, no ld.so.1.
 # That keeps it honest as a test of the *kernel*.
