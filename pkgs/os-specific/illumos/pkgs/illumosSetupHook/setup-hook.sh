@@ -13,8 +13,14 @@ setIllumosSourceDir() {
 # `command -v $CC` would resolve to cw itself. See the comment above
 # PRIMARY_CC_PATH in usr/src/Makefile.master.
 exportIllumosToolEnv() {
-  export ILLUMOS_CC="${CC:-}"
-  export ILLUMOS_LD="${LD:-}"
+  # Fall back to a bare tool name rather than the empty string. nixpkgs'
+  # bintools-wrapper never exports $LD, and an *empty* value is worse here than
+  # a merely imprecise one: Makefile.master passes the result through as
+  # `--linker $(BUILD_LD)`, so an empty expansion makes cw swallow the
+  # following `--primary` as the linker's argument and then fail with
+  # "A primary compiler must be specified".
+  export ILLUMOS_CC="${CC:-cc}"
+  export ILLUMOS_LD="${LD:-ld}"
 }
 
 cdIllumosPath() {

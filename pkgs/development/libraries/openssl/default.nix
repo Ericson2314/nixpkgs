@@ -151,10 +151,6 @@ let
           aarch64-darwin = "./Configure darwin64-arm64-cc";
           x86_64-linux = "./Configure linux-x86_64";
           x86_64-solaris = "./Configure solaris64-x86_64-gcc";
-          # illumos: `hostPlatform.system` is "x86_64-solaris2.11" for the
-          # x86_64-unknown-solaris2.11 triple, which the entry above does not
-          # match. Same OpenSSL target either way.
-          "x86_64-solaris2.11" = "./Configure solaris64-x86_64-gcc";
           powerpc-linux = "./Configure linux-ppc";
           powerpc64-linux = "./Configure linux-ppc64";
           riscv32-linux = "./Configure ${
