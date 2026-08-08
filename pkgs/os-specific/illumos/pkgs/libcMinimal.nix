@@ -101,6 +101,19 @@ mkDerivation {
     crt
   ];
 
+  # lib/libc/amd64/Makefile:1194 sets STACKPROTECT = none for the whole of
+  # libc, but the nixpkgs cc wrapper puts -fstack-protector-strong back, so it
+  # has to be turned off here as well.
+  #
+  # It matters for more than code size. With the stack protector on, every
+  # libc_pic.a member references __stack_chk_fail, which drags in ssp.o, which
+  # needs gethrtime(), which drags in clock_timer.o -- and that object also
+  # carries timer_create(), hence sigev_thread.o and with it pthreads, aio,
+  # syslog and stdio. A static link that should extract 69 objects extracts
+  # 309, and the ld.so.1 link then fails on some forty multiply-defined symbols
+  # (read, write, malloc, printf, mutex_lock, assfail) that rtld defines itself.
+  hardeningDisable = [ "stackprotector" ];
+
   env.NIX_CFLAGS_COMPILE = builtins.toString [
     "-B${crt}/lib"
     "-Wno-error"

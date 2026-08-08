@@ -1,5 +1,6 @@
 {
   lib,
+  buildPackages,
   mkDerivation,
 
   illumosSetupHook,
@@ -105,10 +106,28 @@ mkDerivation {
   '';
 
   # The onbld layout puts the tool under bin/$(MACH64). $ORIGIN in its runpath
-  # resolves from the real path, so a symlink at the conventional place still
-  # finds the libraries next to it.
+  # resolves from the real path, so exec'ing it from bin/ld still finds the
+  # libraries next to it.
+  #
+  # POSIXLY_CORRECT is essential, not cosmetic. illumos ld parses its command
+  # line with getopt(3), and glibc's getopt permutes argv so that non-option
+  # arguments end up *after* the options. `ld a.o -L/x -lfoo` is therefore
+  # silently reordered into `ld -L/x -lfoo a.o`, so every archive is searched
+  # before the objects that reference it, no archive member is ever extracted,
+  # and the link fails with "symbol referencing errors" naming symbols that are
+  # plainly present in the archive. (`ld -Dfiles` shows the archive being
+  # processed before the .o files.) POSIXLY_CORRECT makes glibc's getopt stop
+  # permuting and behave the way the Solaris one does.
+  #
+  # Shared-library-only links never trip over this, which is why libc and libm
+  # built fine for a long time before it surfaced in the ld.so.1 link.
   postFixup = ''
-    ln -s amd64/ld $out/bin/ld
+    cat > $out/bin/ld <<EOF
+    #!${buildPackages.runtimeShell}
+    export POSIXLY_CORRECT=1
+    exec "$out/bin/amd64/ld" "\$@"
+    EOF
+    chmod +x $out/bin/ld
   '';
 
   meta.platforms = lib.platforms.unix;
