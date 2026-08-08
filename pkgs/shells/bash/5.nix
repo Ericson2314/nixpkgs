@@ -120,11 +120,20 @@ lib.warnIf (withDocs != null)
         # https://lists.gnu.org/archive/html/bug-bash/2015-05/msg00071.html
         ./pgrp-pipe-5.patch
       ]
-      # Only platforms without `getpeername` in libc reach the broken
-      # `!HAVE_NETWORK` stub in `lib/sh/netopen.c`; keep the patch off everyone
-      # else's store path until it is upstreamed.
+      # Both of these are latent upstream bugs that only illumos has tripped
+      # over so far; they are kept off every other platform's store path until
+      # they are upstreamed.
       ++ lib.optionals stdenv.hostPlatform.isIllumos [
+        # Only platforms without `getpeername` reach the broken `!HAVE_NETWORK`
+        # stub in `lib/sh/netopen.c`. illumos no longer does now that
+        # `libsocket` is packaged, but keep the fix: the stub is still wrong,
+        # and `HAVE_NETWORK` is one failed `configure` probe away from
+        # vanishing again.
         ./netopen-no-network-includes.patch
+        # `support/Makefile.in` links the build-time `man2html` with
+        # `CC_FOR_BUILD` but passes it the host's `$(LIBS)`. illumos is where
+        # that first bites, because `LIBS` there contains `-lsocket -lnsl`.
+        ./support-libs-for-build.patch
       ];
 
     configureFlags = [
