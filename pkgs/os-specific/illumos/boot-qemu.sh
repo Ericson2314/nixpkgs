@@ -48,32 +48,44 @@
 # expect and want ("strplumb: failed to initialize drv/dld" -- the IP stack is
 # not packaged), and then consconfig().
 #
-# consconfig() completes with a working console, main() forks init, and init
-# runs. The whole thing ends like this, and the script exits 0 in about 15
-# seconds rather than sitting at a prompt:
+# consconfig() completes with a working console, main() forks init, init runs,
+# and init prints. The whole thing ends like this, and the script exits 0 in
+# about 15 seconds rather than sitting at a prompt:
 #
 #     strplumb: failed to initialize drv/dld
 #     NOTICE: MPO disabled because memory is interleaved
 #
+#
+#     *** HELLO FROM USERLAND: cross-built illumos init is running ***
 #     syncing file systems... done
 #
-# That last line is the uadmin() shutdown path, which is reachable only from
-# user mode: `illumos.init-stub` ends in uadmin(A_SHUTDOWN, AD_POWEROFF), so
-# the machine powers itself off and qemu exits. Two other checks agree, both
-# independent of the console: booting an init that is nothing but an infinite
-# userland `nop` loop parks every sampled register at RIP=0x40007c with CPL=3;
-# and the poweroff timing is unmistakable against the harness timeout.
+# The last line is the uadmin() shutdown path, reachable only from user mode:
+# `illumos.init-stub` ends in uadmin(A_SHUTDOWN, AD_POWEROFF), so the machine
+# powers itself off and qemu exits. Two other checks agree, both independent of
+# the console: an init that is nothing but an infinite userland `nop` loop
+# parks every sampled register at RIP=0x40007c with CPL=3, and the poweroff
+# timing is unmistakable against the harness timeout.
 #
-# What is *not* there yet is a console for userland. /dev/console does not
-# exist -- probing it from init gives ENOENT -- because /dev is the `dev`
-# filesystem and the node is normally created by devfsadm(8), which needs a
-# userland we do not have. The devices themselves are fine:
-# /devices/pseudo/wc@0:wscons and /devices/pseudo/iwscn@0:iwscn both open, and
-# writes to them return the full byte count, but the data does not come out of
-# the port. Kernel messages are unaffected because they take the prom_putchar()
-# path instead. So a demo can read the kernel's output but cannot yet print
-# from a process; that is the next thing to fix, and it is a much smaller
-# problem than what it replaced.
+# Note that init does *not* print via /dev/console, and cannot:
+#
+#   * /dev/console does not exist. devfsadm(8) creates it, and there is no
+#     userland to run devfsadm. It cannot be baked into the boot image either,
+#     for two independent reasons: /dev is a mount point -- vfs_mountdev1()
+#     (common/fs/vfs.c:767) mounts the `dev` filesystem over it -- so anything
+#     underneath is shadowed; and a root hsfs is read as plain iso9660 (see
+#     below), which cannot represent a symlink at all.
+#   * /devices/pseudo/iwscn@0:iwscn opens and its writes return the full byte
+#     count, but nothing comes out. With console=ttya this is the CONSOLE_TIP
+#     case in consconfig_dacf.c -- stdin is not a keyboard and is the same
+#     device as stdout -- and there `rconsvp` is the serial device itself, not
+#     the indirect console. iwscn redirects to the workstation console, which
+#     has no framebuffer under it here, so it discards.
+#
+# So init walks a list of candidates and writes to each one that opens; the one
+# that actually reaches the port is the device node,
+# /devices/pci@0,0/isa@1/asy@1,3f8:a on qemu's default i440fx. That is
+# chipset-specific, which is the honest reason devfsadm exists. Packaging it
+# (libdevinfo, libdevice, the link-generator modules) is the real fix.
 #
 # (Two historical notes, because both cost real time and both are the kind of
 # failure that looks like something else.
