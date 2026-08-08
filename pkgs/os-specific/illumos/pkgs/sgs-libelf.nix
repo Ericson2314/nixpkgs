@@ -6,10 +6,10 @@
   make,
   install,
   cw,
-  ld-native,
+  ld,
   gnum4,
 
-  sgs-ld,
+  ld-wrapper,
   sgs-libconv,
 
   crt,
@@ -54,7 +54,7 @@ mkDerivation {
     make
     install
     cw
-    ld-native
+    ld
     # xlate.c and xlate64.c are generated from .m4 sources.
     gnum4
     (buildPackages.writeShellScriptBin "arch" "echo i386")
@@ -83,15 +83,15 @@ mkDerivation {
     "MACH=i386"
     "MACH64=amd64"
     "M4=m4"
-    "ONBLD_TOOLS=${buildPackages.illumos.ld-native}"
+    "ONBLD_TOOLS=${buildPackages.illumos.ld}"
     "CONVLIBDIR=-L${sgs-libconv}/lib"
     "CONVLIBDIR64=-L${sgs-libconv}/lib"
-    "LD=${sgs-ld}"
+    "LD=${ld-wrapper}"
   ];
 
   # Makefile.lib's default BUILD.SO links through the compiler driver, i.e. GNU
   # ld, which rejects the Solaris flags in DYNFLAGS. Link with illumos ld
-  # instead; sgs-ld splits the -Wl, prefixes DYNFLAGS carries.
+  # instead; ld-wrapper splits the -Wl, prefixes DYNFLAGS carries.
   preBuild = ''
     makeFlagsArray+=("BUILD.SO=\$(LD) -o \$@ \$(GSHARED) \$(DYNFLAGS) \$(PICS) \$(EXTPICS) -L${libcMinimal}/lib -L${libssp_ns}/lib \$(LDLIBS)")
   '';

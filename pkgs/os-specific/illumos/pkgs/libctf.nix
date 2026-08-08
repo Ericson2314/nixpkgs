@@ -1,5 +1,6 @@
 {
   lib,
+  stdenv,
   mkDerivation,
 
   cw,
@@ -8,23 +9,30 @@
   buildPackages,
 }:
 
-# The native build of libctf, from usr/src/tools/ctf/libctf.
+# libctf, the CTF container library that ctfconvert(1) and ctfmerge(1) link
+# against.
 #
-# This is *not* the illumos-target libctf under usr/src/lib/libctf; it is the
-# same source compiled for the build host, which is what ctfconvert(1) and
-# ctfmerge(1) link against. Hence the `-native` suffix.
+# One attribute, two source trees, chosen by the platform being built for --
+# the same arrangement as ld.nix, explained at length there. The platform comes
+# from the package set, not from the name: `buildPackages.illumos.libctf` is
+# the build-host build (usr/src/tools/ctf/libctf -- the only one the CTF tools
+# can use here), and `illumos.libctf` in a cross set is the illumos-hosted one
+# under usr/src/lib/libctf. Do not put the platform back in the attribute name.
 #
-# Like the rest of tools/ctf this is a build-host program, so it uses `noCC`
-# plus the host compiler via `depsBuildBuild` and never touches the illumos
-# cross toolchain.
+# Like the rest of tools/ctf the build-host form is a build-host program, so it
+# uses `noCC` plus the host compiler via `depsBuildBuild` and never touches the
+# illumos cross toolchain.
+let
+  forIllumos = stdenv.hostPlatform.isSunOS;
+in
 mkDerivation {
-  pname = "libctf-native";
+  pname = "libctf";
   noCC = true;
 
   # Entered directly rather than through ../Makefile's `SUBDIRS = $(MACH)`
   # recursion, which does not forward $ROOTONBLD to the sub-make. Despite the
   # directory name the build is 64-bit; see tools/ctf/Makefile.ctf.native.
-  path = "usr/src/tools/ctf/libctf/i386";
+  path = if forIllumos then "usr/src/lib/libctf/amd64" else "usr/src/tools/ctf/libctf/i386";
   extraPaths = [
     "usr/src/Makefile.master"
     "usr/src/Makefile.master.64"

@@ -4,7 +4,7 @@
 
   cw,
   libdwarf,
-  libctf-native,
+  libctf,
 
   buildPackages,
 }:
@@ -57,9 +57,9 @@ mkDerivation {
   # cc-wrapper picks up from a depsBuildBuild entry, so point at them by hand.
   # These are the build-platform spellings of NIX_LDFLAGS.
   NIX_LDFLAGS_FOR_BUILD = toString [
-    "-L${libctf-native}/lib/i386"
+    "-L${libctf}/lib/i386"
     "-rpath"
-    "${libctf-native}/lib/i386"
+    "${libctf}/lib/i386"
     "-L${libdwarf}/lib/i386"
     "-rpath"
     "${libdwarf}/lib/i386"

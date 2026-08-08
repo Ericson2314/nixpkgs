@@ -3,7 +3,7 @@
   mkDerivation,
 
   cw,
-  onbld-native,
+  onbld-compat,
   buildPackages,
 }:
 
@@ -76,7 +76,7 @@ mkDerivation {
     # because the value contains a space.
     makeFlagsArray+=("CPPFLAGS=-D_TS_ERRNO -I$SRC/common/lz4")
 
-    export NIX_CFLAGS_COMPILE_FOR_BUILD="$NIX_CFLAGS_COMPILE_FOR_BUILD -I${onbld-native}/include -include ${onbld-native}/include/native_compat.h"
+    export NIX_CFLAGS_COMPILE_FOR_BUILD="$NIX_CFLAGS_COMPILE_FOR_BUILD -I${onbld-compat}/include -include ${onbld-compat}/include/native_compat.h"
   '';
 
   postFixup = ''

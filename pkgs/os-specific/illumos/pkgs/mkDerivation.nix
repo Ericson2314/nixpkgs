@@ -13,11 +13,11 @@
   version,
 
   # Only forced by packages that opt into `illumosLib` below, so the bootstrap
-  # packages that build *these* (headers, cw, ld-native) can keep using
-  # mkDerivation without tying the knot.
+  # packages that build *these* (headers, cw, ld) can keep using mkDerivation
+  # without tying the knot.
   buildPackages,
   cw,
-  ld-native,
+  ld-wrapper,
   headers,
 }:
 
@@ -28,20 +28,6 @@ let
     (buildPackages.writeShellScriptBin "arch" "echo i386")
     (buildPackages.writeShellScriptBin "mach" "echo i386")
   ];
-
-  # This must name the *build-platform* ld explicitly. Splicing only rewrites
-  # nativeBuildInputs, not string interpolation, so a bare `${ld-native}` would
-  # pull in the target-platform build -- whose stdenv needs the very libc we
-  # are building, giving infinite recursion.
-  #
-  # It is wrapped to clear SGS_SUPPORT: dmake sets that for .KEEP_STATE so the
-  # link-editor dlopen()s libmakestate.so.1 to record dependencies. We have no
-  # such support library, and ld's dlopen uses illumos-only mode flags that
-  # glibc rejects outright ("invalid mode parameter").
-  illumosLdWrapper = buildPackages.writeShellScript "illumos-ld" ''
-    unset SGS_SUPPORT SGS_SUPPORT_32 SGS_SUPPORT_64
-    exec ${buildPackages.illumos.ld-native}/bin/ld "$@"
-  '';
 
   # The makefile fragments read by every usr/src/lib/* build before it reaches
   # its own Makefile.
@@ -134,6 +120,14 @@ lib.makeOverridable (
 
     # Link through illumos' own link-editor. On by default for `illumosLib`;
     # a static-only library (libssp_ns) never links anything and turns it off.
+    #
+    # This adds only the `LD=` macro, not a `nativeBuildInputs` entry. `ld`
+    # used to be in both; dropping the PATH entry was verified to leave
+    # libc.so.1, libm.so.2, libpthread.so.1 and libc_pic.a bit-identical,
+    # because `LD=` names the wrapper by absolute path and nothing here ever
+    # resolves a bare `ld` off PATH. Note the consequence: the only `ld` on
+    # PATH is the cross binutils one, so a makefile that did start calling
+    # `ld` unqualified would get GNU ld rather than illumos'.
     useLd = attrs.illumosLd or isLib;
 
     # Produce real CTF rather than stubbing the post-processing out. Opt-in:
@@ -168,7 +162,6 @@ lib.makeOverridable (
         install
       ]
       ++ lib.optionals isLib ([ cw ] ++ archStubs)
-      ++ lib.optional useLd ld-native
       ++ (attrs.extraNativeBuildInputs or [ ]);
 
       COMPONENT_PATH = attrs.path or null;
@@ -202,7 +195,7 @@ lib.makeOverridable (
       makeFlags =
         libMakeFlags
         ++ (if enableCtf then ctfMakeFlags else noCtfMakeFlags)
-        ++ lib.optional useLd "LD=${illumosLdWrapper}"
+        ++ lib.optional useLd "LD=${ld-wrapper}"
         ++ attrs.makeFlags or [ ];
     }
   )

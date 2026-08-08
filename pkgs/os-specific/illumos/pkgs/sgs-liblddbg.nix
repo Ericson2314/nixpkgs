@@ -6,9 +6,9 @@
   make,
   install,
   cw,
-  ld-native,
+  ld,
 
-  sgs-ld,
+  ld-wrapper,
   sgs-libconv,
 
   crt,
@@ -55,7 +55,7 @@ mkDerivation {
     make
     install
     cw
-    ld-native
+    ld
     (buildPackages.writeShellScriptBin "arch" "echo i386")
     (buildPackages.writeShellScriptBin "mach" "echo i386")
   ];
@@ -81,10 +81,10 @@ mkDerivation {
     "CPPFLAGS.first=-I${headers}/include"
     "MACH=i386"
     "MACH64=amd64"
-    "ONBLD_TOOLS=${buildPackages.illumos.ld-native}"
+    "ONBLD_TOOLS=${buildPackages.illumos.ld}"
     "CONVLIBDIR=-L${sgs-libconv}/lib"
     "CONVLIBDIR64=-L${sgs-libconv}/lib"
-    "LD=${sgs-ld}"
+    "LD=${ld-wrapper}"
   ];
 
   # See sgs-libelf.nix: Makefile.lib's default BUILD.SO links through the

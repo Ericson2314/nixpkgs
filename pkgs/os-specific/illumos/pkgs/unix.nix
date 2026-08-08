@@ -8,7 +8,8 @@
   make,
   install,
   cw,
-  ld-native,
+  ld,
+  ld-wrapper,
   ctfconvert,
   ctfmerge,
   ctfstabs,
@@ -60,7 +61,7 @@ mkDerivation {
     cw
     # $(LD) is illumos' own: the kernel mapfiles are `$mapfile_version 2` and
     # the module link needs -ztype=kmod, neither of which GNU ld has.
-    ld-native
+    ld
     # Every object gets a CTF section, and genunix is the uniquification
     # source for the rest of the kernel.
     ctfconvert
@@ -98,22 +99,16 @@ mkDerivation {
     "MACH=i386"
     "MACH64=amd64"
 
-
-    # See the LD note in libcMinimal.nix. Two things are going on: this must
-    # name the *build platform* link-editor explicitly (splicing does not
-    # rewrite string interpolation), and it must be wrapped to clear
-    # SGS_SUPPORT, which dmake sets for .KEEP_STATE and which makes ld
-    # dlopen() a support library with illumos-only mode flags.
+    # The one shared wrapper; see ld-wrapper.nix. It clears SGS_SUPPORT, which
+    # dmake sets for .KEEP_STATE and which makes ld dlopen() a support library
+    # with illumos-only mode flags. Its `-Wl,` splitting is a no-op here: the
+    # uts makefiles invoke $(LD) directly rather than through a compiler
+    # driver, so nothing arrives `-Wl,`-prefixed.
     #
     # A command-line macro is required rather than an environment variable:
     # uts/Makefile.uts:127 assigns LD = $(LD_$(MACH)_$(CLASS)), which would
     # otherwise win over the environment.
-    "LD=${
-      buildPackages.writeShellScript "illumos-ld" ''
-        unset SGS_SUPPORT SGS_SUPPORT_32 SGS_SUPPORT_64
-        exec ${buildPackages.illumos.ld-native}/bin/ld "$@"
-      ''
-    }"
+    "LD=${ld-wrapper}"
 
     # uts/i86pc/Makefile.rules:326 feeds `$(NM) -u` into awk and takes the
     # symbol name from $1. GNU nm's default format puts the symbol last
@@ -147,11 +142,9 @@ mkDerivation {
     # for source-debug builds (Makefile.master:980).
     "STRIP_STABS=:"
 
-    "NM=${
-      buildPackages.writeShellScript "illumos-nm" ''
-        exec ${stdenv.cc.bintools.bintools}/bin/${stdenv.cc.targetPrefix}nm --format=posix "$@"
-      ''
-    }"
+    "NM=${buildPackages.writeShellScript "illumos-nm" ''
+      exec ${stdenv.cc.bintools.bintools}/bin/${stdenv.cc.targetPrefix}nm --format=posix "$@"
+    ''}"
   ];
 
   # genassym.c reaches <sys/cmn_err.h>, whose __KPRINTFLIKE expands to
