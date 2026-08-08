@@ -173,7 +173,11 @@ mkdir -p "$work/ba/etc" "$work/iso/boot/grub" \
 # /platform/i86pc/kernel /kernel /usr/kernel", and a couple of modules install
 # themselves under $(USR_EXEC_DIR) rather than the root one -- shbinexec, for
 # instance.)
-cp -RL --no-preserve=mode "$unix/kernel" "$unix/platform" "$unix/usr" "$work/ba/"
+# --preserve=mode, because with Rock Ridge the image carries real permissions
+# and anything that has to be exec'd needs its mode bit to survive the copy.
+# The store is read-only, so make the staging tree writable again afterwards.
+cp -RL --preserve=mode "$unix/kernel" "$unix/platform" "$unix/usr" "$work/ba/"
+chmod -R u+w "$work/ba/kernel" "$work/ba/platform" "$work/ba/usr"
 cp "$src/uts/intel/os/name_to_sysnum" "$src/uts/intel/os/minor_perm" \
    "$src/uts/intel/os/dacf.conf" "$work/ba/etc/"
 # /etc/driver_aliases is written by add_drv(8) from the `alias=` attributes on
@@ -244,32 +248,22 @@ mkdir -p "$work/ba/dev" "$work/ba/devices" "$work/ba/proc" "$work/ba/tmp" \
 # is "/sbin/init" (uts/common/os/main.c:140).
 install -Dm755 "$init/sbin/init" "$work/ba/sbin/init"
 
-# The flags here are not cosmetic; each one is load-bearing.
-#
-# -R  Rock Ridge. krtld's standalone reader (common/fs/hsfs.c, which parses
-#     SUSP/RRIP) uses it, so every module loaded *before* the root mount is
-#     found by its real lowercase name.
+# -R  Rock Ridge: real names, POSIX modes and ownership, and symbolic links.
+#     Both readers use it -- krtld's standalone one (common/fs/hsfs.c) for
+#     everything loaded before the root mount, and the hsfs module afterwards.
 # -D  do not relocate directories deeper than iso9660's eight-level limit,
 #     which platform/i86pc/kernel/drv/amd64/<drv> is right up against.
 #
-# After the root mount, though, Rock Ridge is *off*: hsfs_mountroot() calls
-# hs_mountfs() with mount_flags = 1, and 1 is HSFSMNT_NORRIP
-# (uts/common/sys/fs/hsfs_rrip.h:41). So a root hsfs is always read as plain
-# iso9660, and every post-root modload() sees the ISO names, not the RR ones.
-# hs_dirlook() (uts/common/fs/hsfs/hsfs_node.c) upper-cases the name it is
-# given before comparing, so "kernel" finds "KERNEL" and directories are fine
-# -- but the default ISO rendering of a file is "CTFS.;1", with a trailing
-# period and a version suffix, and "CTFS" does not match that. Hence:
-#
-# -d           omit the trailing period from names that have no extension
-# -N           omit the ";1" version suffix
-# -iso-level 2 allow names longer than 8.3, for driver_aliases,
-#              name_to_sysnum, pci_autoconfig and friends
-#
-# Without those three the root mounts, the directory walk works, and then
-# every single module load fails with ENOENT -- which reads like a broken
-# filesystem and is really just filename translation.
-"$xorriso/bin/xorrisofs" -R -D -d -N -iso-level 2 \
+# Rock Ridge on the *root* needs the `uts: mount the root hsfs with Rock Ridge`
+# patch: hsfs_mountroot() otherwise calls hs_mountfs() with mount_flags = 1,
+# which is HSFSMNT_NORRIP (uts/common/sys/fs/hsfs_rrip.h:41), so a root hsfs is
+# read as plain iso9660 no matter what the medium carries. Without that patch
+# this needs `-d -N -iso-level 4` instead, because plain iso9660 renders a file
+# called `ctfs` as `CTFS.;1` and caps names well below the ~50 characters a nix
+# store directory needs -- and even then there are no symlinks and no modes, so
+# every symlink has to be materialised as a full copy of its target. That cost
+# the boot archive about half its size before this patch landed.
+"$xorriso/bin/xorrisofs" -R -D \
     -o "$work/iso/platform/i86pc/boot_archive" \
     "$work/ba" >"$work/mkarchive.log" 2>&1
 
