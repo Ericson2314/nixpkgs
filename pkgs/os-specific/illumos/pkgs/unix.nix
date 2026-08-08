@@ -366,6 +366,104 @@ mkDerivation {
     # ufs links -Nfs/specfs -Nmisc/fssnap_if.
     "intel/fssnap_if"
     "intel/ufs"
+
+    # ...and hsfs, which is what we actually root on. The boot archive reaches
+    # the kernel as a ramdisk whose block device (/ramdisk:a) is the loaded
+    # module byte for byte -- impl_setup_ddi() (i86pc/os/ddi_impl.c) just hands
+    # ramdisk_start/ramdisk_end to drv/ramdisk as its "existing" property, and
+    # nothing anywhere unpacks anything. So the archive has to *be* a
+    # filesystem image. Of the formats bootadm(8) knows (bam_formats[] in
+    # cmd/boot/bootadm/bootadm.c: hsfs, ufs, cpio, ufs-nocompress), hsfs is the
+    # only one we can produce here: mkfs_ufs is a target program that cannot
+    # run on the Linux build host, and cpio is readable only by krtld's
+    # bcpio_ops -- there is no cpio entry in common/os/vfs_conf.c, so a cpio
+    # archive can never be a root filesystem.
+    #
+    # hsfs_mountroot() (common/fs/hsfs/hsfs_vfsops.c:1457) takes its device
+    # from plain getrootdev(), with nothing CD-specific about it, so rooting on
+    # an iso9660 image in the ramdisk needs no disk driver stack at all. The
+    # standalone reader krtld uses before the root mount is already linked into
+    # unix (hsfs.o is in KRTLD_OBJS, uts/intel/Makefile.files:172, and
+    # bhsfs_ops is in bfs_tab[] in common/krtld/bootrd.c).
+    #
+    # hsfs links -Nfs/specfs, which is already above.
+    "intel/hsfs"
+
+    # vfs_mountroot() does not stop at the root: it goes on to mount the
+    # kernel's own synthetic filesystems (common/fs/vfs.c vfs_mountroot ->
+    # vfs_mountdevices/vfs_mountfs). Each missing one is only a WARNING, but
+    # they are cheap and everything above init expects them:
+    #   ctfs    /system/contract
+    #   objfs   /system/object
+    #   bootfs  /system/boot
+    #   mntfs   /etc/mnttab
+    #   sharefs /etc/dfs/sharetab
+    #   tmpfs   /etc/svc/volatile
+    "intel/ctfs"
+    "intel/objfs"
+    "intel/bootfs"
+    "intel/mntfs"
+    "intel/sharefs"
+    "intel/tmpfs"
+
+    # main() (common/os/main.c:535) calls strplumb() unconditionally on a
+    # non-networked boot. strplumb() is a *stub* (common/os/modstubs.S), so an
+    # absent misc/strplumb is not a soft failure -- mod_hold_stub() panics with
+    # "Couldn't load stub module misc/strplumb". The module itself has no -N
+    # dependencies; it modloads the IP stack (dld, ip, tcp, udp, icmp, arp,
+    # timod) at run time and merely prints "strplumb: failed to initialize ..."
+    # when they are absent, which is what we want until networking is packaged.
+    "intel/strplumb"
+
+    # consconfig() (main.c:545) is a stub as well, so misc/consconfig is
+    # another panic-if-absent. Its -N chain is the awkward part:
+    #   consconfig       -> dacf/consconfig_dacf
+    #   consconfig_dacf  -> misc/usbser  (for a USB serial console)
+    #   usbser           -> misc/usba
+    #   vgatext          -> misc/gfx_private
+    # krtld resolves -N dependencies at modload() time whether or not the
+    # hardware exists, so the USB serial stack has to be here even though the
+    # console is a 16550 on ttya.
+    "intel/usba"
+    "intel/usbser"
+    "i86pc/gfx_private"
+    "i86pc/consconfig_dacf"
+    "intel/consconfig"
+
+    # ...and the modules consconfig_dacf plumbs at run time rather than links
+    # against: the terminal emulator and the workstation console behind
+    # /dev/console, the STREAMS modules every console line gets pushed
+    # (ptem, ldterm, ttcompat), the keyboard and mouse, and asy(4D), which is
+    # the actual 16550 that the -B console=ttya on the kernel command line
+    # names.
+    "intel/tem"
+    "intel/wc"
+    "intel/vgatext"
+    "intel/kbtrans"
+    "intel/conskbd"
+    "intel/kb8042"
+    "intel/consms"
+    "intel/mouse8042"
+    "intel/ptem"
+    "intel/ldterm"
+    "intel/ttcompat"
+    "intel/asy"
+
+    # cons_build_upper_layer() (common/io/consconfig_dacf.c:836 onwards) opens
+    # four pseudo devices by path and panics on each one it cannot find:
+    # /pseudo/conskbd@0:conskbd, /pseudo/consms@0:mouse, /pseudo/wc@0:wscons
+    # and /pseudo/iwscn@0:iwscn (the indirect console redirection device, which
+    # is what /dev/console ends up pointing at). The first three come from
+    # conskbd/consms/wc above; iwscn is its own driver.
+    "intel/iwscn"
+    "intel/redirmod"
+
+    # STREAMS housekeeping that anything opening a console line wants:
+    # clone(4D) for /dev/xxx clone opens, sad(4D) for autopush, log(4D) for
+    # strlog()/syslog.
+    "intel/clone"
+    "intel/sad"
+    "intel/log"
   ];
 
   installPhase = ''
