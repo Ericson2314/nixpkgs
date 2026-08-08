@@ -477,6 +477,26 @@ mkDerivation {
     "intel/elfexec"
     "intel/intpexec"
     "intel/shbinexec"
+
+    # The PCI nexus drivers. Without these the devinfo tree has *no attached
+    # hardware at all* -- /devices contains only `pseudo`, and probing from
+    # userland shows /devices/isa and /devices/pci@0,0 both ENOENT. The bus
+    # probe that impl_bus_initialprobe() runs (pci_autoconfig's, registered
+    # through impl_bus_add_probe) does create the nodes, but a node with no
+    # driver to attach never appears in devfs and can have no children -- so
+    # there is no ISA bridge, and therefore no asy(4D), and therefore nothing
+    # for consconfig() to plumb the console onto.
+    #
+    # Both root nexus drivers, because which one binds depends on the emulated
+    # chipset: npe is the PCI Express one (alias pciex_root_complex, so q35),
+    # pci is the legacy one (class "pci", so qemu's default i440fx). pcieb is
+    # the PCI-to-PCI bridge driver, and pci needs misc/pcihp, which needs
+    # misc/hpcsvc.
+    "i86pc/npe"
+    "intel/hpcsvc"
+    "intel/pcihp"
+    "i86pc/pci"
+    "intel/pcieb"
   ];
 
   installPhase = ''

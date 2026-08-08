@@ -5,10 +5,11 @@
  * which is ported yet.
  *
  * This does get exec'd and does execute.  The console writes below are *not*
- * how that is checked, though -- console output, kernel and user alike, goes
- * nowhere after consconfig(); see the log in boot-qemu.sh.  The
- * uadmin(A_SHUTDOWN, AD_POWEROFF) at the end is the check: the machine powers
- * itself off and qemu exits.
+ * how that is checked, though: /dev/console does not exist yet (devfsadm(8)
+ * creates it, and there is no userland to run it), and writes to the wscons
+ * and iwscn device nodes report success but do not reach the port.  See the
+ * log in boot-qemu.sh.  The uadmin(A_SHUTDOWN, AD_POWEROFF) at the end is the
+ * check: the machine powers itself off and qemu exits.
  *
  * Freestanding on purpose: raw `syscall` traps, so nothing here depends on
  * libc, crt1.o or ld.so.1.  Syscall numbers are from

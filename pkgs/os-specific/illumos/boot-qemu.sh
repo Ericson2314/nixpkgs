@@ -48,54 +48,56 @@
 # expect and want ("strplumb: failed to initialize drv/dld" -- the IP stack is
 # not packaged), and then consconfig().
 #
-# consconfig() completes, main() forks init, and init runs: `/sbin/init` is
-# exec'd and executes user instructions. Two independent checks, because the
-# console makes this much harder to see than it should be (below):
-#
-#   * `illumos.init-stub` ends in uadmin(A_SHUTDOWN, AD_POWEROFF). The machine
-#     powers off and qemu exits after about 13 seconds instead of sitting
-#     there until the harness kills it. Nothing but that syscall does that.
-#   * Booting an init that is nothing but an infinite userland `nop` loop and
-#     sampling registers through the qemu monitor gives RIP=0x000000000040007c
-#     at CPL=3 -- the process's own text, in user mode.
-#
-# and the kernel says so itself, if you can see it: with prom_io_use_kernel()
-# stubbed out (below) the tail of the boot is
+# consconfig() completes with a working console, main() forks init, and init
+# runs. The whole thing ends like this, and the script exits 0 in about 15
+# seconds rather than sitting at a prompt:
 #
 #     strplumb: failed to initialize drv/dld
 #     NOTICE: MPO disabled because memory is interleaved
 #
 #     syncing file systems... done
 #
-# -- the uadmin() shutdown path, reached only from user mode.
+# That last line is the uadmin() shutdown path, which is reachable only from
+# user mode: `illumos.init-stub` ends in uadmin(A_SHUTDOWN, AD_POWEROFF), so
+# the machine powers itself off and qemu exits. Two other checks agree, both
+# independent of the console: booting an init that is nothing but an infinite
+# userland `nop` loop parks every sampled register at RIP=0x40007c with CPL=3;
+# and the poweroff timing is unmistakable against the harness timeout.
 #
-# The one thing that is still wrong, and the thing to fix next: **after
-# consconfig(), kernel console output goes nowhere.** The last line you see on
-# either console is the strplumb one, on serial and on VGA alike (checked by
-# screendumping the VGA text console through the qemu monitor during a
-# serial-console boot, and by booting with the console on VGA instead). It is
-# not a hang -- everything above still happens, silently.
+# What is *not* there yet is a console for userland. /dev/console does not
+# exist -- probing it from init gives ENOENT -- because /dev is the `dev`
+# filesystem and the node is normally created by devfsadm(8), which needs a
+# userland we do not have. The devices themselves are fine:
+# /devices/pseudo/wc@0:wscons and /devices/pseudo/iwscn@0:iwscn both open, and
+# writes to them return the full byte count, but the data does not come out of
+# the port. Kernel messages are unaffected because they take the prom_putchar()
+# path instead. So a demo can read the kernel's output but cannot yet print
+# from a process; that is the next thing to fix, and it is a much smaller
+# problem than what it replaced.
 #
-# The mechanism is understood. console_putchar() falls back to prom_putchar()
-# until a user process has the console stream open, prom_putchar() goes through
-# `sysp`, and consconfig_init_input() calls prom_io_use_kernel()
-# (common/io/consconfig_dacf.c:1499) which repoints `sysp` at kern_sysp --
-# sysp_putchar/sysp_getchar/sysp_ischar in uts/i86pc/os/machdep.c, all of which
-# route to cons_polledio. In this configuration that polled console does not
-# reach the emulated 16550, so output is dropped on the floor and input never
-# arrives. Stubbing prom_io_use_kernel() out to a no-op, so that `sysp` stays
-# on the boot console, brings every message back; that is a debugging hack, not
-# a fix, but it is how the ENOEXEC below was found, and it is worth a couple of
-# minutes to anyone debugging anything past this point.
+# (Two historical notes, because both cost real time and both are the kind of
+# failure that looks like something else.
 #
-# (Historical note, because it cost real time: before exec/elfexec was
-# packaged, this same silence hid an exec failure. The kernel was busy-looping
-# in sysp_ischar() from prom_getchar(), reached from prom_reboot_prompt() via
-# prom_exit_to_mon() from halt("unix: Could not start init") -- confirmed by
-# attaching gdb to the qemu gdbstub, where the backtrace showed
-# prom_reboot_prompt on a thread_start stack, i.e. the init thread rather than
-# main()'s. With prom_io_use_kernel() stubbed, the kernel says so itself:
-# "WARNING: exec(/sbin/init) failed with errno 8".)
+# Until the PCI nexus drivers below were packaged, *all* console output stopped
+# dead at consconfig() -- on serial and on VGA alike, checked by screendumping
+# the VGA text console through the qemu monitor during a serial-console boot.
+# The mechanism: console_putchar() falls back to prom_putchar() until a user
+# process holds the console stream, prom_putchar() goes through `sysp`, and
+# consconfig_init_input() repoints `sysp` at kern_sysp
+# (common/io/consconfig_dacf.c:1499), whose sysp_putchar/sysp_ischar route to
+# cons_polledio -- and with no serial port in the device tree there was no
+# polled console to route to. It presented as a hang, and it was not one.
+#
+# And before exec/elfexec was packaged, that same silence hid an exec failure.
+# The kernel was busy-looping in sysp_ischar() from prom_getchar(), reached
+# from prom_reboot_prompt() via prom_exit_to_mon() from halt("unix: Could not
+# start init"). That was pinned down by attaching gdb to the qemu gdbstub --
+# `target remote :1234` with $unix/platform/i86pc/kernel/amd64/unix as the
+# symbol file -- where the backtrace showed prom_reboot_prompt on a
+# thread_start stack, i.e. the init thread rather than main()'s, which pointed
+# at init rather than at the console. Temporarily stubbing prom_io_use_kernel()
+# to a no-op then let the kernel say it outright: "WARNING: exec(/sbin/init)
+# failed with errno 8". Both tricks are worth remembering.)
 #
 # Notes:
 #
@@ -161,8 +163,7 @@ mkdir -p "$work/ba/etc" "$work/iso/boot/grub" \
 # instance.)
 cp -RL --no-preserve=mode "$unix/kernel" "$unix/platform" "$unix/usr" "$work/ba/"
 cp "$src/uts/intel/os/name_to_sysnum" "$src/uts/intel/os/minor_perm" \
-   "$src/uts/intel/os/driver_classes" "$src/uts/intel/os/dacf.conf" \
-   "$work/ba/etc/"
+   "$src/uts/intel/os/dacf.conf" "$work/ba/etc/"
 # /etc/driver_aliases is written by add_drv(8) from the `alias=` attributes on
 # the `driver` actions in the packaging manifests, so it has to be synthesised
 # too. These are copied verbatim from the gate:
@@ -176,7 +177,20 @@ asy "pci11c1,480"
 isa "pciclass,060100"
 kb8042 "pnpPNP,303"
 mouse8042 "pnpPNP,f03"
+npe "pciex_root_complex"
+pcieb "pciexclass,060400"
+pcieb "pciexclass,060401"
 pseudo "zconsnex"
+EOF
+
+# /etc/driver_classes is the third file add_drv(8) owns, and the copy in the
+# gate (uts/intel/os/driver_classes) is a zero-byte placeholder. Two entries
+# matter, both from `class=` attributes in the manifests rather than aliases:
+# `pci` (system-kernel-platform.p5m:190) and `isa` (:188). read_class_file()
+# in uts/common/os/modsysfile.c parses this as "<driver> <class>" pairs.
+cat >"$work/ba/etc/driver_classes" <<'EOF'
+pci	pci
+isa	sysbus
 EOF
 : >"$work/ba/etc/system"
 echo '#' >"$work/ba/etc/path_to_inst"
