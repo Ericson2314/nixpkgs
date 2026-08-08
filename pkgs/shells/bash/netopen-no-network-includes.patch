@@ -1,0 +1,29 @@
+All of netopen.c's `#include`s sit inside the `#if defined (HAVE_NETWORK)`
+block, but the `#else` branch still calls `internal_error()` and `_()`.  With a
+compiler that treats implicit function declarations as an error -- which GCC 14
+and any C23 mode do -- that branch fails to compile:
+
+    netopen.c:332:3: error: implicit declaration of function 'internal_error'
+    netopen.c:332:19: error: implicit declaration of function '_'
+
+Platforms with a full sockets API never take this branch, which is why it has
+rotted unnoticed.  illumos does take it: `getpeername` lives in `libsocket`
+rather than `libc`, so bash's `AC_CHECK_FUNCS([getpeername])` fails and
+`config-bot.h` leaves `HAVE_NETWORK` undefined.
+
+Pull in the three headers the stub actually needs.
+
+--- lib/sh/netopen.c
++++ lib/sh/netopen.c
+@@ -326,6 +326,11 @@
+ 
+ #else /* !HAVE_NETWORK */
+ 
++#include <stdio.h>
++#include <bashansi.h>
++#include <bashintl.h>
++#include <shell.h>
++
+ int
+ netopen (char *path)
+ {
