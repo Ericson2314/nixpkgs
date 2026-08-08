@@ -464,6 +464,19 @@ mkDerivation {
     "intel/clone"
     "intel/sad"
     "intel/log"
+
+    # And the thing that actually runs a program. The exec switch
+    # (common/os/exec.c) is entirely modular -- there is no ELF support
+    # compiled into genunix at all -- so without exec/elfexec, gexec() finds no
+    # handler for the file it just opened and leaves through its `bad:` label,
+    # where `if (error == 0) error = ENOEXEC` (exec.c:999). exec_init() then
+    # reports "exec(/sbin/init) failed with errno 8" and start_init() calls
+    # halt("unix: Could not start init") -- a silent hang, not a panic.
+    # intpexec and shbinexec are the `#!` and shared-binary handlers; nothing
+    # needs them yet, but any real userland will.
+    "intel/elfexec"
+    "intel/intpexec"
+    "intel/shbinexec"
   ];
 
   installPhase = ''
