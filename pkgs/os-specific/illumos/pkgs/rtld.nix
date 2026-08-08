@@ -6,9 +6,9 @@
   make,
   install,
   cw,
-  ld-native,
+  ld,
 
-  sgs-ld,
+  ld-wrapper,
   sgs-libconv,
   sgs-liblddbg,
   sgs-librtld,
@@ -78,7 +78,7 @@ mkDerivation {
     make
     install
     cw
-    ld-native
+    ld
     (buildPackages.writeShellScriptBin "arch" "echo i386")
     (buildPackages.writeShellScriptBin "mach" "echo i386")
   ];
@@ -117,7 +117,7 @@ mkDerivation {
     "CPPFLAGS.first=-I${headers}/include"
     "MACH=i386"
     "MACH64=amd64"
-    "ONBLD_TOOLS=${buildPackages.illumos.ld-native}"
+    "ONBLD_TOOLS=${buildPackages.illumos.ld}"
 
     # Makefile.com resolves each of these to a sibling build directory in the
     # source tree ($(SGSHOME)/libconv/$(MACH64), ../../libld/$(MACH64), ...).
@@ -135,8 +135,8 @@ mkDerivation {
 
     # rtld/Makefile.targ:75 already invokes $(LD) directly, so no BUILD.SO
     # override is needed here -- but DYNFLAGS still carries -Wl, prefixes from
-    # lib/Makefile.lib, which sgs-ld strips.
-    "LD=${sgs-ld}"
+    # lib/Makefile.lib, which ld-wrapper strips.
+    "LD=${ld-wrapper}"
   ];
 
   # librtld.so.1 and libld.so.4 both record libelf.so.1 as NEEDED, so ld has to

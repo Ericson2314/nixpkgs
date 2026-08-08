@@ -24,6 +24,13 @@
 # takes the headers straight from the filtered source rather than depending on
 # the `headers` package, which is illumos-hosted and cannot be evaluated for
 # the build platform.
+#
+# It was once called `onbld-native`, which was doubly wrong: there is no
+# illumos-hosted counterpart for it to be the "native" variant of (an illumos
+# host needs none of this -- its libc *is* illumos'), and it is not a build at
+# all, so it has no platform for a suffix to name. The staged file
+# `native_compat.h` keeps its name because that is upstream's, matching
+# tools/sgs/native/native_compat.h and tools/ctf/native/native_compat.h.
 let
   commonHeaders = [
     "elf.h"
@@ -53,12 +60,12 @@ let
   intelHeaders = [ "machtypes.h" ];
 
   src = filterSource {
-    pname = "onbld-native";
+    pname = "onbld-compat";
     path = "usr/src/uts/common/sys";
     extraPaths = [ "usr/src/uts/intel/sys" ];
   };
 in
-runCommand "onbld-native-compat-${version}"
+runCommand "onbld-compat-${version}"
   {
     inherit commonHeaders intelHeaders;
     meta = {

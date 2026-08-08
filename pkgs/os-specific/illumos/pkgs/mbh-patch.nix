@@ -3,7 +3,7 @@
   mkDerivation,
 
   cw,
-  onbld-native,
+  onbld-compat,
   buildPackages,
 }:
 
@@ -12,7 +12,7 @@
 #
 # A build-host program, so `noCC` plus the host compiler via `depsBuildBuild`;
 # see pkgs/libdwarf.nix. Like elfextract it needs no libelf, just illumos'
-# <sys/elf.h> and <sys/multiboot*.h> from the staged set in pkgs/onbld-native.
+# <sys/elf.h> and <sys/multiboot*.h> from the staged set in pkgs/onbld-compat.
 mkDerivation {
   pname = "mbh_patch";
   noCC = true;
@@ -53,7 +53,7 @@ mkDerivation {
     # whole kernel sys directory ahead of glibc's headers means illumos'
     # <sys/types.h> and <sys/stat.h> get mixed into glibc's <stdlib.h> chain,
     # and the two disagree about struct stat, int8_t and much else. The staged
-    # subset in pkgs/onbld-native is what replaces it.
+    # subset in pkgs/onbld-compat is what replaces it.
     "CPPFLAGS=-D_TS_ERRNO"
   ];
 
@@ -68,7 +68,7 @@ mkDerivation {
   # it starts rather than in preInstall.
   preBuild = ''
     mkdir -p $out/bin/i386
-    export NIX_CFLAGS_COMPILE_FOR_BUILD="$NIX_CFLAGS_COMPILE_FOR_BUILD -I${onbld-native}/include -include ${onbld-native}/include/native_compat.h"
+    export NIX_CFLAGS_COMPILE_FOR_BUILD="$NIX_CFLAGS_COMPILE_FOR_BUILD -I${onbld-compat}/include -include ${onbld-compat}/include/native_compat.h"
   '';
 
   postFixup = ''

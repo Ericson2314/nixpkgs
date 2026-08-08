@@ -3,7 +3,7 @@
   mkDerivation,
 
   cw,
-  onbld-native,
+  onbld-compat,
   buildPackages,
 }:
 
@@ -14,7 +14,7 @@
 # A build-host program, so `noCC` plus the host compiler via `depsBuildBuild`;
 # see pkgs/libdwarf.nix. It needs no libelf -- it mmaps the file and walks
 # Elf64_Ehdr by hand -- but it does need illumos' <sys/elf.h>, which comes from
-# the staged header set in pkgs/onbld-native.
+# the staged header set in pkgs/onbld-compat.
 mkDerivation {
   pname = "elfextract";
   noCC = true;
@@ -70,7 +70,7 @@ mkDerivation {
   # it starts rather than in preInstall.
   preBuild = ''
     mkdir -p $out/bin/i386
-    export NIX_CFLAGS_COMPILE_FOR_BUILD="$NIX_CFLAGS_COMPILE_FOR_BUILD -I${onbld-native}/include -include ${onbld-native}/include/native_compat.h"
+    export NIX_CFLAGS_COMPILE_FOR_BUILD="$NIX_CFLAGS_COMPILE_FOR_BUILD -I${onbld-compat}/include -include ${onbld-compat}/include/native_compat.h"
   '';
 
   # The onbld layout puts the tool under bin/$(MACH), which is how
