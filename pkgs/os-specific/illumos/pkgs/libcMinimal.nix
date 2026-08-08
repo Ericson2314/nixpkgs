@@ -5,15 +5,10 @@
   mkDerivation,
   buildPackages,
 
-  illumosSetupHook,
-  make,
-  install,
   flex,
   byacc,
   #gencat,
-  cw,
   lorder,
-  ld-native,
   genoffsets,
   ctfstabs,
   ctfconvert,
@@ -25,6 +20,7 @@
 
 mkDerivation {
   noLibc = true;
+  illumosLib = true;
   path = "usr/src/lib/libc/amd64";
   pname = "libcMinimal-illumos";
 
@@ -36,14 +32,6 @@ mkDerivation {
   ];
 
   extraPaths = [
-    "usr/src/Makefile.master"
-    "usr/src/Makefile.master.64"
-    "usr/src/Makefile.native"
-    "usr/src/Makefile.smatch"
-
-    "usr/src/lib/Makefile.lib"
-    "usr/src/lib/Makefile.lib.64"
-    "usr/src/lib/Makefile.targ"
     "usr/src/lib/libc"
     "usr/src/lib/commpage"
 
@@ -66,28 +54,18 @@ mkDerivation {
     "usr/src/lib/libnvpair"
   ];
 
-  nativeBuildInputs = [
-    illumosSetupHook
-    make
-    install
+  extraNativeBuildInputs = [
     #gencat
-    cw
     # libc builds its archive as `ar q $@ \`lorder ... | tsort\``; tsort comes
     # from coreutils in stdenv, but lorder is illumos' own.
     lorder
     # port/gen/new_list.c is generated with nawk.
     nawk
-    # libc.so.1 is linked through illumos' own ld: port/mapfile-vers is
-    # `$mapfile_version 2`, which GNU ld cannot parse.
-    ld-native
     # $(OFFSETS_CREATE) = genoffsets -s ctfstabs -r ctfconvert cw ... ; it
     # generates commpage/cp_offsets.h from offsets.in.
     genoffsets
     ctfstabs
     ctfconvert
-    # illumos' own arch(1)/mach(1) report "i386" on x86, not "x86_64".
-    (buildPackages.writeShellScriptBin "arch" "echo i386")
-    (buildPackages.writeShellScriptBin "mach" "echo i386")
   ];
 
   # genassym is compiled and then *run* during the build to emit assym.h, so it
@@ -146,47 +124,12 @@ mkDerivation {
   makeFlags = [
     "COMPILER_VERSION=clang"
     "LIBC_TAGS=no"
-    # The libc_pic.a rule runs `mcs -d -n .SUNW_ctf` to strip CTF from the
-    # archive. CTF generation is disabled for the cross build, so there is
-    # nothing to strip, and mcs itself is not packaged yet (it needs libelf).
-    "MCS=:"
-    # Makefile.master leaves POST_PROCESS_O empty and Makefile.lib appends
-    # "; $(CTFCONVERT_POST)" to it, so the recipe line starts with a bare `;`
-    # and the shell rejects it. We have no CTF tools here anyway, so override
-    # the whole macro rather than patching the append.
-    "POST_PROCESS_O=:"
-    # Same for the shared-library side: Makefile.lib appends
-    # "; $(CTFMERGE_POST)" to an empty POST_PROCESS_SO.
-    "POST_PROCESS_SO=:"
-    # LDFLAGS.native is $(LDASSERTS) $(BDIRECT) -- Solaris ld options, which
-    # GNU ld rejects when linking the native genassym helper. Clear just that,
-    # not BDIRECT itself: DYNFLAGS also uses $(BDIRECT), and the libc.so.1 link
-    # runs under illumos ld with -zguidance -zfatal-warnings, which turns a
-    # missing -Bdirect into a hard error.
-    "LDFLAGS.native="
+
     # genassym runs on the build machine but reports the *target*'s struct
     # offsets, so it is compiled by the host compiler against illumos headers.
     # Makefile.master defaults CPPFLAGS.native to -I/usr/include, which is not
     # where those headers live here.
     "CPPFLAGS.native=-I${headers}/include"
-    # The installed headers must be searched *before* the -I flags individual
-    # rules add, not after. Makefile.targ's regex rule adds
-    # -I$(LIBCBASE)/../port/regex, and libc keeps a private regex.h there which
-    # does not define REG_ESPACE and friends; a native build gets the public
-    # <regex.h> first because $(COMPILE.c) already carries -I$(SRC)/head.
-    # Arriving via -isystem (as buildInputs do) is too late in the search order.
-    # CPPFLAGS.first is placed ahead of everything else in CPPFLAGS.
-    "CPPFLAGS.first=-I${headers}/include"
-    # illumos' MACH/MACH64 are not uname processor strings: on x86 they are
-    # "i386" and "amd64". Source lookups depend on this -- Makefile.targ finds
-    # the complex-arithmetic sources via $(LIBCBASE)/../$(MACH)/fp/%.c, which
-    # is lib/libc/i386/fp. Passing MACH=x86_64 sends it to a directory that
-    # does not exist.
-    #
-    # TARGET_ARCH is deliberately not overridden: lib/libc/amd64/Makefile sets
-    # it to "amd64" itself, and a command-line macro would clobber that.
-    "MACH=i386"
-    "MACH64=amd64"
 
     # `all: $(LIBS) $(LIB_PIC)`, and LIBS is set to $(DYNLIB) by the *parent*
     # lib/libc/Makefile, which drives the per-ISA subdirectories. We build
@@ -201,26 +144,6 @@ mkDerivation {
     # then reports nothing through the plockstat provider, and is otherwise
     # unchanged.
     "TRACEOBJS="
-
-    # libc's BUILD.SO invokes $(LD) directly rather than the compiler driver,
-    # and the mapfile it passes (-Wl,-M port/mapfile-vers) is version 2, which
-    # only illumos' link-editor understands.
-    #
-    # This must name the *build-platform* ld explicitly. Splicing only rewrites
-    # nativeBuildInputs, not string interpolation, so a bare `${ld-native}`
-    # would pull in the target-platform build -- whose stdenv needs the very
-    # libc we are building, giving infinite recursion.
-    #
-    # It is wrapped to clear SGS_SUPPORT: dmake sets that for .KEEP_STATE so
-    # the link-editor dlopen()s libmakestate.so.1 to record dependencies. We
-    # have no such support library, and ld's dlopen uses illumos-only mode
-    # flags that glibc rejects outright ("invalid mode parameter").
-    "LD=${
-      buildPackages.writeShellScript "illumos-ld" ''
-        unset SGS_SUPPORT SGS_SUPPORT_32 SGS_SUPPORT_64
-        exec ${buildPackages.illumos.ld-native}/bin/ld "$@"
-      ''
-    }"
   ];
 
   # The `install` target lives in usr/src/lib/libc/Makefile, which drives the
