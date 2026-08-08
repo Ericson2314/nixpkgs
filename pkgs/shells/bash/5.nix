@@ -61,33 +61,52 @@ lib.warnIf (withDocs != null)
 
     separateDebugInfo = true;
 
-    env.NIX_CFLAGS_COMPILE = ''
-      -DSYS_BASHRC="/etc/bashrc"
-      -DSYS_BASH_LOGOUT="/etc/bash_logout"
-    ''
-    + lib.optionalString (!forFHSEnv) ''
-      -DDEFAULT_PATH_VALUE="/no-such-path"
-      -DSTANDARD_UTILS_PATH="/no-such-path"
-      -DDEFAULT_LOADABLE_BUILTINS_PATH="${placeholder "out"}/lib/bash:."
-    ''
-    + ''
-      -DNON_INTERACTIVE_LOGIN_SHELLS
-      -DSSH_SOURCE_BASHRC
-    ''
-    # Bash's configure script assumes that CC and CC_FOR_BUILD have the
-    # same default -std=... flags. But at this moment, for cross llvm and FreeBSD, we
-    # have CC_FOR_BUILD that defaults to c23, and a CC that default to
-    # something older, perhaps c17. This breaks the build because of
-    # bash's faulty assumptions.
+    env = {
+      NIX_CFLAGS_COMPILE = ''
+        -DSYS_BASHRC="/etc/bashrc"
+        -DSYS_BASH_LOGOUT="/etc/bash_logout"
+      ''
+      + lib.optionalString (!forFHSEnv) ''
+        -DDEFAULT_PATH_VALUE="/no-such-path"
+        -DSTANDARD_UTILS_PATH="/no-such-path"
+        -DDEFAULT_LOADABLE_BUILTINS_PATH="${placeholder "out"}/lib/bash:."
+      ''
+      + ''
+        -DNON_INTERACTIVE_LOGIN_SHELLS
+        -DSSH_SOURCE_BASHRC
+      ''
+      # Bash's configure script assumes that CC and CC_FOR_BUILD have the
+      # same default -std=... flags. But at this moment, for cross llvm and FreeBSD, we
+      # have CC_FOR_BUILD that defaults to c23, and a CC that default to
+      # something older, perhaps c17. This breaks the build because of
+      # bash's faulty assumptions.
+      #
+      # To fix, we simply force the standard to be the higher for CC to
+      # match CC_FOR_BUILD.
+      #
+      # Once FreeBSD and other contexts are built with a newer version of clang,
+      # this hack should be removed.
+      + lib.optionalString stdenv.cc.isClang ''
+        -std=c23
+      '';
+    }
+    # The exact same asymmetry appears when cross-compiling to illumos, just
+    # with two GCCs instead of clang: the cross toolchain is GCC 14 (default
+    # `-std=gnu17`, so `bool` is not a keyword and `configure`'s "for bool,
+    # true, false" check answers *no*, leaving `HAVE_C_BOOL` undefined), while
+    # `CC_FOR_BUILD` is the native GCC 15 (default `-std=gnu23`). The build
+    # tools (`mkbuiltins`, `mksignames`, ...) are compiled by `CC_FOR_BUILD`
+    # but include the *host's* `config.h`, so they reach `bashansi.h`'s
+    # fallback `typedef unsigned char bool;`, which GCC 15 rejects with
+    # "'bool' cannot be defined via 'typedef'".
     #
-    # To fix, we simply force the standard to be the higher for CC to
-    # match CC_FOR_BUILD.
-    #
-    # Once FreeBSD and other contexts are built with a newer version of clang,
-    # this hack should be removed.
-    + lib.optionalString stdenv.cc.isClang ''
-      -std=c23
-    '';
+    # Here we close the gap from the other side and pin `CC_FOR_BUILD` to the
+    # language level the host compiler actually reported on, rather than
+    # raising CC to `-std=c23` as the clang branch above does. That keeps the
+    # bulk of the tree compiling exactly as `configure` probed it.
+    // lib.optionalAttrs (stdenv.hostPlatform.isIllumos && !stdenv.cc.isClang) {
+      NIX_CFLAGS_COMPILE_FOR_BUILD = "-std=gnu17";
+    };
 
     patchFlags = [ "-p0" ];
 
