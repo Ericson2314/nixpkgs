@@ -168,6 +168,16 @@ let
               "./Configure BSD-x86" + lib.optionalString stdenv.hostPlatform.isElf "-elf"
             else
               "./Configure BSD-generic${toString stdenv.hostPlatform.parsed.cpu.bits}"
+          # The `x86_64-solaris` key above only matches the version-less system
+          # string; illumos targets carry the OS version (`x86_64-solaris2.11`),
+          # so fall back to matching on the kernel rather than the system.
+          else if stdenv.hostPlatform.isSunOS then
+            if stdenv.hostPlatform.isx86_64 then
+              "./Configure solaris64-x86_64-gcc"
+            else if stdenv.hostPlatform.isx86_32 then
+              "./Configure solaris-x86-gcc"
+            else
+              "./Configure solaris-generic${toString stdenv.hostPlatform.parsed.cpu.bits}"
           else if stdenv.hostPlatform.isMinGW then
             "./Configure mingw${
               lib.optionalString (stdenv.hostPlatform.parsed.cpu.bits != 32) (
