@@ -1,11 +1,5 @@
 {
-  buildPackages,
   mkDerivation,
-
-  illumosSetupHook,
-  make,
-  install,
-  cw,
 
   crt,
   headers,
@@ -22,29 +16,14 @@
 # machinery the other libraries do.
 mkDerivation {
   noLibc = true;
+  illumosLib = true;
+  # Static only -- nothing here is ever linked, so illumos' ld is not needed.
+  illumosLd = false;
   path = "usr/src/lib/ssp_ns/amd64";
   pname = "libssp_ns-illumos";
 
   extraPaths = [
-    "usr/src/Makefile.master"
-    "usr/src/Makefile.master.64"
-    "usr/src/Makefile.native"
-    "usr/src/Makefile.smatch"
-
-    "usr/src/lib/Makefile.lib"
-    "usr/src/lib/Makefile.lib.64"
-    "usr/src/lib/Makefile.targ"
-    "usr/src/lib/Makefile.rootfs"
     "usr/src/lib/ssp_ns"
-  ];
-
-  nativeBuildInputs = [
-    illumosSetupHook
-    make
-    install
-    cw
-    (buildPackages.writeShellScriptBin "arch" "echo i386")
-    (buildPackages.writeShellScriptBin "mach" "echo i386")
   ];
 
   buildInputs = [
@@ -60,13 +39,6 @@ mkDerivation {
   buildFlags = [ "all" ];
 
   makeFlags = [
-    "MCS=:"
-    "POST_PROCESS_O=:"
-    "POST_PROCESS_SO=:"
-    "LDFLAGS.native="
-    "CPPFLAGS.first=-I${headers}/include"
-    "MACH=i386"
-    "MACH64=amd64"
     # Building the stack-protector helper itself with the stack protector on
     # would be circular.
     "STACKPROTECT=none"

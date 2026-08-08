@@ -1,12 +1,5 @@
 {
-  buildPackages,
   mkDerivation,
-
-  illumosSetupHook,
-  make,
-  install,
-  cw,
-  ld-native,
 
   crt,
   headers,
@@ -19,6 +12,7 @@
 # It links against -lc, hence the libcMinimal stdenv.
 mkDerivation {
   libcMinimal = true;
+  illumosLib = true;
   path = "usr/src/lib/libm/amd64";
   pname = "libm-illumos";
 
@@ -28,30 +22,13 @@ mkDerivation {
   ];
 
   extraPaths = [
-    "usr/src/Makefile.master"
-    "usr/src/Makefile.master.64"
-    "usr/src/Makefile.native"
-    "usr/src/Makefile.smatch"
-
-    "usr/src/lib/Makefile.lib"
-    "usr/src/lib/Makefile.lib.64"
-    "usr/src/lib/Makefile.targ"
+    # libm/Makefile.com:500 includes it.
     "usr/src/lib/Makefile.rootfs"
     "usr/src/lib/libm"
 
     # DYNFLAGS pulls in the shared link-editor mapfiles (map.pagealign,
     # map.noexdata) from common/mapfiles.
     "usr/src/common/mapfiles"
-  ];
-
-  nativeBuildInputs = [
-    illumosSetupHook
-    make
-    install
-    cw
-    ld-native
-    (buildPackages.writeShellScriptBin "arch" "echo i386")
-    (buildPackages.writeShellScriptBin "mach" "echo i386")
   ];
 
   buildInputs = [
@@ -77,22 +54,6 @@ mkDerivation {
   preBuild = ''
     makeFlagsArray+=("BUILD.SO=\$(LD) -o \$@ \$(GSHARED) \$(DYNFLAGS) \$(PICS) \$(EXTPICS) -L${libcMinimal}/lib -L${libssp_ns}/lib \$(LDLIBS)")
   '';
-
-  makeFlags = [
-    "MCS=:"
-    "POST_PROCESS_O=:"
-    "POST_PROCESS_SO=:"
-    "LDFLAGS.native="
-    "CPPFLAGS.first=-I${headers}/include"
-    "MACH=i386"
-    "MACH64=amd64"
-    "LD=${
-      buildPackages.writeShellScript "illumos-ld" ''
-        unset SGS_SUPPORT SGS_SUPPORT_32 SGS_SUPPORT_64
-        exec ${buildPackages.illumos.ld-native}/bin/ld "$@"
-      ''
-    }"
-  ];
 
   installPhase = ''
     runHook preInstall

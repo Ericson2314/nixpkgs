@@ -1,17 +1,9 @@
 {
-  buildPackages,
   mkDerivation,
-
-  illumosSetupHook,
-  make,
-  install,
-  cw,
-  ld-native,
 
   crt,
   headers,
   libcMinimal,
-  libssp_ns,
 }:
 
 # libpthread.so.1. On illumos this is a pure *filter* library on libc
@@ -24,34 +16,18 @@
 # libthr.
 mkDerivation {
   libcMinimal = true;
+  illumosLib = true;
   path = "usr/src/lib/libpthread/amd64";
   pname = "libpthread-illumos";
 
   extraPaths = [
-    "usr/src/Makefile.master"
-    "usr/src/Makefile.master.64"
-    "usr/src/Makefile.native"
-    "usr/src/Makefile.smatch"
-
-    "usr/src/lib/Makefile.lib"
-    "usr/src/lib/Makefile.lib.64"
-    "usr/src/lib/Makefile.targ"
+    # libpthread/Makefile.com:28 includes it.
     "usr/src/lib/Makefile.rootfs"
     "usr/src/lib/Makefile.filter.com"
     "usr/src/lib/Makefile.filter.targ"
     "usr/src/lib/libpthread"
 
     "usr/src/common/mapfiles"
-  ];
-
-  nativeBuildInputs = [
-    illumosSetupHook
-    make
-    install
-    cw
-    ld-native
-    (buildPackages.writeShellScriptBin "arch" "echo i386")
-    (buildPackages.writeShellScriptBin "mach" "echo i386")
   ];
 
   buildInputs = [
@@ -77,22 +53,6 @@ mkDerivation {
   # from a mapfile with no input objects, so without it ld has nothing to infer
   # the ELF class from and silently emits a 32-bit i386 object, which the
   # linker then rejects as "skipping incompatible".
-
-  makeFlags = [
-    "MCS=:"
-    "POST_PROCESS_O=:"
-    "POST_PROCESS_SO=:"
-    "LDFLAGS.native="
-    "CPPFLAGS.first=-I${headers}/include"
-    "MACH=i386"
-    "MACH64=amd64"
-    "LD=${
-      buildPackages.writeShellScript "illumos-ld" ''
-        unset SGS_SUPPORT SGS_SUPPORT_32 SGS_SUPPORT_64
-        exec ${buildPackages.illumos.ld-native}/bin/ld "$@"
-      ''
-    }"
-  ];
 
   installPhase = ''
     runHook preInstall
