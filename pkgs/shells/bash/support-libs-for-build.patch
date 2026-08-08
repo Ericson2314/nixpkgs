@@ -1,0 +1,35 @@
+`support/Makefile.in` links the build-time `man2html` helper with `CC_FOR_BUILD`
+but hands it the *host's* `LIBS`:
+
+    LIBS = @LIBS@
+    LIBS_FOR_BUILD = ${LIBS}		# XXX
+
+    man2html$(EXEEXT): $(OBJ1)
+    	$(CC_FOR_BUILD) $(LDFLAGS_FOR_BUILD) $(OBJ1) -o $@ ${LIBS_FOR_BUILD}
+
+`configure` already computes the right value -- when cross-compiling it sets
+`LIBS_FOR_BUILD=""` (configure.ac, the `cross_compiling` branch) -- and both
+the top-level `Makefile.in` and `builtins/Makefile.in` use it.  Only this file
+ignores the substitution, and upstream flagged it `XXX` itself.
+
+The result on an illumos cross build, once `libsocket`/`libnsl` are packaged
+and `configure` puts them in `LIBS`, is that those target-only libraries reach
+a link performed by the *native* toolchain:
+
+    gcc -g man2html.o -o man2html -lsocket -lnsl -ldl
+    ld.bfd: cannot find -lsocket: No such file or directory
+    ld.bfd: cannot find -lnsl: No such file or directory
+
+Use the substituted value, like the other two makefiles do.
+
+--- support/Makefile.in
++++ support/Makefile.in
+@@ -54,7 +54,7 @@
+ LOCAL_DEFS = @LOCAL_DEFS@
+ 
+ LIBS = @LIBS@
+-LIBS_FOR_BUILD = ${LIBS}		# XXX
++LIBS_FOR_BUILD = @LIBS_FOR_BUILD@
+ 
+ LOCAL_LDFLAGS = @LOCAL_LDFLAGS@
+ LDFLAGS = @LDFLAGS@ $(LOCAL_LDFLAGS)
