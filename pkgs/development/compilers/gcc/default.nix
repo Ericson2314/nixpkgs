@@ -88,7 +88,7 @@ let
   # illumos needs its own GCC fork, which carries the ABI and runtime-linker
   # support the platform depends on. It only exists for 14.x, so anything else
   # falls back to upstream GCC (and will very likely not work for illumos).
-  useIllumosFork = stdenv.targetPlatform.isIllumos && majorMinorVersion == "14";
+  useIllumosFork = stdenv.targetPlatform.isIllumos && (majorMinorVersion == "14" || majorMinorVersion == "15");
 
   # The illumos fork is fetched from git, not from a release tarball, so it is
   # missing the generated sources (gengtype-lex.cc and friends) that a tarball
@@ -104,7 +104,7 @@ let
   # The fork is based on 14.2.0, not the 14.2.1 snapshot nixpkgs otherwise
   # tracks for GCC 14. These must agree: `postPatch` below asserts that
   # `baseVersion` matches the tree's own gcc/BASE-VER.
-  version = if useIllumosFork then "14.2.0" else gccVersions.fromMajorMinor majorMinorVersion;
+  version = if useIllumosFork then (if majorMinorVersion == "15" then "15.2.0" else "14.2.0") else gccVersions.fromMajorMinor majorMinorVersion;
 
   majorVersion = versions.major version;
   is13 = majorVersion == "13";
@@ -243,12 +243,17 @@ pipe
 
       src =
         if useIllumosFork then
-          fetchFromGitHub {
+          (if majorMinorVersion == "15" then fetchFromGitHub {
+            owner = "Ericson2314";
+            repo = "gcc";
+            rev = "84e2e22d108fd9cf5de1d062c137a5f68c27800c";
+            hash = "sha256-8TZRxdc7I+lkeIAjovZXDi3F1RvWOdcvGnWBQct2/bI=";
+          } else fetchFromGitHub {
             owner = "illumos";
             repo = "gcc";
             tag = "gcc-14.2.0-il-1";
             hash = "sha256-fjLmiKb/35Px0q+hM9GcZ3tsgabE1YfzXGpgmBewASU=";
-          }
+          })
         else
           fetchurl {
             url =
