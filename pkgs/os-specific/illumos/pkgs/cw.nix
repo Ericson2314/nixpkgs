@@ -1,5 +1,6 @@
 {
   lib,
+  buildPackages,
   mkDerivation,
 
   illumosSetupHook,
@@ -41,10 +42,26 @@ mkDerivation {
     "ROOTONBLDMAN1ONBLD=${builtins.placeholder "man"}/man/man1"
   ];
 
+  # cw is a *build-host* program: it wraps the compiler that produces target
+  # objects, but is itself run on the build machine. `tools/cw/Makefile` sets
+  # `NATIVECC= gcc`, and the cross stdenv offers only
+  # `x86_64-unknown-solaris2.11-gcc`, so that bare name does not resolve.
+  #
+  # This goes through makeFlagsArray rather than makeFlags so the *shell*
+  # expands $CC_FOR_BUILD. In makeFlags it would reach make unexpanded, and make
+  # would read `$C` as a macro reference and pass the leftover `C_FOR_BUILD`.
+  preBuild = ''
+    makeFlagsArray+=("NATIVECC=$CC_FOR_BUILD")
+  '';
+
   nativeBuildInputs = [
     illumosSetupHook
     make
   ];
+
+  # Supplies $CC_FOR_BUILD, as ctfconvert/ctfmerge/ctfstabs already do for their
+  # own build-host helpers.
+  depsBuildBuild = [ buildPackages.stdenv.cc ];
 
   preInstall = ''
     mkdir -p $out/bin $man/man/man1
