@@ -7,6 +7,7 @@
   install,
   nawk,
   rpcgen,
+  buildPackages,
 }:
 
 # Every header directory under uts/common that has an install_h target.
@@ -61,6 +62,26 @@ mkDerivation {
   ];
 
   dontBuild = true;
+
+  # Several of these Makefiles install arch-specific headers from $(MACH)_HDRS,
+  # and on x86 illumos' MACH is "i386" -- not uname's "x86_64", which would
+  # leave those lists empty and silently omit headers.
+  makeFlags = [
+    "MACH=i386"
+    "MACH64=amd64"
+  ];
+
+  # NetBSD's rpcgen shells out to a C preprocessor, defaulting to a /usr/bin
+  # path that does not exist here. It then emits only boilerplate and still
+  # exits 0, so the generated headers come out nearly empty and the failure
+  # only surfaces much later as a missing type (rpc/rpcb_clnt.h wanting
+  # `rpcblist`, which the generated rpcb_prot.h should define).
+  # It also has to be a *traditional* cpp: rpcgen passes `%`-escaped lines
+  # through verbatim, and a modern cpp expands __STDC__ inside them, turning
+  # `#ifdef __STDC__` into `#ifdef 1`.
+  env.RPCGEN_CPP = buildPackages.writeShellScript "rpcgen-cpp" ''
+    exec ${buildPackages.stdenv.cc}/bin/cpp -traditional-cpp -U__STDC__ "$@"
+  '';
 
   # uts/common itself has no Makefile driving the subdirectories, so run
   # install_h in each of them.
