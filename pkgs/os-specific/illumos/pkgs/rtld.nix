@@ -31,27 +31,6 @@
 # exist at link time. `-z ignore` (cmd/sgs/Makefile.com:70) then keeps them out
 # of the final dynamic section.
 
-let
-  # lib/libc/amd64/Makefile:1194 sets STACKPROTECT = none for the whole of
-  # libc, precisely so that libc_pic.a carries no __stack_chk_fail references.
-  # The nixpkgs cc wrapper puts -fstack-protector-strong back, and the
-  # consequences land here rather than in libc: every libc_pic.a member ld
-  # extracts for ld.so.1 (fcntl.o, close.o, ...) then needs __stack_chk_fail,
-  # which lives in ssp.o, which needs gethrtime(), which lives in clock_timer.o
-  # alongside timer_create(), which needs sigev_thread.o -- and that drags in
-  # pthreads, aio, syslog and stdio. The link ends up pulling 300+ of libc's
-  # ~840 objects and fails on ~40 symbols that ld.so.1 defines itself (read,
-  # malloc, printf, mutex_lock). With the stack protector off it extracts 69.
-  #
-  # This override belongs in libcMinimal.nix as a plain
-  # `hardeningDisable = [ "stackprotector" ]`; it is done here only to keep the
-  # change local. Delete it once libcMinimal disables the stack protector
-  # itself.
-  libcPic = libcMinimal.overrideAttrs (old: {
-    hardeningDisable = (old.hardeningDisable or [ ]) ++ [ "stackprotector" ];
-  });
-in
-
 mkDerivation {
   libcMinimal = true;
   path = "usr/src/cmd/sgs/rtld/amd64";
@@ -151,8 +130,8 @@ mkDerivation {
     "LDDBGLIBDIR64=-L${sgs-liblddbg}/lib"
     "RTLDLIB=-L${sgs-librtld}/lib"
     # $(CLIB) is -lc_pic, and libcMinimal installs libc_pic.a.
-    "CPICLIB=-L${libcPic}/lib"
-    "CPICLIB64=-L${libcPic}/lib"
+    "CPICLIB=-L${libcMinimal}/lib"
+    "CPICLIB64=-L${libcMinimal}/lib"
 
     # rtld/Makefile.targ:75 already invokes $(LD) directly, so no BUILD.SO
     # override is needed here -- but DYNFLAGS still carries -Wl, prefixes from
