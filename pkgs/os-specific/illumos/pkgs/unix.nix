@@ -246,37 +246,13 @@ mkDerivation {
     # genunix.
     ( cd i86pc/genassym && make "''${flagsArray[@]}" def.targ )
 
-    # Both genunix and unix depend on assym.h through an FRC rule that
-    # unconditionally re-enters this directory with a bare `$(MAKE) all.targ`
-    # (uts/i86pc/unix/Makefile:199). That nested make does not see our
-    # command-line macros -- dmake only hands down macros that came from the
-    # environment, and Makefile.master/Makefile.uts reassign the rest -- and,
-    # worse, it inherits CC as the whole expanded `cw --tag target ...` command
-    # line, so Makefile.master's `PRIMARY_CC_PATH:sh = command -v $CC`
-    # resolves to cw and cw is then handed itself as the primary compiler.
-    #
-    # dmake's .KEEP_STATE notices the changed command line and rebuilds, which
-    # is what makes any of that visible. The headers are already correct at
-    # this point and nothing regenerates them, so retire the Makefile that
-    # would rebuild them; the directory stays where it is, so
-    # -I$(DSF_DIR)/$(OBJS_DIR) still finds them.
-    cat > i86pc/genassym/Makefile <<'EOF'
-    # Replaced by nixpkgs' pkgs/os-specific/illumos/pkgs/unix.nix. The real
-    # Makefile has already run; these targets exist only so that the FRC rules
-    # in unix and genunix find the generated headers up to date.
-    all.targ def.targ all def install clean clobber:
-    EOF
-    sed -i 's/^    //' i86pc/genassym/Makefile
-
     # common/os/priv_const.c is generated from the same awk script and table.
     # uts/intel/Makefile:73 owns the rule and hangs it off a `genunix` target;
     # upstream reaches it through uts/Makefile's `.prereq` machinery, which is
     # part of the parallel-build scaffolding we are not using.
     # Ask for the file, not for uts/intel/Makefile's `genunix:` target: genunix
     # is also a $(KMODS) entry there, so the name matches a second rule that
-    # recurses into intel/genunix -- and that recursion re-exports CC as the
-    # whole `cw ...` command line, which the next level's `command -v $CC` then
-    # resolves to cw itself.
+    # recurses into intel/genunix and rebuilds the whole module.
     ( cd intel && make "''${flagsArray[@]}" "$SRC/uts/common/os/priv_const.c" )
 
     # genunix first: uts/i86pc/unix/Makefile:52 links unix against
