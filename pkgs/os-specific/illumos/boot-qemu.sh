@@ -7,29 +7,73 @@
 #
 # What it does:
 #
-#   * builds pkgsCross.x86_64-illumos.illumos.unix (the i86pc kernel),
-#   * assembles a minimal boot archive: an old-style ASCII ("odc") cpio
-#     holding unix, genunix, the loadable modules and the /etc binding files,
-#     which is what
-#     common/fs/bootrd_cpio.c -- one of the four readers in
-#     uts/common/krtld/bootrd.c:47 -- knows how to read,
+#   * builds pkgsCross.x86_64-illumos.illumos.unix (the i86pc kernel) and
+#     pkgsCross.x86_64-illumos.illumos.init-stub (a freestanding /sbin/init),
+#   * assembles a minimal root filesystem: unix, genunix, the loadable modules,
+#     the /etc binding files, the mount points the kernel puts its own
+#     synthetic filesystems on, and /sbin/init,
+#   * turns that into an *iso9660* image, which is the boot archive,
 #   * wraps both in a GRUB2 multiboot rescue ISO with the console on ttya,
 #   * runs qemu-system-x86_64 with that ISO and -serial stdio.
 #
+# Why iso9660 and not cpio: the boot archive reaches the kernel as a ramdisk
+# whose block device (/ramdisk:a) is the loaded multiboot module byte for byte.
+# Nothing unpacks it -- impl_setup_ddi() in uts/i86pc/os/ddi_impl.c just hands
+# ramdisk_start/ramdisk_end to drv/ramdisk as its "existing" property -- so the
+# archive has to *be* a filesystem image. A cpio archive is readable only by
+# krtld's bcpio_ops (uts/common/krtld/bootrd.c); there is no cpio entry in
+# uts/common/os/vfs_conf.c, so it can never be a root filesystem. That is
+# exactly what the old panic was saying: "not a UFS magic number (0x394d0000)",
+# and 0x394d is "9M", the first two bytes of cpio's 070707 magic.
+#
+# Of the four formats bootadm(8) knows (bam_formats[] in cmd/boot/bootadm:
+# hsfs, ufs, cpio, ufs-nocompress), hsfs is the only one we can synthesise on a
+# Linux build host. mkfs_ufs is a *target* program and will not run here, and
+# illumos UFS is not interchangeable with BSD FFS1 in the places that matter --
+# struct direct in uts/common/sys/fs/ufs_fsdir.h has a 16-bit d_namlen exactly
+# where FreeBSD's makefs writes a d_type byte followed by an 8-bit namlen, so
+# every directory entry would be misread. hsfs we get from xorrisofs for free;
+# hsfs_mountroot() (uts/common/fs/hsfs/hsfs_vfsops.c) takes its device from a
+# plain getrootdev() with nothing CD-specific about it, so no disk driver stack
+# is needed; and krtld's standalone iso9660 reader is already linked into unix
+# (hsfs.o in KRTLD_OBJS, bhsfs_ops in bfs_tab[]).
+#
 # How far it gets today: dboot hands over, unix relocates itself, krtld links
-# genunix, the banner prints, startup_modules() loads specfs/devfs/dev/procfs,
+# genunix, the banner prints, startup_modules() loads the boot-time modules,
 # psm_modload() takes uppc, setup_ddi() probes the buses and builds the devinfo
-# tree, configure() attaches the root nexus and the pseudo nexus, and main()
-# reaches vfs_mountroot(). rootconf() loads and _init()s ufs, resolves the root
-# device to the ramdisk, and then:
+# tree, configure() attaches the root and pseudo nexuses, and vfs_mountroot()
+# mounts hsfs on /ramdisk:a -- and then keeps going, mounting devfs, dev, ctfs,
+# objfs, bootfs, mntfs, sharefs and tmpfs on top of it, all without a warning.
+# main() then reaches strplumb(), which loads and reports the one failure we
+# expect and want ("strplumb: failed to initialize drv/dld" -- the IP stack is
+# not packaged), and then consconfig().
 #
-#     NOTICE: mount: not a UFS magic number (0x394d0000)
-#     Cannot mount root on /ramdisk:a fstype ufs
-#     panic[cpu0]: vfs_mountroot: cannot mount root
+# That is where it stops, and the honest description of the stopping point is:
+# *the console goes away and the boot does not visibly get any further*. What
+# is known:
 #
-# which is correct: the archive assembled below is a cpio, and 0x394d is the
-# first two bytes of "070707". Everything short of a real root filesystem now
-# works; the next step is a UFS (or hsfs) image rather than more modules.
+#   * The last line on either console is the strplumb one. Nothing appears
+#     afterwards on serial or on VGA -- verified by screendumping the VGA text
+#     console through the qemu monitor on a serial-console boot, and by
+#     booting with the console on VGA instead. So the loss is in consconfig(),
+#     not in the choice of console.
+#   * The machine is not wedged and not idle. Sampling RIP through the qemu
+#     monitor shows it cycling through sysp_ischar() (uts/i86pc/os/machdep.c)
+#     and an indirect call into a module, i.e. the busy loop inside
+#     prom_getchar(). Something has called prom_getchar() and is waiting for a
+#     keypress that cannot arrive, because the same broken plumbing that ate
+#     the output eats the input. prom_reboot_prompt(), reached from halt() via
+#     prom_exit_to_mon(), is the obvious candidate, and halt("unix: Could not
+#     start init") is the obvious caller -- but that is inference, not proof.
+#   * init is definitely *not* running. Booting an init that is nothing but an
+#     infinite userland `nop` loop still leaves every RIP sample at CPL=0, so
+#     no user code has executed. That rules out "it booted fine and is just
+#     quiet".
+#
+# So: root filesystem solved, init not reached. The next thing to chase is why
+# consconfig_setup_polledio()/the console stream come up dead -- most likely a
+# console device that never attaches, which would also explain a subsequent
+# halt().
 #
 # Notes:
 #
@@ -62,10 +106,22 @@ build() {
 }
 
 unix=$(build pkgsCross.x86_64-illumos.illumos.unix)
+init=$(build pkgsCross.x86_64-illumos.illumos.init-stub)
 grub=$(build grub2)
 xorriso=$(build libisoburn)
-cpio=$(build cpio)
-qemu=$(build qemu)
+
+# qemu is not part of what we are testing, and on a checkout that has moved
+# ahead of the binary cache `nix-build -A qemu` is a source build of qemu *and*
+# its whole doc/test toolchain (python3, itstool, zopfli, xvfb, and from there
+# LLVM) -- hours, for a program the user almost certainly already has. Prefer
+# whatever is on $PATH and only build one as a fallback.
+if qemu=$(command -v qemu-system-x86_64); then
+    echo "using qemu-system-x86_64 from PATH: $qemu"
+else
+    echo "no qemu-system-x86_64 on PATH; building one (this can take a while)"
+    qemu="$(build qemu)/bin/qemu-system-x86_64"
+    echo "using $qemu"
+fi
 
 rm -rf "$work"
 mkdir -p "$work/ba/etc" "$work/iso/boot/grub" \
@@ -81,7 +137,21 @@ cp -RL --no-preserve=mode "$unix/kernel" "$unix/platform" "$work/ba/"
 cp "$src/uts/intel/os/name_to_sysnum" "$src/uts/intel/os/minor_perm" \
    "$src/uts/intel/os/driver_classes" "$src/uts/intel/os/dacf.conf" \
    "$work/ba/etc/"
-: >"$work/ba/etc/driver_aliases"
+# /etc/driver_aliases is written by add_drv(8) from the `alias=` attributes on
+# the `driver` actions in the packaging manifests, so it has to be synthesised
+# too. These are copied verbatim from the gate:
+# pkg/manifests/driver-i86pc-platform.p5m (asy), system-kernel.p5m (kb8042,
+# mouse8042, pseudo) and system-kernel-platform.p5m (isa). Without the
+# `pseudo zconsnex` line, i_ndi_make_spec_children() complains
+# "init_spec_child: parent=pseudo, bad spec (zconsnex)" on every boot.
+cat >"$work/ba/etc/driver_aliases" <<'EOF'
+asy "pciclass,0700"
+asy "pci11c1,480"
+isa "pciclass,060100"
+kb8042 "pnpPNP,303"
+mouse8042 "pnpPNP,f03"
+pseudo "zconsnex"
+EOF
 : >"$work/ba/etc/system"
 echo '#' >"$work/ba/etc/path_to_inst"
 
@@ -97,13 +167,59 @@ cp "$src/uts/intel/os/name_to_major" "$work/ba/etc/name_to_major"
 chmod u+w "$work/ba/etc/name_to_major"
 major=0
 for drv in $(find "$work/ba" -path '*/kernel/drv/amd64/*' -type f -printf '%f\n' | sort -u); do
+    # Skip anything the gate already pins. asy(4D) in particular is both in
+    # the source file (major 106) and in the archive, and a duplicate entry
+    # loses the driver its major -- which quietly costs you the serial
+    # console, since consconfig() resolves ttya by ddi_name_to_major("asy").
+    awk -v d="$drv" '!/^#/ && $1 == d { found = 1 } END { exit !found }' \
+        "$work/ba/etc/name_to_major" && continue
     while echo "$reserved" | grep -qx "$major"; do major=$((major + 1)); done
     echo "$drv $major" >>"$work/ba/etc/name_to_major"
     major=$((major + 1))
 done
 
-( cd "$work/ba" && find . -type f | sed 's|^\./||' | sort |
-    "$cpio/bin/cpio" -o -H odc ) >"$work/iso/platform/i86pc/boot_archive" 2>/dev/null
+# Mount points. vfs_mountroot() does not stop at the root: it goes on to mount
+# devfs on /devices, dev on /dev, and then ctfs, objfs, bootfs, mntfs, sharefs
+# and tmpfs on the paths below. hsfs is read-only, so each of these has to
+# already exist in the image or the mount is a "Cannot mount ..." warning.
+mkdir -p "$work/ba/dev" "$work/ba/devices" "$work/ba/proc" "$work/ba/tmp" \
+    "$work/ba/system/contract" "$work/ba/system/object" "$work/ba/system/boot" \
+    "$work/ba/etc/svc/volatile" "$work/ba/etc/dfs" "$work/ba/var/run" "$work/ba/usr"
+: >"$work/ba/etc/mnttab"
+: >"$work/ba/etc/dfs/sharetab"
+
+# /sbin/init: main() -> start_init() -> exec_init() execs zone_initname, which
+# is "/sbin/init" (uts/common/os/main.c:140).
+install -Dm755 "$init/sbin/init" "$work/ba/sbin/init"
+
+# The flags here are not cosmetic; each one is load-bearing.
+#
+# -R  Rock Ridge. krtld's standalone reader (common/fs/hsfs.c, which parses
+#     SUSP/RRIP) uses it, so every module loaded *before* the root mount is
+#     found by its real lowercase name.
+# -D  do not relocate directories deeper than iso9660's eight-level limit,
+#     which platform/i86pc/kernel/drv/amd64/<drv> is right up against.
+#
+# After the root mount, though, Rock Ridge is *off*: hsfs_mountroot() calls
+# hs_mountfs() with mount_flags = 1, and 1 is HSFSMNT_NORRIP
+# (uts/common/sys/fs/hsfs_rrip.h:41). So a root hsfs is always read as plain
+# iso9660, and every post-root modload() sees the ISO names, not the RR ones.
+# hs_dirlook() (uts/common/fs/hsfs/hsfs_node.c) upper-cases the name it is
+# given before comparing, so "kernel" finds "KERNEL" and directories are fine
+# -- but the default ISO rendering of a file is "CTFS.;1", with a trailing
+# period and a version suffix, and "CTFS" does not match that. Hence:
+#
+# -d           omit the trailing period from names that have no extension
+# -N           omit the ";1" version suffix
+# -iso-level 2 allow names longer than 8.3, for driver_aliases,
+#              name_to_sysnum, pci_autoconfig and friends
+#
+# Without those three the root mounts, the directory walk works, and then
+# every single module load fails with ENOENT -- which reads like a broken
+# filesystem and is really just filename translation.
+"$xorriso/bin/xorrisofs" -R -D -d -N -iso-level 2 \
+    -o "$work/iso/platform/i86pc/boot_archive" \
+    "$work/ba" >"$work/mkarchive.log" 2>&1
 
 cp "$unix/platform/i86pc/kernel/amd64/unix" "$work/iso/platform/i86pc/kernel/amd64/"
 
@@ -114,7 +230,7 @@ terminal_output serial console
 set timeout=1
 set default=0
 menuentry "illumos" {
-    multiboot /platform/i86pc/kernel/amd64/unix /platform/i86pc/kernel/amd64/unix -B console=ttya,input-console=ttya
+    multiboot /platform/i86pc/kernel/amd64/unix /platform/i86pc/kernel/amd64/unix -B console=ttya,input-console=ttya,fstype=hsfs
     module /platform/i86pc/boot_archive type=rootfs
     boot
 }
@@ -124,7 +240,7 @@ PATH="$grub/bin:$xorriso/bin:$PATH" \
     grub-mkrescue -o "$work/illumos.iso" "$work/iso" >"$work/mkrescue.log" 2>&1
 
 echo "=== booting $work/illumos.iso (^A x to quit) ==="
-exec "$qemu/bin/qemu-system-x86_64" \
+exec "$qemu" \
     -display none -no-reboot -m 4096 \
     -cdrom "$work/illumos.iso" \
     -serial mon:stdio
