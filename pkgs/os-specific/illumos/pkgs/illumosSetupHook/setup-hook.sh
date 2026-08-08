@@ -4,6 +4,19 @@ setIllumosSourceDir() {
   cd "$sourceRoot"
 }
 
+# Makefile.master takes its primary compiler and link-editor from these rather
+# than from $CC/$LD directly, and the indirection is load-bearing: SunPro make
+# re-exports any macro it imported from the environment whenever the makefile
+# reassigns it, and Makefile.master reassigns both CC and LD. A recursive
+# $(MAKE) would otherwise see CC in its environment as the whole expanded
+# `cw --tag target ... --` command line, and Makefile.master's
+# `command -v $CC` would resolve to cw itself. See the comment above
+# PRIMARY_CC_PATH in usr/src/Makefile.master.
+exportIllumosToolEnv() {
+  export ILLUMOS_CC="${CC:-}"
+  export ILLUMOS_LD="${LD:-}"
+}
+
 cdIllumosPath() {
   if [ -d "$COMPONENT_PATH" ]
     then sourceRoot=$sourceRoot/$COMPONENT_PATH
@@ -45,6 +58,8 @@ includesPhase() {
 }
 
 postUnpackHooks+=(setIllumosSourceDir)
-postPatchHooks+=(cdIllumosPath fixIllumosInstallDirs)
+# postPatch rather than preConfigure: several illumos packages set
+# dontConfigure, which skips the preConfigure hooks entirely.
+postPatchHooks+=(exportIllumosToolEnv cdIllumosPath fixIllumosInstallDirs)
 preConfigureHooks+=(addIllumosMakeFlags)
 preInstallHooks+=(includesPhase)

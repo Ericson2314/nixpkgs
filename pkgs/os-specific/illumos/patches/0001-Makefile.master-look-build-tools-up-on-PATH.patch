@@ -32,12 +32,24 @@ This is deliberately blunt -- it changes the defaults rather than making
 them overridable -- and so is not upstreamable as-is. Making each tool
 overridable via the `$(POUND_SIGN)` idiom already used elsewhere in this
 file would be the upstreamable form.
+
+The environment variables read here are `$ILLUMOS_CC`/`$ILLUMOS_LD` rather
+than the obvious `$CC`/`$LD`, and that is not cosmetic. SunPro make records
+which macros it imported from the environment and re-exports them, with
+their *new* value, every time the makefile reassigns one
+(`cmd/make/lib/mksh/macro.cc:1220`). `Makefile.master` reassigns both `CC`
+and `LD` a little further down, so a recursive `$(MAKE)` -- e.g. the bare
+`$(MAKE) all.targ` that `uts/i86pc/unix/Makefile:199` uses to reach
+`assym.h` -- receives `CC` in its environment as the whole expanded
+`cw --tag target ... --` command line. `command -v $CC` then resolves to
+`cw`, and `cw` is handed itself as its own primary compiler. Names that are
+never make macros are immune to that at any depth of recursion.
 ---
- usr/src/Makefile.master | 184 +++++++++++++++++++++-------------------
- 1 file changed, 99 insertions(+), 85 deletions(-)
+ usr/src/Makefile.master | 195 ++++++++++++++++++++++------------------
+ 1 file changed, 110 insertions(+), 85 deletions(-)
 
 diff --git a/usr/src/Makefile.master b/usr/src/Makefile.master
-index 1fcfccae63..67380aa2d6 100644
+index 1fcfccae63..9a6324f3f4 100644
 --- a/usr/src/Makefile.master
 +++ b/usr/src/Makefile.master
 @@ -37,7 +37,7 @@
@@ -252,15 +264,26 @@ index 1fcfccae63..67380aa2d6 100644
  GNUXGETFLAGS= --add-comments=TRANSLATION_NOTE --keyword=_ \
  	--strict --no-location --omit-header
  BUILD.po= $(XGETTEXT) $(XGETFLAGS) -d $(<F) $<.i ;\
-@@ -745,34 +740,53 @@ NATIVE_MACH64=	$(MACH64)
+@@ -745,34 +740,64 @@ NATIVE_MACH64=	$(MACH64)
  # environment.
  GNU_ROOT=		/usr
  
 -PRIMARY_CC=	gcc10,$(GNUC_ROOT)/bin/gcc,gnu
 -PRIMARY_CCC=	gcc10,$(GNUC_ROOT)/bin/g++,gnu
-+# Note that this is using environment variables, not make variables
-+PRIMARY_CC_PATH:sh = command -v $CC || :
-+PRIMARY_CCC_PATH:sh = command -v $CXX || :
++# Note that these read *environment* variables, not make macros.
++#
++# The names are deliberately not $CC/$LD. SunPro make remembers which macros
++# it imported from the environment, and re-exports them with their new value
++# whenever the makefile reassigns them (lib/mksh/macro.cc:1220, "For
++# environment variables we also set the environment value each time"). Since
++# this file goes on to define the macros CC and LD (below, "Makefile.master.64
++# overrides these settings"), a recursive $(MAKE) inherits $CC in its
++# environment as the whole expanded "cw --tag target ... --" command line --
++# and `command -v $CC` then resolves to cw, which cw is duly handed as its own
++# primary compiler. $ILLUMOS_CC and $ILLUMOS_LD are never make macros, so they
++# survive any depth of recursion unchanged.
++PRIMARY_CC_PATH:sh = command -v "$ILLUMOS_CC" 2>/dev/null || :
++PRIMARY_CCC_PATH:sh = command -v "$CXX" 2>/dev/null || :
 +
 +PRIMARY_CC=	gcc10,$(PRIMARY_CC_PATH),gnu
 +PRIMARY_CCC=	gcc10,$(PRIMARY_CCC_PATH),gnu
@@ -275,7 +298,7 @@ index 1fcfccae63..67380aa2d6 100644
 +# compilers, so they come from $CC_FOR_BUILD/$CXX_FOR_BUILD rather than
 +# $CC/$CXX. They fall back to the target compiler, which is correct for a
 +# native build where the two coincide.
-+NATIVE_PRIMARY_CC_PATH:sh = command -v "$CC_FOR_BUILD" 2>/dev/null || command -v "$CC" 2>/dev/null || :
++NATIVE_PRIMARY_CC_PATH:sh = command -v "$CC_FOR_BUILD" 2>/dev/null || command -v "$ILLUMOS_CC" 2>/dev/null || :
 +NATIVE_PRIMARY_CCC_PATH:sh = command -v "$CXX_FOR_BUILD" 2>/dev/null || command -v "$CXX" 2>/dev/null || :
 +
 +NATIVE_PRIMARY_CC=	gcc10,$(NATIVE_PRIMARY_CC_PATH),gnu
@@ -300,7 +323,7 @@ index 1fcfccae63..67380aa2d6 100644
 -BUILD_CPP=		/usr/lib/cpp
 -BUILD_LD=		$(ONBLD_TOOLS)/bin/$(MACH64)/ld
 +BUILD_CPP=		$(BUILD_CC) -E
-+BUILD_LD:sh=		command -v $LD || :
++BUILD_LD:sh=		command -v "$ILLUMOS_LD" 2>/dev/null || :
  BUILD_AS=		$(BUILD_CC)
  
 -NATIVEBUILD_CC=		$(NATIVE_CW) $(CWOPTS) --tag native $(CW_LINKER) \
@@ -314,11 +337,11 @@ index 1fcfccae63..67380aa2d6 100644
 +NATIVEBUILD_CCC=	$(NATIVE_CW) $(CWOPTS) --tag native -C \
 +	$(CW_NATIVE_CCC_COMPILERS) --
 +NATIVEBUILD_CPP=	$(NATIVEBUILD_CC) -E
-+NATIVEBUILD_LD:sh=		command -v $LD_FOR_BUILD || :
++NATIVEBUILD_LD:sh=		command -v "$LD_FOR_BUILD" 2>/dev/null || :
  NATIVEBUILD_AS=		$(NATIVEBUILD_CC)
  
  $(MACH)_CC=		$(BUILD_CC)
-@@ -959,8 +973,8 @@ BOOTBANNER3=
+@@ -959,8 +984,8 @@ BOOTBANNER3=
  BOOTBANNER4=
  BOOTBANNER5=
  
