@@ -90,27 +90,6 @@ stdenv.mkDerivation (finalAttrs: {
     ];
   };
 
-  # `support/shobj-conf`'s `solaris2*-*gcc*` branch picks its link flags by
-  # running `gcc -print-prog-name=ld` and grepping `$ld_used -V` for "GNU".
-  # Two things break that under cross compilation: the hardcoded `gcc` is not
-  # on `$PATH` (only `${targetPrefix}gcc` is), and even asking `$CC` does not
-  # help, because the cross gcc has no unprefixed `ld` in its exec prefix, so
-  # `-print-prog-name=ld` just echoes back the bare string `ld`, which is not
-  # executable here.  The probe therefore produces no output, `grep GNU` fails,
-  # and the script concludes it is driving the Solaris link-editor.  It then
-  # emits `-Wl,-i`, which means "ignore LD_LIBRARY_PATH" to Solaris `ld` but
-  # `--relocatable` to GNU `ld`, and GNU `ld` rejects `-r` with `-shared`:
-  #
-  #     x86_64-unknown-solaris2.11-ld.bfd: -r and -shared may not be used together
-  #
-  # Prefer `$LD`, which the (cross) stdenv sets to the linker actually in use,
-  # falling back to the original expression for a plain native build.
-  postPatch = lib.optionalString stdenv.hostPlatform.isIllumos ''
-    substituteInPlace support/shobj-conf \
-      --replace-fail 'ld_used=`gcc -print-prog-name=ld`' \
-                     'ld_used=''${LD:-`gcc -print-prog-name=ld`}'
-  '';
-
   # This install error is caused by a very old libtool. We can't autoreconfHook this package,
   # so this is the best we've got!
   postInstall = lib.optionalString stdenv.hostPlatform.isOpenBSD ''
@@ -145,4 +124,34 @@ stdenv.mkDerivation (finalAttrs: {
     platforms = lib.platforms.unix ++ lib.platforms.windows;
     branch = "8.3";
   };
-})
+}
+# This has to merge in a whole *attribute* rather than read
+# `postPatch = lib.optionalString cond "...";` inside the set above. An
+# empty string is still a value: it would set `postPatch=""` in the
+# derivation's environment on every platform, where before there was no
+# `postPatch` at all, and that moves native readline's store path -- and with
+# it guile, grub2 and everything else downstream. `lib.optionalAttrs` leaves
+# the attribute genuinely absent off illumos, so no other platform rebuilds.
+//
+  lib.optionalAttrs stdenv.hostPlatform.isIllumos {
+    # `support/shobj-conf`'s `solaris2*-*gcc*` branch picks its link flags by
+    # running `gcc -print-prog-name=ld` and grepping `$ld_used -V` for "GNU".
+    # Two things break that under cross compilation: the hardcoded `gcc` is not
+    # on `$PATH` (only `${targetPrefix}gcc` is), and even asking `$CC` does not
+    # help, because the cross gcc has no unprefixed `ld` in its exec prefix, so
+    # `-print-prog-name=ld` just echoes back the bare string `ld`, which is not
+    # executable here.  The probe therefore produces no output, `grep GNU`
+    # fails, and the script concludes it is driving the Solaris link-editor. It
+    # then emits `-Wl,-i`, which means "ignore LD_LIBRARY_PATH" to Solaris `ld`
+    # but `--relocatable` to GNU `ld`, and GNU `ld` rejects `-r` with `-shared`:
+    #
+    #     x86_64-unknown-solaris2.11-ld.bfd: -r and -shared may not be used together
+    #
+    # Prefer `$LD`, which the (cross) stdenv sets to the linker actually in use,
+    # falling back to the original expression for a plain native build.
+    postPatch = ''
+      substituteInPlace support/shobj-conf \
+        --replace-fail 'ld_used=`gcc -print-prog-name=ld`' \
+                       'ld_used=''${LD:-`gcc -print-prog-name=ld`}'
+    '';
+  })
