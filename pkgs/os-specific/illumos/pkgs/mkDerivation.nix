@@ -56,19 +56,33 @@ let
     "usr/src/lib/Makefile.targ"
   ];
 
-  libMakeFlags = [
-    # The libc_pic.a rule runs `mcs -d -n .SUNW_ctf` to strip CTF from the
-    # archive. CTF generation is disabled for the cross build, so there is
-    # nothing to strip, and mcs itself is not packaged yet (it needs libelf).
-    "MCS=:"
-    # Makefile.master leaves POST_PROCESS_O empty and Makefile.lib appends
-    # "; $(CTFCONVERT_POST)" to it, so the recipe line starts with a bare `;`
-    # and the shell rejects it. We have no CTF tools here anyway, so override
-    # the whole macro rather than patching the append.
+  # Makefile.master:983 leaves POST_PROCESS_O empty and Makefile.lib:191
+  # appends "; $(CTFCONVERT_POST)" to it, so the expanded recipe line starts
+  # with a bare `;`, which the shell rejects. Both settings below cure that;
+  # the difference is only whether CTF is actually produced.
+  #
+  # Under `illumosCtf` the macro is restated as just the hook. It has to stay a
+  # *reference* rather than being resolved here, because CTFCONVERT_POST is
+  # target-conditional -- Makefile.lib:208 sets it to $(CTFCONVERT_O) for
+  # $(PICS) and leaves it `:` elsewhere -- so it must expand in each target's
+  # own context.
+  ctfMakeFlags = [
+    "POST_PROCESS_O=$(CTFCONVERT_POST)"
+    "POST_PROCESS_SO=$(CTFMERGE_POST)"
+  ];
+
+  noCtfMakeFlags = [
     "POST_PROCESS_O=:"
-    # Same for the shared-library side: Makefile.lib appends
-    # "; $(CTFMERGE_POST)" to an empty POST_PROCESS_SO.
     "POST_PROCESS_SO=:"
+  ];
+
+  libMakeFlags = [
+    # The libc_pic.a rule runs `mcs -d -n .SUNW_ctf` to drop the per-object CTF
+    # from the archive, since only the shared library is meant to carry it. mcs
+    # is an illumos *target* program (cmd/sgs/mcs) with no build-host build, so
+    # the step is skipped: the archive keeps a .SUNW_ctf in each member, which
+    # costs some space and changes nothing about linking.
+    "MCS=:"
     # LDFLAGS.native is $(LDASSERTS) $(BDIRECT) -- Solaris ld options, which
     # GNU ld rejects when linking a native helper program (libc's genassym).
     # Clear just that, not BDIRECT itself: DYNFLAGS also uses $(BDIRECT), and
@@ -122,6 +136,10 @@ lib.makeOverridable (
     # a static-only library (libssp_ns) never links anything and turns it off.
     useLd = attrs.illumosLd or isLib;
 
+    # Produce real CTF rather than stubbing the post-processing out. Opt-in:
+    # it needs ctfconvert/ctfmerge on the build host and DWARF in the objects.
+    enableCtf = attrs.illumosCtf or false;
+
     extraPaths = lib.optionals isLib libMakefilePaths ++ attrs.extraPaths or [ ];
     paths = [ attrs.path ] ++ extraPaths;
   in
@@ -174,6 +192,7 @@ lib.makeOverridable (
       "extraPaths"
       "illumosLib"
       "illumosLd"
+      "illumosCtf"
     ])
     # Last, so that these are *prepended* to whatever the package asked for
     # rather than replaced by it. Only set when opted in: unconditionally
@@ -181,7 +200,10 @@ lib.makeOverridable (
     # derivation and change all their hashes.
     // lib.optionalAttrs isLib {
       makeFlags =
-        libMakeFlags ++ lib.optional useLd "LD=${illumosLdWrapper}" ++ attrs.makeFlags or [ ];
+        libMakeFlags
+        ++ (if enableCtf then ctfMakeFlags else noCtfMakeFlags)
+        ++ lib.optional useLd "LD=${illumosLdWrapper}"
+        ++ attrs.makeFlags or [ ];
     }
   )
 )
