@@ -1,0 +1,63 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Sat, 8 Aug 2026 18:52:16 -0400
+Subject: [PATCH] uts: mount the root hsfs with Rock Ridge
+
+`hsfs_mountroot()` calls `hs_mountfs()` with `mount_flags = 1`, and 1 is
+`HSFSMNT_NORRIP` (`uts/common/sys/fs/hsfs_rrip.h:41`). Every other hsfs mount
+gets RRIP when the medium carries it; only the root is forced to plain
+ISO 9660. The comment history offers no reason for it, and the cost is real: a
+root hsfs has no symbolic links, no POSIX modes or ownership, and names that
+`hs_dirlook()` has to upper-case before comparing -- so `/sbin/init` is found
+as `SBIN/INIT` and a file called `ctfs` is on the medium as `CTFS.;1`.
+
+That matters to anyone booting hsfs as a real root rather than as install
+media. It matters a great deal when the root is generated: without symlinks,
+every symlink in the image has to be materialised as a full copy of its target.
+
+Passing 0 instead needs one supporting change. `hs_mountfs()` both reads and
+writes the vfs mount options -- it asserts `HOPT_RR` is set when Rock Ridge is
+in use, and clears `HOPT_VERS2`/`HOPT_JOLIET` as it settles on an extension --
+but `rootvfs` is a static `struct vfs` (`common/fs/vfs.c:145`) whose option
+table is empty, because the `vfs_copyopttbl()` from the vfssw prototype lives
+in `domount()` (`common/fs/vfs.c:1226`) and the root never goes through it. So
+copy the prototype in first, which is what an ordinary mount would have done.
+
+Assisted-By: Claude <noreply@anthropic.com>
+---
+ usr/src/uts/common/fs/hsfs/hsfs_vfsops.c | 22 +++++++++++++++++++++-
+ 1 file changed, 21 insertions(+), 1 deletion(-)
+
+diff --git a/usr/src/uts/common/fs/hsfs/hsfs_vfsops.c b/usr/src/uts/common/fs/hsfs/hsfs_vfsops.c
+index 38f1448b40..63a4354d30 100644
+--- a/usr/src/uts/common/fs/hsfs/hsfs_vfsops.c
++++ b/usr/src/uts/common/fs/hsfs/hsfs_vfsops.c
+@@ -1483,7 +1483,27 @@ hsfs_mountroot(struct vfs *vfsp, enum whymountroot why)
+ 		return (error);
+ 	}
+ 
+-	error = hs_mountfs(vfsp, rootdev, "/", mode, 1, CRED(), 1);
++	/*
++	 * Give the root vfs the same default mount options that domount()
++	 * would have installed for an ordinary mount.  rootvfs is a static
++	 * `struct vfs' (common/fs/vfs.c:145) whose option table is empty,
++	 * where domount() does a vfs_copyopttbl() from the vfssw prototype
++	 * (common/fs/vfs.c:1226).  hs_mountfs() both reads and updates these
++	 * options -- it asserts that HOPT_RR is set when Rock Ridge is in use,
++	 * and clears HOPT_VERS2/HOPT_JOLIET as it selects an extension -- so
++	 * without a table the assertion fires on a DEBUG kernel.
++	 */
++	if (vfsp->vfs_mntopts.mo_count == 0)
++		vfs_copyopttbl(&hsfs_proto_opttbl, &vfsp->vfs_mntopts);
++
++	/*
++	 * Mount the root with Rock Ridge enabled (mount_flags 0) rather than
++	 * with HSFSMNT_NORRIP.  Everything else that mounts an hsfs gets RRIP
++	 * if the medium has it; there is no reason for the root to be the
++	 * exception, and without it a root hsfs has no symbolic links, no
++	 * POSIX modes or ownership, and 8.3-style upper-cased names.
++	 */
++	error = hs_mountfs(vfsp, rootdev, "/", mode, 0, CRED(), 1);
+ 	/*
+ 	 * XXX - assumes root device is not indirect, because we don't set
+ 	 * rootvp.  Is rootvp used for anything?  If so, make another arg
