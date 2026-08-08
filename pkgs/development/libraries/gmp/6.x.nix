@@ -51,7 +51,16 @@ let
       #
       # The "configure" script relies on c17 and below semantics for "long long
       # reliability test 1" (defined in aclocal.m4)
-      "CFLAGS=-std=c99"
+      #
+      # On illumos this has to be `gnu99` rather than `c99`: `-std=c99` defines
+      # `__STRICT_ANSI__`, which makes `<sys/feature_tests.h>` define
+      # `_STRICT_STDC`, which hides the non-ISO parts of the headers.
+      # `printf/doprnt.c` calls `isascii`, and illumos' `<ctype.h>` only declares
+      # it under `__EXTENSIONS__ || (!_STRICT_STDC && !_POSIX_C_SOURCE) ||
+      # _XOPEN_SOURCE`, so the build dies on an implicit declaration. `gnu99`
+      # gives `configure` the same pre-c23 semantics without switching on
+      # strict-ANSI symbol hiding.
+      (if stdenv.hostPlatform.isSunOS then "CFLAGS=-std=gnu99" else "CFLAGS=-std=c99")
 
       (lib.enableFeature cxx "cxx")
       # Build a "fat binary", with routines for several sub-architectures
