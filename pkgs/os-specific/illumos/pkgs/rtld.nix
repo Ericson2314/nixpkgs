@@ -148,6 +148,30 @@ mkDerivation {
     makeFlagsArray+=("LDLIB=-L${sgs-libld}/lib -L${sgs-libelf}/lib")
   '';
 
+  # Without this, nothing dynamically linked can be exec'd at all -- and the
+  # failure is close to undebuggable.
+  #
+  # ld.so.1 carries a PT_SUNWDTRACE program header, built by libld from the
+  # symbol named by -zdtrace=dtrace_data (cmd/sgs/rtld/Makefile.com:122):
+  #
+  #     phdr->p_vaddr = sdp->sd_sym->st_value;   /* update.c:4467 */
+  #     phdr->p_memsz = sdp->sd_sym->st_size;
+  #
+  # GNU strip rewrites the file rather than editing it in place, and in doing so
+  # zeroes that header's p_memsz -- PT_SUNWDTRACE is an OS-specific segment type
+  # it has no handling for. libld gets it right; strip undoes it.
+  #
+  # The kernel then refuses every binary that names this interpreter:
+  # dtrace_safe_phdr() (uts/common/exec/elf/elf.c:123) requires p_memsz >=
+  # PT_SUNWDTRACE_SIZE, 64 on amd64. Worse, it fails *past the point of no
+  # return* in elfexec(), so the process is SIGKILLed rather than given an
+  # errno, and the only diagnostic -- "Bad DTrace phdr in ..." -- goes through
+  # uprintf(), which logs SL_LOGONLY and so needs a syslogd to be seen.
+  #
+  # This is the same class of hazard as the kernel's own STRIP_STABS=: (see
+  # unix.nix): GNU strip does not preserve illumos-specific ELF structure.
+  dontStrip = true;
+
   installPhase = ''
     runHook preInstall
 
