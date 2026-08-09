@@ -182,6 +182,41 @@ let
       mesonFlags = [ (lib.mesonBool "b_asneeded" false) ] ++ prevAttrs.mesonFlags or [ ];
     };
 
+  # Two things every illumos component needs.
+  #
+  # 1. illumos keeps the sockets API in libsocket.so.1 and the name services in
+  #    libnsl.so.1 rather than in libc, and under the XPG feature macros
+  #    socket/bind/connect are redirected to __xnet_* variants. Meson never asks
+  #    for either library, so anything touching a socket fails to link -- and
+  #    with -Wl,--no-undefined that shows up at the library, not just at the
+  #    final binary:
+  #
+  #      undefined reference to `__xnet_socket'
+  #      undefined reference to `accept'
+  #
+  # 2. Boost.Stacktrace refuses to compile unless it is told _Unwind_Backtrace
+  #    is reachable. It looks for _GNU_SOURCE, which is a glibc spelling; on
+  #    illumos the symbol comes from libgcc_s and is available unconditionally,
+  #    which is precisely what BOOST_STACKTRACE_GNU_SOURCE_NOT_REQUIRED means.
+  illumosFixups =
+    finalAttrs: prevAttrs:
+    lib.optionalAttrs stdenv.hostPlatform.isSunOS {
+      env = prevAttrs.env or { } // {
+        NIX_LDFLAGS = lib.concatStringsSep " " (
+          lib.filter (s: s != "") [
+            (prevAttrs.env.NIX_LDFLAGS or "")
+            "-lsocket -lnsl"
+          ]
+        );
+        NIX_CFLAGS_COMPILE = lib.concatStringsSep " " (
+          lib.filter (s: s != "") [
+            (prevAttrs.env.NIX_CFLAGS_COMPILE or "")
+            "-DBOOST_STACKTRACE_GNU_SOURCE_NOT_REQUIRED"
+          ]
+        );
+      };
+    };
+
   nixDefaultsLayer = finalAttrs: prevAttrs: {
     strictDeps = prevAttrs.strictDeps or true;
     enableParallelBuilding = true;
@@ -328,6 +363,7 @@ in
   mkMesonExecutable = mkPackageBuilder [
     nixDefaultsLayer
     bsdNoLinkAsNeeded
+    illumosFixups
     scope.sourceLayer
     setVersionLayer
     mesonLayer
@@ -337,6 +373,7 @@ in
   mkMesonLibrary = mkPackageBuilder [
     nixDefaultsLayer
     bsdNoLinkAsNeeded
+    illumosFixups
     scope.sourceLayer
     mesonLayer
     setVersionLayer

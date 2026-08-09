@@ -92,6 +92,21 @@ mkMesonLibrary (finalAttrs: {
     (lib.mesonOption "sandbox-shell" sandboxShell)
   ];
 
+  # cfmakeraw(3) is a BSD extension that glibc and the BSDs carry but POSIX
+  # never standardised, and illumos does not have it at all. The build sandbox's
+  # pty setup calls it:
+  #
+  #   unix/build/derivation-builder.cc:980:5: error: 'cfmakeraw' was not
+  #   declared in this scope
+  #
+  # Supply the standard definition. Force-included rather than patched in,
+  # because the nix components share a single source tree.
+  #
+  # (-lsocket/-lnsl come from the illumosSocketLibs layer in components.nix.)
+  env = lib.optionalAttrs stdenv.hostPlatform.isSunOS {
+    NIX_CFLAGS_COMPILE = "-include ${./illumos-cfmakeraw.h}";
+  };
+
   meta = {
     platforms = lib.platforms.unix ++ lib.platforms.windows;
   };
