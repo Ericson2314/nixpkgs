@@ -130,6 +130,21 @@ stdenv.mkDerivation (finalAttrs: {
     # Not having this causes curl’s `configure` script to fail with static builds on Darwin because
     # some of curl’s propagated inputs need libiconv.
     NIX_LDFLAGS = "-liconv";
+  }
+  // lib.optionalAttrs stdenv.hostPlatform.isSunOS {
+    # illumos gives you the SVR4 `struct msghdr` (msg_accrights) by default and
+    # only the XPG4.2 one (msg_control/msg_controllen), plus the CMSG_* macros,
+    # under _XPG4_2 -- see the `#if defined(_XPG4_2) || defined(_KERNEL)` in
+    # <sys/socket.h>. Without it curl's HTTP/3 code does not compile:
+    #
+    #   vquic/vquic.c:555:20: error: implicit declaration of function
+    #   'CMSG_SPACE'
+    #   vquic/vquic.c:567:8: error: 'struct msghdr' has no member named
+    #   'msg_control'
+    #
+    # _XPG4_2 on its own would then hide the non-XPG symbols curl also wants,
+    # so pair it with __EXTENSIONS__, which is what re-admits them.
+    NIX_CFLAGS_COMPILE = "-D_XPG4_2 -D__EXTENSIONS__";
   };
 
   nativeBuildInputs = [
