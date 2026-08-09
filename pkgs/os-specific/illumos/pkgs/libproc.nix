@@ -10,6 +10,7 @@
   sgs-librtld_db,
   libctf,
   libuutil,
+  libsaveargs,
 }:
 
 # libproc.so.1 -- the process-control library behind the /proc tools: the
@@ -69,6 +70,9 @@ mkDerivation {
     # Header-only: <libzonecfg.h>, reached from Pzone.c, includes
     # <libuutil.h>. Nothing here links -luutil.
     libuutil
+    # `-lsaveargs` is added by libproc's *amd64* Makefile, not by
+    # Makefile.com: recovering call arguments from a prologue is amd64-only.
+    libsaveargs
   ];
 
   env.NIX_CFLAGS_COMPILE = builtins.toString [
@@ -85,7 +89,7 @@ mkDerivation {
   # is absent from the closure and never reaches the boot archive.
   preBuild = ''
     makeFlagsArray+=("CPPFLAGS.first=-I${headers}/include -I\$(SRC)/lib/libbrand/common")
-    makeFlagsArray+=("BUILD.SO=\$(LD) -o \$@ \$(GSHARED) \$(DYNFLAGS) ${crt}/lib/crti.o \$(PICS) \$(EXTPICS) ${crt}/lib/crtn.o -L${libcMinimal}/lib -L${libssp_ns}/lib -L${sgs-librtld_db}/lib -R${sgs-librtld_db}/lib -L${sgs-libelf}/lib -R${sgs-libelf}/lib -L${libctf}/lib -R${libctf}/lib \$(LDLIBS)")
+    makeFlagsArray+=("BUILD.SO=\$(LD) -o \$@ \$(GSHARED) \$(DYNFLAGS) ${crt}/lib/crti.o \$(PICS) \$(EXTPICS) ${crt}/lib/crtn.o -L${libcMinimal}/lib -L${libssp_ns}/lib -L${sgs-librtld_db}/lib -R${sgs-librtld_db}/lib -L${sgs-libelf}/lib -R${sgs-libelf}/lib -L${libctf}/lib -R${libctf}/lib -L${libsaveargs}/lib -R${libsaveargs}/lib \$(LDLIBS)")
   '';
 
   # <libproc.h> is installed into /usr/include by the *top* lib/libproc
