@@ -166,7 +166,7 @@ let
         # I (@Ericson2314) plan on making more obscure low-tier
         # platforms (e.g. NetBSD) use it soon, so we can dogfood GCC NG
         # and thereby iron out its bugs.
-        useGccNG = final.isCygwin;
+        useGccNG = final.isCygwin || final.isIllumos;
 
         libc =
           if final.isDarwin then
