@@ -96,6 +96,34 @@ symlinkJoin {
       ln -s amd64 "$out/lib/64"
     fi
 
+    # Point the *link-time* -ldl at libc.so.1 rather than at libdl.so.1.
+    #
+    # A workaround for our layout, not a fix to illumos, so: stock libdl.so.1
+    # is a pure filter whose DT_FILTER is the string "/lib/amd64/ld.so.1" --
+    # the dl* entry points live in the runtime linker. On a stock system that
+    # string is also the path the kernel used for PT_INTERP, so when ld.so.1
+    # processes the filter it recognises the name as itself. Here PT_INTERP is
+    # a store path, the names do not match, and ld.so.1 maps a *second copy of
+    # itself* as an ordinary object: "loading after relocation has started:
+    # interposition request (DF_1_INTERPOSE) ignored". libc then hands its
+    # interface table over through the `_ld_libc` filtee binding (ATEXIT,
+    # TLS_MODADD, TLS_MODREM, TLS_STATMOD, THRINIT) to the copy that is *not*
+    # driving the process, and the program dies with SIGSEGV before main().
+    #
+    # It is order-sensitive: a program linked `-ldl` crashes, the same program
+    # linked `-lc -ldl` runs, because when libc relocates first its own filter
+    # binding happens early enough to interpose. bash links `... -lnsl -ldl`,
+    # so it always loses.
+    #
+    # libc.so.1 already exports the whole dl* family (dlopen, dlsym, dlclose,
+    # dlerror, dladdr, dlinfo), so nothing needs libdl.so.1 at run time. Making
+    # the linker-visible libdl.so resolve to libc.so.1 means `-ldl` records
+    # DT_NEEDED libc.so.1 -- already in every closure -- so there is no filter,
+    # no second linker and no ordering sensitivity. glibc did the same when it
+    # emptied libdl in 2.34. libdl.so.1 stays for anything already linked
+    # against it.
+    ln -sfn libc.so.1 "$out/lib/libdl.so"
+
     fixupPhase
   '';
 
