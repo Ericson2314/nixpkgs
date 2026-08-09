@@ -23,6 +23,17 @@ stdenv.mkDerivation (finalAttrs: {
 
   patches = [
     ./01-cygwin.patch
+  ]
+  # Only bites on Solaris/illumos, where libedit hand-declares the termcap
+  # functions and collides with the ones ncurses' <termcap.h> already
+  # declares. Applied conditionally purely to keep other platforms' store
+  # paths put; the patch is a no-op everywhere else and would be fine
+  # unconditional.
+  #
+  # TODO on staging, drop the `lib.optionals` and apply this unconditionally.
+  # The rebuild is only a problem outside staging.
+  ++ lib.optionals stdenv.hostPlatform.isSunOS [
+    ./02-solaris-termcap-decls.patch
   ];
 
   nativeBuildInputs = [
