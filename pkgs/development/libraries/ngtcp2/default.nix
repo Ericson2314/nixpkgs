@@ -45,6 +45,9 @@ stdenv.mkDerivation (finalAttrs: {
       || stdenv.hostPlatform.isFreeBSD
       || stdenv.hostPlatform.isCygwin
       || stdenv.hostPlatform.isWindows
+      # illumos likewise: examples/shared.cc wants IPTOS_ECN_MASK, which
+      # <netinet/ip.h> does not define there.
+      || stdenv.hostPlatform.isSunOS
     ))
     (lib.cmakeBool "ENABLE_SHARED_LIB" (!stdenv.hostPlatform.isStatic))
     (lib.cmakeBool "ENABLE_STATIC_LIB" stdenv.hostPlatform.isStatic)
