@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Sat, 8 Aug 2026 17:02:05 -0400
+Subject: [PATCH] libsec: forward-declare `bad_entry_type` in `acl.y`
+
+`bad_entry_type` is defined `static` in the epilogue of `acl.y`, after the
+final `%%`, but it is called from three grammar actions with no declaration
+in scope.
+
+That compiles under illumos' own yacc only by accident of the skeleton
+layout: AT&T yacc emits the user's epilogue *before* `#include`ing the
+`yaccpar` skeleton named by `-P`, so `yyparse` -- and with it the action
+switch containing the calls -- lands after the definition. Any other yacc
+(bison, byacc) inlines `yyparse` ahead of the epilogue, and the calls then
+see an implicit declaration, which gcc rejects when the real definition
+turns up:
+
+    acl.y:162: warning: implicit declaration of function 'bad_entry_type'
+    acl.y:572: error: static declaration of 'bad_entry_type' follows
+                      non-static declaration
+
+Declare it in the prologue, next to the other externs. No functional change
+under illumos yacc.
+
+Assisted-By: Claude <noreply@anthropic.com>
+---
+ usr/src/lib/libsec/common/acl.y | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/usr/src/lib/libsec/common/acl.y b/usr/src/lib/libsec/common/acl.y
+index d08e9266d4..3e7dfd7cc0 100644
+--- a/usr/src/lib/libsec/common/acl.y
++++ b/usr/src/lib/libsec/common/acl.y
+@@ -32,6 +32,8 @@ extern int yyinteractive;
+ extern acl_t *yyacl;
+ extern int yylex(void);
+ 
++static void bad_entry_type(int, char *);
++
+ %}
+ 
+ %union {

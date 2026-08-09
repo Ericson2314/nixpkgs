@@ -6,7 +6,7 @@
   make,
   install,
   cw,
-  ld-native,
+  ld,
 
   crt,
   headers,
@@ -50,7 +50,7 @@ mkDerivation {
     make
     install
     cw
-    ld-native
+    ld
     # amd64/Makefile generates md5_amd64.S and the sha{1,256,512}-x86_64.S from
     # the OpenSSL-derived perl scripts under common/crypto.
     buildPackages.perl
@@ -87,7 +87,7 @@ mkDerivation {
     "LD=${
       buildPackages.writeShellScript "illumos-ld" ''
         unset SGS_SUPPORT SGS_SUPPORT_32 SGS_SUPPORT_64
-        exec ${buildPackages.illumos.ld-native}/bin/ld "$@"
+        exec ${buildPackages.illumos.ld}/bin/ld "$@"
       ''
     }"
   ];

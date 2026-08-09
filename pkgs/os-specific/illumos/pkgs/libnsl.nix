@@ -6,7 +6,7 @@
   make,
   install,
   cw,
-  ld-native,
+  ld,
 
   crt,
   headers,
@@ -75,7 +75,7 @@ mkDerivation {
     make
     install
     cw
-    ld-native
+    ld
     buildPackages.netbsd.rpcgen
     (buildPackages.writeShellScriptBin "arch" "echo i386")
     (buildPackages.writeShellScriptBin "mach" "echo i386")
@@ -181,7 +181,7 @@ mkDerivation {
     "LD=${
       buildPackages.writeShellScript "illumos-ld" ''
         unset SGS_SUPPORT SGS_SUPPORT_32 SGS_SUPPORT_64
-        exec ${buildPackages.illumos.ld-native}/bin/ld "$@"
+        exec ${buildPackages.illumos.ld}/bin/ld "$@"
       ''
     }"
   ];
