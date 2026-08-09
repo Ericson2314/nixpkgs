@@ -180,6 +180,27 @@ mkDerivation {
     mkdir -p "$out/lib/amd64"
     cp ld.so.1 "$out/lib/amd64/"
 
+    # ld.so.1 is itself dynamically linked -- Makefile.com:115-119 gives it
+    # -llddbg, -lrtld and -lld -- and its runpath is '$ORIGIN' (Makefile.com:122),
+    # so those three have to sit in the same directory it does. Without them the
+    # interpreter cannot start, and every dynamic binary dies before main() with
+    #
+    #     ld.so.1: <prog>: fatal: liblddbg.so.4: open failed
+    #
+    # followed by a relocation error against ld.so.1 itself.
+    # libelf comes along because librtld and libld both need it, and $ORIGIN is
+    # the only path any of them has.
+    #
+    # Copies, not symlinks: ld.so.1 resolves $ORIGIN from the *realpath* of the
+    # object, so a symlink here would move each library's origin back to its own
+    # store directory -- where its siblings are not -- and the chain would fail
+    # exactly as if they were missing.
+    for l in ${sgs-liblddbg}/lib/liblddbg.so.4 ${sgs-librtld}/lib/librtld.so.1 \
+             ${sgs-libld}/lib/libld.so.4 ${sgs-libelf}/lib/libelf.so.1; do
+      cp "$l" "$out/lib/amd64/"
+      chmod u+w "$out/lib/amd64/$(basename "$l")"
+    done
+
     runHook postInstall
   '';
 }
