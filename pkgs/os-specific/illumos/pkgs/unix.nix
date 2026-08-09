@@ -342,6 +342,23 @@ mkDerivation {
     # filesystem or STREAMS problem and is neither.
     "intel/pipe"
 
+    # The other loadable-syscall modules userland actually reaches for.
+    # `sysent.c` has 17 `SYSENT_LOADABLE()` slots and each one is a `nosys()`
+    # -- i.e. a SIGSYS -- until its module is present, so they are worth
+    # shipping ahead of the failure rather than one panic at a time:
+    #
+    #   doorfs   door_call(3C). libscf talks to svc.configd over a door, and
+    #            so does the name-service cache, so SMF needs this.
+    #   portfs   event ports (port_create(3C)), the illumos poll replacement.
+    #   shmsys   } System V IPC. Plenty of ported software probes for these
+    #   semsys   } and quietly takes a worse path when they are missing,
+    #   msgsys   } rather than failing loudly.
+    "intel/doorfs"
+    "intel/portfs"
+    "intel/shmsys"
+    "intel/semsys"
+    "intel/msgsys"
+
     # main() calls vfs_mountroot() almost immediately after startup, and
     # rootconf() (common/fs/vfs.c:4512) panics unless it can modload the root
     # filesystem named by the "fstype" boot property -- "ufs" by default.
