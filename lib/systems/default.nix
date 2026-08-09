@@ -154,14 +154,16 @@ let
         useLLVM = final.isFreeBSD || final.isOpenBSD;
 
         # Use the split GCC package set (`gccNGPackages`) instead of the
-        # monolithic `gcc`. No platform selects it yet; it is opt-in, set
-        # explicitly on a platform spec, so that the split set can be exercised
-        # before anything depends on it.
+        # monolithic `gcc`.
         #
-        # I (@Ericson2314) plan on making obscure low-tier platforms (e.g.
-        # NetBSD) use it soon, so we can dogfood GCC NG and thereby iron out its
-        # bugs.
-        useGccNG = false;
+        # Derived here rather than set per platform spec, as `x86_64-netbsd`
+        # does in `examples.nix`. illumos has to be selected by a *predicate*
+        # because it is routinely named by the bare config string
+        # `"x86_64-unknown-solaris2.11"` -- nixbsd's `nixpkgs.hostPlatform` is
+        # exactly that -- and a bare string carries no attributes of its own,
+        # so a spec-level `useGccNG = true` would simply not be there. A
+        # platform spec that sets it explicitly still wins over this default.
+        useGccNG = final.isIllumos;
 
         libc =
           if final.isDarwin then
