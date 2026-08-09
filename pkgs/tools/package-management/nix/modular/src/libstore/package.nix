@@ -40,7 +40,15 @@
   withAWS ?
     # Default is this way because there have been issues building this dependency
     # TODO: aws-crt-cpp is broken on cygwin, find a good way to check that here
-    lib.meta.availableOn stdenv.hostPlatform aws-c-common && !stdenv.hostPlatform.isCygwin,
+    # Ditto illumos: aws-c-common itself builds, but aws-c-io has no event loop
+    # backend for it -- it offers epoll, kqueue and IOCP only, and stops with
+    # "Event Loop is not setup on the platform." illumos would want an event
+    # ports (port_create) backend, which is an upstream port rather than a
+    # packaging fix. Note this probe asks about aws-c-common, which is not the
+    # dependency that actually fails.
+    lib.meta.availableOn stdenv.hostPlatform aws-c-common
+    && !stdenv.hostPlatform.isCygwin
+    && !stdenv.hostPlatform.isSunOS,
 }:
 
 mkMesonLibrary (finalAttrs: {
