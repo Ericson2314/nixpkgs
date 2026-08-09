@@ -3375,7 +3375,6 @@ with pkgs;
         withoutTargetLibc = true;
         langCC = stdenv.targetPlatform.isCygwin; # can't compile libcygwin1.a without C++
         libcCross = libc1;
-        preLibcHeaders = targetPackages.preLibcHeaders or preLibcHeaders;
         targetPackages.stdenv.cc.bintools = binutilsNoLibc;
         enableShared =
           stdenv.targetPlatform.hasSharedLibraries

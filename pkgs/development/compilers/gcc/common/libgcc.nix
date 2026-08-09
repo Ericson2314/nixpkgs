@@ -52,10 +52,6 @@ lib.pipe drv
           && !stdenv.targetPlatform.isPE
           && !langJit
           && !stdenv.hostPlatform.isDarwin
-          # ...and for a $lib/<target>/lib layout. Solaris installs the 64-bit
-          # libgcc under lib/amd64 instead, so the move in preFixupLibGccPhase
-          # cannot find it. Leave libgcc in $lib on illumos.
-          && !stdenv.targetPlatform.isIllumos
           && enableShared
           && !useLibgccFromTargetLibc;
 

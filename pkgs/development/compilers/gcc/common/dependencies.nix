@@ -21,12 +21,7 @@
   zlib ? null,
   gnat-bootstrap ? null,
   flex ? null,
-  bison ? null,
   perl ? null,
-  # True when `src` is a VCS checkout rather than a release tarball, and so
-  # lacks the generated sources (gengtype-lex.cc and friends) that a tarball
-  # ships pre-built.
-  fromVCS ? false,
   langAda ? false,
   langGo ? false,
   langRust ? false,
@@ -53,11 +48,7 @@ in
   ]
   ++ optionals (!is13) [ gettext ]
   ++ optionals (perl != null) [ perl ]
-  ++ optionals (
-    with stdenv.targetPlatform;
-    isVc4 || isRedox || (isSnapshot || fromVCS) && flex != null
-  ) [ flex ]
-  ++ optionals (fromVCS && bison != null) [ bison ]
+  ++ optionals (with stdenv.targetPlatform; isVc4 || isRedox || isSnapshot && flex != null) [ flex ]
   ++ optionals langAda [ gnat-bootstrap ]
   ++ optionals langRust [ cargo ]
   # The builder relies on GNU sed (for instance, Darwin's `sed' fails with

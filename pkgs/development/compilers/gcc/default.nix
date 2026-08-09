@@ -3,7 +3,6 @@
   stdenv,
   targetPackages,
   fetchurl,
-  fetchFromGitHub,
   fetchpatch,
   noSysDirs,
   langC ? true,
@@ -46,9 +45,6 @@
   enablePlugin ? _systemInfo.buildIsHost, # Whether to support user-supplied plug-ins
   name ? "gcc",
   libcCross ? null,
-  # Headers usable before libc itself is built; see `preLibcHeaders` in
-  # all-packages.nix. Needed by targets whose libgcc wants libc headers.
-  preLibcHeaders ? null,
   threadsCross ? { }, # for MinGW
   withoutTargetLibc ? stdenv.targetPlatform.libc == null,
   flex,
@@ -84,27 +80,7 @@ let
   inherit (_systemInfo) buildIsHost hostIsTarget;
 
   gccVersions = import ./versions.nix;
-
-  # illumos needs its own GCC fork, which carries the ABI and runtime-linker
-  # support the platform depends on. It only exists for 14.x, so anything else
-  # falls back to upstream GCC (and will very likely not work for illumos).
-  useIllumosFork = stdenv.targetPlatform.isIllumos && (majorMinorVersion == "14" || majorMinorVersion == "15");
-
-  # The illumos fork is fetched from git, not from a release tarball, so it is
-  # missing the generated sources (gengtype-lex.cc and friends) that a tarball
-  # ships pre-built; those need flex and bison to regenerate.
-  fromVCS = useIllumosFork;
-
-  # Whether the `withoutTargetLibc` stage is nonetheless being given real libc
-  # headers (see configure-flags.nix). When it is, gcc's generated syslimits.h
-  # must chain to the system limits.h, so LIMITS_H_TEST has to stay true.
-  usePreLibcHeaders =
-    withoutTargetLibc && stdenv.targetPlatform.isIllumos && preLibcHeaders != null;
-
-  # The fork is based on 14.2.0, not the 14.2.1 snapshot nixpkgs otherwise
-  # tracks for GCC 14. These must agree: `postPatch` below asserts that
-  # `baseVersion` matches the tree's own gcc/BASE-VER.
-  version = if useIllumosFork then (if majorMinorVersion == "15" then "15.2.0" else "14.2.0") else gccVersions.fromMajorMinor majorMinorVersion;
+  version = gccVersions.fromMajorMinor majorMinorVersion;
 
   majorVersion = versions.major version;
   is13 = majorVersion == "13";
@@ -142,7 +118,6 @@ let
     inherit
       majorVersion
       isSnapshot
-      fromVCS
       version
       buildPlatform
       hostPlatform
@@ -190,7 +165,6 @@ let
       langRust
       lib
       libcCross
-      preLibcHeaders
       libmpc
       libucontext
       libxcrypt
@@ -241,28 +215,14 @@ pipe
       name = "${crossNameAddon}${name}-${version}";
       version = baseVersion;
 
-      src =
-        if useIllumosFork then
-          (if majorMinorVersion == "15" then fetchFromGitHub {
-            owner = "Ericson2314";
-            repo = "gcc";
-            rev = "84e2e22d108fd9cf5de1d062c137a5f68c27800c";
-            hash = "sha256-8TZRxdc7I+lkeIAjovZXDi3F1RvWOdcvGnWBQct2/bI=";
-          } else fetchFromGitHub {
-            owner = "illumos";
-            repo = "gcc";
-            tag = "gcc-14.2.0-il-1";
-            hash = "sha256-fjLmiKb/35Px0q+hM9GcZ3tsgabE1YfzXGpgmBewASU=";
-          })
-        else
-          fetchurl {
-            url =
-              if isSnapshot then
-                "mirror://gcc/snapshots/${majorVersion}-${snapDate}/gcc-${majorVersion}-${snapDate}.tar.xz"
-              else
-                "mirror://gcc/releases/gcc-${version}/gcc-${version}.tar.xz";
-            ${if is13 then "hash" else "sha256"} = gccVersions.srcHashForVersion version;
-          };
+      src = fetchurl {
+        url =
+          if isSnapshot then
+            "mirror://gcc/snapshots/${majorVersion}-${snapDate}/gcc-${majorVersion}-${snapDate}.tar.xz"
+          else
+            "mirror://gcc/releases/gcc-${version}/gcc-${version}.tar.xz";
+        ${if is13 then "hash" else "sha256"} = gccVersions.srcHashForVersion version;
+      };
 
       inherit patches;
 
@@ -351,21 +311,6 @@ pipe
         libcCross
         crossMingw
         ;
-    }
-    // lib.optionalAttrs usePreLibcHeaders {
-      # This stage has real libc headers despite `withoutTargetLibc`, so gcc's
-      # generated syslimits.h must chain to the system limits.h -- otherwise
-      # identifiers like PATH_MAX are undefined when building libgcc.
-      #
-      # common/builder.nix appends `LIMITS_H_TEST=false` in preConfigure, and
-      # the last assignment on make's command line wins, so this has to come
-      # later. It is set here rather than in builder.nix so that no other
-      # target's derivation changes.
-      preBuild = ''
-        makeFlagsArray+=( 'LIMITS_H_TEST=true' )
-      '';
-    }
-    // {
 
       inherit (callFile ./common/dependencies.nix { })
         depsBuildBuild
