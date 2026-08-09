@@ -142,7 +142,31 @@ build() {
 }
 
 unix=$(build pkgsCross.x86_64-illumos.illumos.unix)
-init=$(build pkgsCross.x86_64-illumos.illumos.init-stub)
+libc=$(build pkgsCross.x86_64-illumos.illumos.libc)
+
+# ILLUMOS_INIT=stub (the default) boots the freestanding init that prints one
+# line and powers the machine off, so this script finishes on its own in about
+# fifteen seconds. ILLUMOS_INIT=shell puts an interactive bash on the console
+# instead, in which case the script does *not* finish -- leave with `^A x`.
+case ${ILLUMOS_INIT:-stub} in
+stub)
+    init=$(build pkgsCross.x86_64-illumos.illumos.init-stub)
+    closure=
+    ;;
+shell)
+    init=$(build pkgsCross.x86_64-illumos.illumos.init-shell)
+    # bash is an ordinary dynamically linked illumos program, so its whole
+    # NEEDED closure has to be in the archive: readline, history, ncursesw,
+    # socket, nsl and the libc composite -- which is also where ld.so.1 and
+    # the sgs libraries ld.so.1 itself needs come from.
+    closure="$(build pkgsCross.x86_64-illumos.bashInteractive) $libc"
+    ;;
+*)
+    echo "$0: ILLUMOS_INIT must be 'stub' or 'shell', not '$ILLUMOS_INIT'" >&2
+    exit 1
+    ;;
+esac
+
 grub=$(build grub2)
 xorriso=$(build libisoburn)
 
@@ -247,6 +271,32 @@ mkdir -p "$work/ba/dev" "$work/ba/devices" "$work/ba/proc" "$work/ba/tmp" \
 # /sbin/init: main() -> start_init() -> exec_init() execs zone_initname, which
 # is "/sbin/init" (uts/common/os/main.c:140).
 install -Dm755 "$init/sbin/init" "$work/ba/sbin/init"
+
+if [ -n "$closure" ]; then
+    # Stage the store paths init needs, at their real locations, because
+    # PT_INTERP and DT_RUNPATH are absolute store paths. `cp -a` rather than
+    # `cp -RL`: with Rock Ridge the image can hold symlinks, so the closure
+    # stays a symlink farm instead of every link becoming a full copy of its
+    # target. (Before Rock Ridge that alone roughly doubled the archive.)
+    for p in $(nix-store -qR $closure); do
+        mkdir -p "$work/ba$(dirname "$p")"
+        cp -a "$p" "$work/ba$p"
+    done
+    chmod -R u+w "$work/ba/nix"
+
+    # A real illumos root keeps its 64-bit libraries in /lib/amd64, with
+    # /lib/64 as the alias. Two things need this and neither uses a runpath:
+    # ld.so.1's SONAME is the absolute string "/lib/amd64/ld.so.1", and
+    # libraries like libnsl.so.1 carry no DT_RUNPATH at all and rely on the
+    # default /lib/64 search path.
+    mkdir -p "$work/ba/lib/amd64"
+    ln -sfn amd64 "$work/ba/lib/64"
+    for f in "$libc"/lib/*.so.*; do
+        [ -e "$f" ] || continue
+        ln -sfn "$f" "$work/ba/lib/amd64/$(basename "$f")"
+    done
+    ln -sfn "$libc/lib/amd64/ld.so.1" "$work/ba/lib/amd64/ld.so.1"
+fi
 
 # -R  Rock Ridge: real names, POSIX modes and ownership, and symbolic links.
 #     Both readers use it -- krtld's standalone one (common/fs/hsfs.c) for
