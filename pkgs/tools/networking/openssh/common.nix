@@ -37,7 +37,15 @@
   hostname,
   nixosTests,
   withSecurityKey ? !stdenv.hostPlatform.isStatic,
-  withFIDO ? stdenv.hostPlatform.isUnix && !stdenv.hostPlatform.isMusl && withSecurityKey,
+  # libfido2 has no HID backend for illumos -- its CMakeLists stops with
+  # "please define a hid backend for your platform" -- so the built-in
+  # security-key middleware cannot be had there. Same treatment as musl:
+  # withSecurityKey stays on, users just supply their own middleware.
+  withFIDO ?
+    stdenv.hostPlatform.isUnix
+    && !stdenv.hostPlatform.isMusl
+    && !stdenv.hostPlatform.isSunOS
+    && withSecurityKey,
   withPAM ? stdenv.hostPlatform.isLinux && !stdenv.hostPlatform.isStatic,
   # Attempts to mlock the entire sshd process on startup to prevent swapping.
   # Currently disabled when PAM support is enabled due to crashes
