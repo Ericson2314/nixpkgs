@@ -44,6 +44,20 @@ stdenv.mkDerivation rec {
   buildInputs = [ libunistring ] ++ lib.optional stdenv.hostPlatform.isDarwin libiconv;
   depsBuildBuild = [ buildPackages.stdenv.cc ];
 
+  # gnulib decides whether MB_CUR_MAX needs replacing by *running* a test
+  # program, so cross compiling only ever gets to guess -- and it guesses "no",
+  # i.e. "broken". That makes gnulib emit its own `gl_MB_CUR_MAX` as an extern
+  # inline in the generated stdlib.h, which both gl/ and unistring/ then define,
+  # and since gcc 10 defaults to -fno-common the two collide at link time:
+  #
+  #   libgnu.a(libgnu_la-stdlib.o): multiple definition of `gl_MB_CUR_MAX';
+  #   libunistring.a(libunistring_la-stdlib.o): first defined here
+  #
+  # illumos' MB_CUR_MAX is fine, so answer the probe instead of guessing.
+  env = lib.optionalAttrs stdenv.hostPlatform.isSunOS {
+    gl_cv_macro_MB_CUR_MAX_good = "yes";
+  };
+
   meta = {
     homepage = "https://www.gnu.org/software/libidn/#libidn2";
     description = "Free software implementation of IDNA2008 and TR46";
