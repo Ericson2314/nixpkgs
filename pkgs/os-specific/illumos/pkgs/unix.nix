@@ -446,6 +446,29 @@ mkDerivation {
     "intel/ptem"
     "intel/ldterm"
     "intel/ttcompat"
+
+    # The pseudo-terminal pair. ptem/ldterm/ttcompat above are the STREAMS
+    # modules pushed onto a terminal line; they are pushed onto pty slaves too,
+    # but on their own there is no pty to push them onto.
+    #
+    #   ptm    the master, /dev/ptmx
+    #   pts    the slave, /dev/pts/N
+    #   pckt   packet mode, which the master pushes to see slave-side
+    #          M_FLUSH/ioctl events -- what a job-control shell in a pty needs
+    #
+    # Nothing links against these (no -N in any of the three Makefiles); they
+    # are opened by name. Without them there is no pty pair at all, so every
+    # interactive session is impossible -- an ssh login, `login` on a virtual
+    # console, script(1), screen. The serial console works without them because
+    # asy(4D) is a real tty, which is why this has not bitten yet.
+    #
+    # /dev/pts/N does not need devfsadm: fs/dev registers a dynamic directory
+    # for "pts" (sdev_subr.c:498, devpts_vnodeops) and materialises slave nodes
+    # on lookup. /dev/ptmx is an ordinary devfsadm-made link, so until that
+    # lands the master is reachable only under /devices.
+    "intel/ptm"
+    "intel/pts"
+    "intel/pckt"
     "intel/asy"
 
     # cons_build_upper_layer() (common/io/consconfig_dacf.c:836 onwards) opens
