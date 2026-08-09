@@ -96,7 +96,7 @@ mkDerivation {
   # once the compiler driver is out of the picture.
   preBuild = ''
     makeFlagsArray+=("CPPFLAGS.first=-I${headers}/include -I${headers}/include/rpcsvc")
-    makeFlagsArray+=("BUILD.SO=\$(LD) -o \$@ \$(GSHARED) \$(DYNFLAGS) ${crt}/lib/crti.o \$(PICS) \$(EXTPICS) ${crt}/lib/crtn.o -L${libcMinimal}/lib -L${libssp_ns}/lib -L${libavl}/lib -L${libuutil}/lib -L${libnsl}/lib -L${libnvpair}/lib -L${libmd}/lib -L${libmp}/lib \$(LDLIBS)")
+    makeFlagsArray+=("BUILD.SO=\$(LD) -o \$@ \$(GSHARED) \$(DYNFLAGS) ${crt}/lib/crti.o \$(PICS) \$(EXTPICS) ${crt}/lib/crtn.o -L${libcMinimal}/lib -L${libssp_ns}/lib -L${libavl}/lib -R${libavl}/lib -L${libuutil}/lib -R${libuutil}/lib -L${libnsl}/lib -R${libnsl}/lib -L${libnvpair}/lib -R${libnvpair}/lib -L${libmd}/lib -R${libmd}/lib -L${libmp}/lib -R${libmp}/lib \$(LDLIBS)")
   '';
 
   # <idmap.h> and the private <idmap_priv.h>/<idmap_impl.h> are installed into

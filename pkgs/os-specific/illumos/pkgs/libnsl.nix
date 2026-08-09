@@ -168,7 +168,7 @@ mkDerivation {
     # which -zfatal-warnings (in DYNFLAGS) promotes to an error. Naming them
     # reproduces exactly what the driver would have done.
     makeFlagsArray+=("CPPFLAGS.first=-I$NIX_BUILD_TOP/nsl-include -I${headers}/include -I\$(SRC)/lib/libipsecutil/common -I\$(SRC)/lib/libtecla -I\$(SRC)/lib/libc/port/gen")
-    makeFlagsArray+=("BUILD.SO=\$(LD) -o \$@ \$(GSHARED) \$(DYNFLAGS) ${crt}/lib/crti.o \$(PICS) \$(EXTPICS) ${crt}/lib/crtn.o -L${libcMinimal}/lib -L${libssp_ns}/lib -L${libmd}/lib -L${libmp}/lib \$(LDLIBS)")
+    makeFlagsArray+=("BUILD.SO=\$(LD) -o \$@ \$(GSHARED) \$(DYNFLAGS) ${crt}/lib/crti.o \$(PICS) \$(EXTPICS) ${crt}/lib/crtn.o -L${libcMinimal}/lib -L${libssp_ns}/lib -L${libmd}/lib -R${libmd}/lib -L${libmp}/lib -R${libmp}/lib \$(LDLIBS)")
   '';
 
   makeFlags = [

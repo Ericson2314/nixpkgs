@@ -135,7 +135,7 @@ mkDerivation {
   preBuild = ''
     makeFlagsArray+=("YACC=${buildPackages.illumos.yacc}/bin/yacc -P ${buildPackages.illumos.yacc}/share/lib/ccs/yaccpar")
     makeFlagsArray+=("LEX=${buildPackages.illumos.lex}/bin/lex -Y ${buildPackages.illumos.lex}/share/lib/ccs")
-    makeFlagsArray+=("BUILD.SO=\$(LD) -o \$@ \$(GSHARED) \$(DYNFLAGS) ${crt}/lib/crti.o \$(PICS) \$(EXTPICS) ${crt}/lib/crtn.o -L${libcMinimal}/lib -L${libssp_ns}/lib -L${libavl}/lib -L${libidmap}/lib -L${libuutil}/lib -L${libnsl}/lib -L${libnvpair}/lib -L${libmd}/lib -L${libmp}/lib \$(LDLIBS)")
+    makeFlagsArray+=("BUILD.SO=\$(LD) -o \$@ \$(GSHARED) \$(DYNFLAGS) ${crt}/lib/crti.o \$(PICS) \$(EXTPICS) ${crt}/lib/crtn.o -L${libcMinimal}/lib -L${libssp_ns}/lib -L${libavl}/lib -R${libavl}/lib -L${libidmap}/lib -R${libidmap}/lib -L${libuutil}/lib -R${libuutil}/lib -L${libnsl}/lib -R${libnsl}/lib -L${libnvpair}/lib -R${libnvpair}/lib -L${libmd}/lib -R${libmd}/lib -L${libmp}/lib -R${libmp}/lib \$(LDLIBS)")
   '';
 
   # <aclutils.h> is the only header the top lib/libsec Makefile installs, and

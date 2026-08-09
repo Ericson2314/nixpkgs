@@ -102,7 +102,7 @@ mkDerivation {
   '';
 
   preBuild = ''
-    makeFlagsArray+=("BUILD.SO=\$(LD) -o \$@ \$(GSHARED) \$(DYNFLAGS) ${crt}/lib/crti.o \$(PICS) \$(EXTPICS) ${crt}/lib/crtn.o -L${libcMinimal}/lib -L${libssp_ns}/lib -L${libdevinfo}/lib -L${libnvpair}/lib -L${libsec}/lib -L${libgen}/lib -L${libavl}/lib -L${libidmap}/lib -L${libuutil}/lib -L${libnsl}/lib -L${libmd}/lib -L${libmp}/lib \$(LDLIBS)")
+    makeFlagsArray+=("BUILD.SO=\$(LD) -o \$@ \$(GSHARED) \$(DYNFLAGS) ${crt}/lib/crti.o \$(PICS) \$(EXTPICS) ${crt}/lib/crtn.o -L${libcMinimal}/lib -L${libssp_ns}/lib -L${libdevinfo}/lib -R${libdevinfo}/lib -L${libnvpair}/lib -R${libnvpair}/lib -L${libsec}/lib -R${libsec}/lib -L${libgen}/lib -R${libgen}/lib -L${libavl}/lib -R${libavl}/lib -L${libidmap}/lib -R${libidmap}/lib -L${libuutil}/lib -R${libuutil}/lib -L${libnsl}/lib -R${libnsl}/lib -L${libmd}/lib -R${libmd}/lib -L${libmp}/lib -R${libmp}/lib \$(LDLIBS)")
   '';
 
   # <smbios.h> here is the *library* header (lib/libsmbios/common/smbios.h),
