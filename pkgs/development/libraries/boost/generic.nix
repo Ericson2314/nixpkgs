@@ -149,11 +149,19 @@ let
     ++ lib.optional (variant == "release") "debug-symbols=off"
     ++ lib.optional (toolset != null) "toolset=${toolset}"
     ++ lib.optional (!enablePython) "--without-python"
-    # Boost.Process has no illumos arm: `ext/env.cpp` and `ext/pid.cpp` fall
-    # through to the BSD branch and include <kvm.h>, which illumos does not
-    # ship in its userland headers, so the library fails to compile. Nothing
-    # in the illumos package set needs it yet.
-    ++ lib.optional stdenv.hostPlatform.isSunOS "--without-process"
+    # Two libraries want illumos pieces nixpkgs does not package yet:
+    #
+    #  - Process has no illumos arm at all. `ext/env.cpp` and `ext/pid.cpp`
+    #    fall through to the BSD branch and include <kvm.h>, which illumos
+    #    does not ship in its userland headers.
+    #  - Fiber's NUMA support links `-llgrp`, illumos' locality-group library.
+    #
+    # Neither is needed by anything in the illumos package set (`nix` uses
+    # Context and Coroutine, which both build fine).
+    ++ lib.optionals stdenv.hostPlatform.isSunOS [
+      "--without-process"
+      "--without-fiber"
+    ]
     ++ lib.optional needUserConfig "--user-config=user-config.jam"
     ++ lib.optional (stdenv.buildPlatform.isDarwin && stdenv.hostPlatform.isLinux) "pch=off"
     ++ lib.optionals stdenv.hostPlatform.isMinGW [
