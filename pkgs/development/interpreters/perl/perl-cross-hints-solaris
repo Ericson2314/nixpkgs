@@ -1,0 +1,37 @@
+# perl-cross hints for Solaris/illumos.
+#
+# `perl-cross` ships no hints for this target and its `configure` cannot even
+# guess `osname` from an `*-solaris2.11` triple, so without this file `osname`
+# comes out empty, `archname` becomes `x86_64-`, and every value that
+# `perl-cross` expects a hint file to supply is left unset. An unset
+# `d_nanosleep` in particular reaches `config_h.SH` as a bare
+# `# HAS_NANOSLEEP`, which is not a valid preprocessing directive.
+#
+# `osname` is passed on the command line as well -- hints are loaded by
+# `osname`, so it has to be known before this file can be found.
+osname='solaris'
+
+# Solaris syscalls
+d_voidsig='define'
+d_nanosleep='define'
+d_clock='define'
+d_clock_gettime='define'
+d_clock_getres='define'
+d_clock_nanosleep='define'
+
+d_fcntl_can_lock='define'
+
+# illumos' equivalent of Linux' /proc/self/exe
+d_procselfexe='define'
+procselfexe='"/proc/self/path/a.out"'
+
+# libraries to test
+libswanted='m crypt pthread socket nsl dl rt'
+
+# `perl-cross` only ever puts `-lm`, `-lcrypt`, `-lpthread` and `-ldl` into
+# `perllibs` and expects anything else to be hinted. On Solaris the sockets and
+# name-service entry points -- `socketpair`, `getsockname`, `gethostbyname`,
+# `h_errno`, ... -- live in `libsocket`/`libnsl` rather than libc, and `pp_sys.c`
+# and `util.c` reference them directly, so `perl` itself does not link without
+# them.
+perllibs='-lm -lcrypt -lpthread -lsocket -lnsl -ldl'

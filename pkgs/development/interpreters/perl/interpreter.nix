@@ -250,7 +250,19 @@ stdenv.mkDerivation (
         "-Dusedevel"
         "-Uversiononly"
       ]
-      ++ lib.optional stdenv.hostPlatform.isSunOS "-Dcc=gcc"
+      # Solaris' `Configure` hints only take the GCC path when `cc` literally
+      # says "gcc", so force it -- but only for a native build. When cross
+      # compiling this flag is actively harmful: `perl-cross`'s `configure`
+      # derives the *target* triple from `$cc -dumpmachine`, so pinning `cc` to
+      # the build machine's `gcc` yields `osname='linux'`, `archname=
+      # 'x86_64-linux'` and an empty `cppflags` in the target `config.sh`.
+      # `ext/Errno/Errno_pm.PL` then preprocesses `<errno.h>` with the build
+      # compiler and finds no illumos error definitions.
+      ++ lib.optional (stdenv.hostPlatform.isSunOS && !crossCompiling) "-Dcc=gcc"
+      # `perl-cross`'s `configure` has no case for `*-solaris*` when it guesses
+      # the target OS, and it loads `cnf/hints/$osname`, so `osname` has to be
+      # supplied before `cnf/hints/solaris` can be found at all.
+      ++ lib.optional (stdenv.hostPlatform.isSunOS && crossCompiling) "-Dosname=solaris"
       ++ lib.optional enableThreading "-Dusethreads"
       ++ lib.optional (!enableCrypt) "-A clear:d_crypt_r"
       ++ lib.optionals (stdenv.hostPlatform.isFreeBSD && crossCompiling && enableCrypt) [
@@ -451,6 +463,9 @@ stdenv.mkDerivation (
       unpackFile ${perl-cross-src}
       chmod -R u+w ${perl-cross-src.name}
       cp -R ${perl-cross-src.name}/* perl-${version}/
+    ''
+    + lib.optionalString stdenv.hostPlatform.isSunOS ''
+      cp ${./perl-cross-hints-solaris} perl-${version}/cnf/hints/solaris
     '';
 
     configurePlatforms = [
