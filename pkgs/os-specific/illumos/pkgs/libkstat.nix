@@ -13,7 +13,9 @@
 #
 # Wanted here for `dladm show-link -s` and friends: every MAC driver publishes
 # its packet and error counters as kstats, so the datalink commands read them
-# rather than adding an ioctl of their own.
+# rather than adding an ioctl of their own. `svc.startd` links `-lkstat` too;
+# it samples boot-time kstats when it computes how long the system took to
+# come up.
 mkDerivation {
   libcMinimal = true;
   illumosLib = true;
