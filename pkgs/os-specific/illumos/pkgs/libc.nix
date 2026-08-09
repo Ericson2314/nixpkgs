@@ -10,6 +10,7 @@
   libdl,
   libsocket,
   libnsl,
+  nss-files,
   libmd,
   libmp,
   libnvpair,
@@ -88,6 +89,20 @@ symlinkJoin {
         libdl
         libsocket
         libnsl
+        # The "files" name-service backend. Unlike everything else here this is
+        # not linked against -- libc dlopen()s it by name, "nss_files.so.1",
+        # with no path (NSS_DLOPEN_FORMAT in lib/libc/port/gen/nss_deffinder.c).
+        # A pathless dlopen searches the runpath of the calling object and of
+        # the executable, and every illumos binary already has this composite's
+        # lib directory on its runpath -- so putting the backend here is what
+        # makes it findable at all. It also matches the real system layout,
+        # where /lib holds libc.so.1 and nss_files.so.1 side by side.
+        #
+        # Without it `getpwnam("root")` fails and nothing can turn a name into
+        # a uid: no login, no getent, and no sshd -- openssh is built here with
+        # withPAM off, so it authenticates against /etc/shadow itself rather
+        # than through a PAM stack, and depends on this backend directly.
+        nss-files
         libmd
         libmp
         libnvpair
