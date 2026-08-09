@@ -4,6 +4,7 @@
   libcMinimal,
   libm,
   libpthread,
+  librt,
   libssp_ns,
   rtld,
   libdl,
@@ -25,10 +26,11 @@
 # available from the platform libc as well.
 #
 # libc.so.1 already implements the threads and rt interfaces that NetBSD splits
-# into librt; libpthread.so.1 is still included, but only as a *filter* library
-# on libc -- it carries no code of its own, and exists so that an
-# unconditional -lpthread (gcc's libsanitizer passes one) resolves. libdl.so.1
-# is a filter for the same reason, on ld.so.1.
+# into librt; libpthread.so.1 and librt.so.1 are still included, but only as
+# *filter* libraries on libc -- they carry no code of their own, and exist so
+# that an unconditional -lpthread (gcc's libsanitizer passes one) or -lrt
+# (cmake adds one for any non-Linux UNIX; zstd, libarchive and CPython all end
+# up with it) resolves. libdl.so.1 is a filter for the same reason, on ld.so.1.
 #
 # It does *not* implement sockets or the resolver, contrary to an assumption
 # that cost us a while: `socket`, `connect`, `getaddrinfo` and `gethostbyname`
@@ -76,6 +78,7 @@ symlinkJoin {
         libcMinimal
         libm
         libpthread
+        librt
         libssp_ns
         # ld.so.1. The bintools wrapper points PT_INTERP at
         # "${libc}/lib/64/ld.so.1" (bintools-wrapper/default.nix:163), so the
