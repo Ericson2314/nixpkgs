@@ -107,7 +107,14 @@ stdenv.mkDerivation (finalAttrs: {
       template-based runtime library can help you harness the latent
       performance of multi-core processors.
     '';
-    platforms = lib.subtractLists lib.platforms.cygwin lib.platforms.all;
+    # oneTBB has no illumos/Solaris support: tbbmalloc_proxy interposes the
+    # allocator through Linux-only symbol version scripts
+    # (src/tbbmalloc_proxy/def/lin64-*.def), and linking it fails with
+    #   ld.bfd: libtbbmalloc.so.2.17: dlclose: invalid version 6 (max 0)
+    #   ld.bfd: libtbbmalloc.so.2.17: error adding symbols: bad value
+    platforms = lib.subtractLists (
+      lib.platforms.cygwin ++ lib.platforms.illumos
+    ) lib.platforms.all;
     # oneTBB does not support static builds
     # "You are building oneTBB as a static library. This is highly discouraged and such configuration is not supported. Consider building a dynamic library to avoid unforeseen issues."
     # https://github.com/uxlfoundation/oneTBB/blob/db7891a246cafbb90719c3dee497d96889ca692b/CMakeLists.txt#L160
