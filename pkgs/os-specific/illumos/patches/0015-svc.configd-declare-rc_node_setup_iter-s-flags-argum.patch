@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Sun, 9 Aug 2026 16:27:50 -0400
+Subject: [PATCH] svc.configd: declare `rc_node_setup_iter`'s flags argument as
+ `uint32_t`
+
+`configd.h` declares the fourth parameter as `size_t`; `rc_node.c` defines it
+as `uint32_t`. Upstream builds svc.configd 32-bit, where `size_t` *is*
+`unsigned int`, so the two agree and nothing complains. In an LP64 build they
+do not, and gcc rejects the definition outright:
+
+    rc_node.c:6253:1: error: conflicting types for 'rc_node_setup_iter'
+
+The definition is the correct one. The argument is a flags word, not a size:
+the only caller is `client.c:1213`, which passes `rpr->rpr_flags` --
+`uint32_t` in `common/svc/repcache_protocol.h:604` -- and the body uses it
+solely against the `RP_ITER_START_*` bit constants
+(`RP_ITER_START_FILT_MASK`, `RP_ITER_START_COMPOSED`), never as a length.
+
+Found by building svc.configd 64-bit, which this tree is the first thing to
+do; the amd64 command directory does not exist upstream.
+
+Assisted-By: Claude <noreply@anthropic.com>
+---
+ usr/src/cmd/svc/configd/configd.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/usr/src/cmd/svc/configd/configd.h b/usr/src/cmd/svc/configd/configd.h
+index e5f1b5d7c5..5ec525887e 100644
+--- a/usr/src/cmd/svc/configd/configd.h
++++ b/usr/src/cmd/svc/configd/configd.h
+@@ -707,7 +707,7 @@ int rc_node_delete(rc_node_ptr_t *);
+ int rc_node_next_snaplevel(rc_node_ptr_t *, rc_node_ptr_t *);
+ 
+ int rc_node_setup_iter(rc_node_ptr_t *, rc_node_iter_t **, uint32_t,
+-    size_t, const char *);
++    uint32_t, const char *);
+ 
+ int rc_iter_next(rc_node_iter_t *, rc_node_ptr_t *, uint32_t);
+ int rc_iter_next_value(rc_node_iter_t *, struct rep_protocol_value_response *,
