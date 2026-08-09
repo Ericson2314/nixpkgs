@@ -27,6 +27,24 @@ stdenv.mkDerivation (finalAttrs: {
     "-DCMAKE_C_FLAGS=-fasynchronous-unwind-tables"
   ];
 
+  # illumos declares flock(3C) in <sys/file.h> as
+  #
+  #   #if !defined(_STRICT_SYMBOLS)
+  #   extern int flock(int, int);
+  #
+  # and <sys/feature_tests.h> sets _STRICT_SYMBOLS whenever _STRICT_STDC or
+  # __XOPEN_OR_POSIX is in effect without __EXTENSIONS__. The LOCK_* constants
+  # right next to it are *not* guarded, so source/posix/cross_process_lock.c
+  # compiles all the way to the call site and only the declaration is missing:
+  #
+  #   cross_process_lock.c:108:9: error: implicit declaration of function
+  #   'flock'; did you mean 'clock'?
+  #
+  # __EXTENSIONS__ is illumos' documented opt-in for exactly this.
+  env = lib.optionalAttrs stdenv.hostPlatform.isSunOS {
+    NIX_CFLAGS_COMPILE = "-D__EXTENSIONS__";
+  };
+
   # aws-c-common misuses cmake modules, so we need
   # to manually add a MODULE_PATH to its consumers
   setupHook = ./setup-hook.sh;
