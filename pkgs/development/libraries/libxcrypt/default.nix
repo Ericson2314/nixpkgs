@@ -43,7 +43,14 @@ stdenv.mkDerivation (finalAttrs: {
     # required for musl, android, march=native
     "--disable-werror"
   ]
-  ++ lib.optional stdenv.hostPlatform.isCygwin "--disable-symvers";
+  ++ lib.optional stdenv.hostPlatform.isCygwin "--disable-symvers"
+  # illumos declares the C11 Annex K bounds-checking functions -- `memset_s`
+  # and friends -- behind `__EXT1_VISIBLE`, which `<sys/feature_tests.h>`
+  # derives from `__STDC_WANT_LIB_EXT1__`. Without that opt-in, configure's
+  # *link* test still finds `memset_s` in libc.so.1 (it really is there, see
+  # `lib/libc/port/gen/memset_s.c`) while no header declares it, so
+  # `crypt-port.h` fails with an implicit declaration.
+  ++ lib.optional stdenv.hostPlatform.isSunOS "CPPFLAGS=-D__STDC_WANT_LIB_EXT1__=1";
 
   makeFlags =
     let
