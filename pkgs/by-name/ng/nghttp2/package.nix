@@ -6,7 +6,12 @@
   pkg-config,
 
   # Optional dependencies
-  enableApp ? with stdenv.hostPlatform; !(isWindows || isCygwin) && !isStatic,
+  # nghttpx wants SO_REUSEPORT, which illumos does not have -- only
+  # SO_REUSEADDR. The library itself is fine, and the library is all curl
+  # (and so nix) needs.
+  enableApp ?
+    with stdenv.hostPlatform;
+    !(isWindows || isCygwin) && !isStatic && !isSunOS,
   c-aresMinimal,
   libev,
   openssl,
