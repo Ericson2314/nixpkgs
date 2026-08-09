@@ -11,6 +11,7 @@
   libsocket,
   libnsl,
   nss-files,
+  libresolv,
   libmd,
   libmp,
   libnvpair,
@@ -103,6 +104,16 @@ symlinkJoin {
         # withPAM off, so it authenticates against /etc/shadow itself rather
         # than through a PAM stack, and depends on this backend directly.
         nss-files
+
+        # The BIND resolver. libc and libnsl between them give you
+        # `gethostbyname` through the name-service switch, but not the
+        # `res_*` entry points underneath it, and krb5 needs those. Its
+        # `AC_SEARCH_LIBS(res_nsearch, resolv)` is a link-time probe like the
+        # ones described above, except that this one does *not* quietly pick a
+        # fallback -- it stops the configure outright with "cannot find
+        # res_nsearch or res_search" -- so curl loses GSSAPI unless -lresolv is
+        # findable here.
+        libresolv
         libmd
         libmp
         libnvpair
