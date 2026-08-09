@@ -321,6 +321,18 @@ stdenv.mkDerivation (finalAttrs: {
 
   passthru = {
     isGNU = true;
+
+    # Set explicitly, even though `false` is what its absence would mean.
+    # `libcxx` has only ever been LLVM's in practice, so consumers test
+    # `stdenv.cc.libcxx.isLLVM` directly rather than defensively -- e.g.
+    # nix's `packaging/dependencies.nix`:
+    #
+    #     stdenv.cc.libcxx != null && stdenv.cc.libcxx.isLLVM
+    #
+    # which throws `attribute 'isLLVM' missing` rather than taking the other
+    # branch, the moment a non-LLVM libcxx exists. `isGNU` alone is not enough:
+    # nothing outside this tree knows to ask for it.
+    isLLVM = false;
   };
 
   meta = gcc_meta // {
