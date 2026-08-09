@@ -329,6 +329,19 @@ mkDerivation {
     # without an APIC.
     "i86pc/uppc"
 
+    # pipe(2) is a *loadable* syscall: common/os/sysent.c:488 is
+    # `/* 42 */ SYSENT_LOADABLE(), /* pipe */`, and the implementation ships as
+    # its own module (SYS_KMODS in intel/Makefile.intel, source in intel/pipe),
+    # installed to kernel/sys/$(MACH64). Without it slot 42 stays nosys(), so
+    # the first shell pipeline kills the process running it:
+    #
+    #     -bash: pipe error: Operation not applicable
+    #     WARNING: init(8) exited on fatal signal 12
+    #
+    # -- signal 12 being SIGSYS and errno 89 ENOSYS, which reads like a
+    # filesystem or STREAMS problem and is neither.
+    "intel/pipe"
+
     # main() calls vfs_mountroot() almost immediately after startup, and
     # rootconf() (common/fs/vfs.c:4512) panics unless it can modload the root
     # filesystem named by the "fstype" boot property -- "ufs" by default.

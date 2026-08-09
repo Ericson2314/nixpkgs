@@ -167,6 +167,30 @@ shell)
     ;;
 esac
 
+# Extra userland to put in the image, on top of whatever init needs.
+#
+#   ILLUMOS_EXTRA    space-separated nix attribute paths. Each one's runtime
+#                    closure is staged at its real store path, exactly as the
+#                    shell's is, so a program cross-built here can just be run
+#                    by absolute path.
+#   ILLUMOS_PAYLOAD  a host directory, copied to /payload in the image, for
+#                    test inputs that are not nix packages.
+#
+# Both only do anything with ILLUMOS_INIT=shell, since the stub init runs
+# nothing else. Because `-serial mon:stdio` hands the guest shell this
+# script's own stdin, that combination is enough to run a real command on the
+# cross-built userland non-interactively and read its output back:
+#
+#     ILLUMOS_INIT=shell \
+#     ILLUMOS_EXTRA=pkgsCross.x86_64-illumos.illumos.svccfg \
+#     ILLUMOS_PAYLOAD=/tmp/manifests \
+#     ./boot-qemu.sh <<'EOF'
+#     "$svccfg/bin/svccfg" validate /payload/sysctl.xml
+#     EOF
+for attr in ${ILLUMOS_EXTRA:-}; do
+    closure="$closure $(build "$attr")"
+done
+
 grub=$(build grub2)
 xorriso=$(build libisoburn)
 
@@ -271,6 +295,15 @@ mkdir -p "$work/ba/dev" "$work/ba/devices" "$work/ba/proc" "$work/ba/tmp" \
 # /sbin/init: main() -> start_init() -> exec_init() execs zone_initname, which
 # is "/sbin/init" (uts/common/os/main.c:140).
 install -Dm755 "$init/sbin/init" "$work/ba/sbin/init"
+
+# See ILLUMOS_PAYLOAD above. Dereferenced (`-L`), because the usual thing to
+# point it at is a directory of symlinks into the store, and those targets are
+# not otherwise staged.
+if [ -n "${ILLUMOS_PAYLOAD:-}" ]; then
+    mkdir -p "$work/ba/payload"
+    cp -RL --preserve=mode "$ILLUMOS_PAYLOAD"/. "$work/ba/payload/"
+    chmod -R u+w "$work/ba/payload"
+fi
 
 if [ -n "$closure" ]; then
     # Stage the store paths init needs, at their real locations, because
