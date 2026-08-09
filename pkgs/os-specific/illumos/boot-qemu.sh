@@ -292,6 +292,83 @@ mkdir -p "$work/ba/dev" "$work/ba/devices" "$work/ba/proc" "$work/ba/tmp" \
 : >"$work/ba/etc/mnttab"
 : >"$work/ba/etc/dfs/sharetab"
 
+# The name-service switch, and the files it switches to.
+#
+# libc turns every getpwnam()/getgrnam()/gethostbyname() into a dlopen() of a
+# backend named by /etc/nsswitch.conf -- "nss_%s.so.%d", see
+# lib/libc/port/gen/nss_deffinder.c. `files` is the only backend packaged, and
+# with no nsswitch.conf at all libc falls back to a compiled-in default that
+# still names backends we do not ship, so the file has to exist and has to say
+# `files` and nothing else.
+#
+# These are deliberately plain files in the (read-only) boot archive rather
+# than a tmpfs populated at boot. Nothing here needs to be writable to make
+# name lookups work -- getpwnam only reads -- and a read-only /etc is one less
+# moving part for the first test. Writability becomes necessary at the point
+# something wants to *change* a password or record a login (utmpx), which is
+# `passwd`(1) and `login`(1) territory and not yet packaged.
+cat >"$work/ba/etc/nsswitch.conf" <<'EOF'
+passwd:     files
+group:      files
+shadow:     files
+hosts:      files
+ipnodes:    files
+networks:   files
+protocols:  files
+rpc:        files
+ethers:     files
+netmasks:   files
+bootparams: files
+publickey:  files
+netgroup:   files
+automount:  files
+aliases:    files
+services:   files
+project:    files
+auth_attr:  files
+prof_attr:  files
+exec_attr:  files
+user_attr:  files
+EOF
+
+# root's shell is the payload's bash if there is one -- ILLUMOS_PAYLOAD is what
+# init-shell execs -- and /bin/sh otherwise. uid 0 with home / keeps this
+# independent of whether /root exists in the archive.
+cat >"$work/ba/etc/passwd" <<'EOF'
+root:x:0:0:Super-User:/:/bin/sh
+daemon:x:1:1::/:
+bin:x:2:2::/usr/bin:
+sys:x:3:3::/:
+nobody:x:60001:60001:NFS Anonymous Access User:/:
+noaccess:x:60002:60002:No Access User:/:
+EOF
+
+# `*LK*` is illumos' locked-account marker. A real hash is deliberately not
+# invented here: nothing consumes /etc/shadow yet -- `login`(1) is not
+# packaged, and sshd is not reachable without a network stack -- and the build
+# host has no crypt(3) that produces illumos' $5$ SHA-256 form, so any hash
+# written now would be unverifiable. Giving root a usable password belongs with
+# whichever of login(1)/passwd(1) lands first.
+cat >"$work/ba/etc/shadow" <<'EOF'
+root:*LK*:::::::
+daemon:NP:::::::
+bin:NP:::::::
+sys:NP:::::::
+nobody:*LK*:::::::
+noaccess:*LK*:::::::
+EOF
+chmod 400 "$work/ba/etc/shadow"
+
+cat >"$work/ba/etc/group" <<'EOF'
+root::0:
+other::1:
+bin::2:root,daemon
+sys::3:root,bin,adm
+adm::4:root,daemon
+nobody::60001:
+noaccess::60002:
+EOF
+
 # /sbin/init: main() -> start_init() -> exec_init() execs zone_initname, which
 # is "/sbin/init" (uts/common/os/main.c:140).
 install -Dm755 "$init/sbin/init" "$work/ba/sbin/init"
