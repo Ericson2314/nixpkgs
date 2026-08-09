@@ -1,0 +1,78 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Sun, 9 Aug 2026 18:30:24 -0400
+Subject: [PATCH] svc.startd: do not confuse `hrtime_t` with `int64_t`
+
+Both are 64 bits, but `hrtime_t` is `long long` and `int64_t` is `long`, so
+they are the same type only in ILP32 -- which is how svc.startd is built
+upstream. In an LP64 build gcc rejects the first of these outright and warns
+on the second:
+
+    libscf.c:3144:1: error: conflicting types for 'libscf_unset_action';
+        have 'int(..., hrtime_t)' {aka 'int(..., long long int)'}
+    graph.c:6374:48: warning: passing argument 2 of 'scf_value_get_integer'
+        from incompatible pointer type
+
+`startd.h` declares `libscf_unset_action`'s timestamp argument `int64_t`
+while `libscf.c` defines it `hrtime_t`. The definition is the correct one:
+every caller passes an element of `action_ts[]`, which is `hrtime_t[]`, and
+the value is a timestamp rather than a repository integer once it is in
+startd's hands. So the declaration follows the definition, as it did for
+`rc_node_setup_iter` in svc.configd.
+
+The `scf_value_get_integer()` call is the other direction and cannot be
+fixed that way -- its `int64_t *` is libscf's public API -- so the value is
+read into an `int64_t` and assigned across, which is where the conversion
+belonged all along.
+
+Unlike the libbe/libfmevent change, this one is a plain portability fix with
+no functionality removed, and is upstreamable as written.
+
+Assisted-By: Claude <noreply@anthropic.com>
+---
+ usr/src/cmd/svc/startd/graph.c  | 10 +++++++++-
+ usr/src/cmd/svc/startd/startd.h |  2 +-
+ 2 files changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/usr/src/cmd/svc/startd/graph.c b/usr/src/cmd/svc/startd/graph.c
+index f1590be85d..d8ea1b237e 100644
+--- a/usr/src/cmd/svc/startd/graph.c
++++ b/usr/src/cmd/svc/startd/graph.c
+@@ -6277,6 +6277,7 @@ process_actions(scf_handle_t *h, scf_propertygroup_t *pg, scf_instance_t *inst)
+ 	admin_action_t a;
+ 	int i, ret = 0, r;
+ 	hrtime_t action_ts[NACTIONS];
++	int64_t ts;
+ 	char *inst_name;
+ 
+ 	r = libscf_instance_get_fmri(inst, &inst_name);
+@@ -6373,8 +6374,15 @@ process_actions(scf_handle_t *h, scf_propertygroup_t *pg, scf_instance_t *inst)
+ 			}
+ 		}
+ 
+-		r = scf_value_get_integer(val, &action_ts[i]);
++		/*
++		 * Not read straight into action_ts[i]: that is an hrtime_t,
++		 * which is `long long`, while scf_value_get_integer() takes an
++		 * int64_t, which is `long` in LP64. The two are the same type
++		 * only in ILP32.
++		 */
++		r = scf_value_get_integer(val, &ts);
+ 		assert(r == 0);
++		action_ts[i] = ts;
+ 	}
+ 
+ 	a = ADMIN_EVENT_MAINT_ON_IMMEDIATE;
+diff --git a/usr/src/cmd/svc/startd/startd.h b/usr/src/cmd/svc/startd/startd.h
+index 04d5952b56..b601eb9e95 100644
+--- a/usr/src/cmd/svc/startd/startd.h
++++ b/usr/src/cmd/svc/startd/startd.h
+@@ -675,7 +675,7 @@ char *libscf_get_method(scf_handle_t *, int, restarter_inst_t *,
+ void libscf_populate_graph(scf_handle_t *h);
+ int update_fault_count(restarter_inst_t *, int);
+ int libscf_unset_action(scf_handle_t *, scf_propertygroup_t *, admin_action_t,
+-    int64_t);
++    hrtime_t);
+ int libscf_get_startd_properties(scf_instance_t *, scf_snapshot_t *, uint_t *,
+     char **);
+ int libscf_get_template_values(scf_instance_t *, scf_snapshot_t *, char **,

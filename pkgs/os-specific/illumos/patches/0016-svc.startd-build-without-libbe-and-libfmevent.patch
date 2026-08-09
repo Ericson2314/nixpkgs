@@ -43,9 +43,9 @@ surprising the next person at link time.
 
 Assisted-By: Claude <noreply@anthropic.com>
 ---
- usr/src/cmd/svc/startd/Makefile | 13 ++++---------
- usr/src/cmd/svc/startd/graph.c  | 33 ++++++++++++++++++++++++++++++---
- 2 files changed, 34 insertions(+), 12 deletions(-)
+ usr/src/cmd/svc/startd/Makefile | 13 ++++--------
+ usr/src/cmd/svc/startd/graph.c  | 35 ++++++++++++++++++++++++++++++---
+ 2 files changed, 36 insertions(+), 12 deletions(-)
 
 diff --git a/usr/src/cmd/svc/startd/Makefile b/usr/src/cmd/svc/startd/Makefile
 index b599e57c51..ace9be4935 100644
@@ -73,7 +73,7 @@ index b599e57c51..ace9be4935 100644
  FILEMODE = 0555
  
 diff --git a/usr/src/cmd/svc/startd/graph.c b/usr/src/cmd/svc/startd/graph.c
-index bd272bb8d4..c9b3e3e64a 100644
+index bd272bb8d4..f1590be85d 100644
 --- a/usr/src/cmd/svc/startd/graph.c
 +++ b/usr/src/cmd/svc/startd/graph.c
 @@ -145,7 +145,9 @@
@@ -124,7 +124,21 @@ index bd272bb8d4..c9b3e3e64a 100644
  #else	/* __x86 */
  		halting = AD_BOOT;
  		uu_warn("Fast reboot configured, but not supported by "
-@@ -4668,6 +4680,20 @@ static void
+@@ -4651,6 +4663,7 @@ stn_restarter_state(restarter_instance_state_t rstate)
+ 	return (-1);
+ }
+ 
++#ifdef SMF_HAVE_LIBFMEVENT
+ /*
+  * State transition counters
+  * Not incremented atomically - indicative only
+@@ -4663,11 +4676,26 @@ static uint64_t stev_ct_noprefs;
+ static uint64_t stev_ct_from_uninit;
+ static uint64_t stev_ct_bad_state;
+ static uint64_t stev_ct_ovr_prefs;
++#endif	/* SMF_HAVE_LIBFMEVENT */
+ 
+ static void
  dgraph_state_transition_notify(graph_vertex_t *v,
      restarter_instance_state_t old_state, restarter_str_t reason)
  {
@@ -145,7 +159,7 @@ index bd272bb8d4..c9b3e3e64a 100644
  	restarter_instance_state_t new_state = v->gv_state;
  	int stn_transition, maint;
  	int from, to;
-@@ -4750,6 +4776,7 @@ dgraph_state_transition_notify(graph_vertex_t *v,
+@@ -4750,6 +4778,7 @@ dgraph_state_transition_notify(graph_vertex_t *v,
  		nvlist_free(attr);
  	}
  }
