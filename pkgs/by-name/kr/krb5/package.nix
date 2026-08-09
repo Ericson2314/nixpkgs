@@ -75,7 +75,34 @@ stdenv.mkDerivation (finalAttrs: {
     #     void foo();
     #
     # declaration.
-    NIX_CFLAGS_COMPILE = "-std=gnu17" + lib.optionalString stdenv.hostPlatform.isStatic " -fcommon";
+    NIX_CFLAGS_COMPILE =
+      "-std=gnu17"
+      + lib.optionalString stdenv.hostPlatform.isStatic " -fcommon"
+      # gcc predefines a bare `sun` (and `unix`) on Solaris targets, alongside
+      # the reserved-namespace `__sun`. That is ordinary identifier space, and
+      # krb5 uses it -- `k5_sockaddr_to_address` has
+      #
+      #     const struct sockaddr_un *sun = sa2sun(sa);
+      #
+      # which preprocesses to `*1 = ...`:
+      #
+      #     addr.c:65:35: error: expected identifier or '(' before numeric
+      #     constant
+      #
+      # Nothing in krb5 tests bare `sun`; `__sun` stays defined regardless.
+      #
+      # illumos also keeps the socket ioctls in <sys/sockio.h> rather than
+      # <sys/ioctl.h>, and krb5's bundled Sun RPC includes only the latter.
+      # That one omission produces all three errors in pmap_rmt.c: SIOCGIFFLAGS
+      # is undeclared, and -- because SIOCGIFBRDADDR is likewise invisible --
+      # `getbroadcastnets` falls into its `#else /* 4.2 BSD */` arm, which is
+      # dead code everywhere else and calls
+      #
+      #     inet_makeaddr(inet_netof(sockin->sin_addr.s_addr), INADDR_ANY)
+      #
+      # passing an in_addr_t where inet_netof wants a struct in_addr. Making
+      # the header visible takes the 4.3BSD arm and the other two go with it.
+      + lib.optionalString stdenv.hostPlatform.isSunOS " -Usun -include sys/sockio.h";
   };
 
   configureFlags = [
