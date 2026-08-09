@@ -259,6 +259,7 @@ let
               netbsd = "NetBSD";
               freebsd = "FreeBSD";
               openbsd = "OpenBSD";
+              solaris = "SunOS";
               wasip1 = "WasiP1";
               redox = "Redox";
               genode = "Genode";
