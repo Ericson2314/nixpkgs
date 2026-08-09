@@ -276,10 +276,43 @@ setup_tty(long fd)
 }
 
 /*
- * mount(2) is SYSENT_AP: its arguments arrive as an array of longs
- * (uts/common/fs/vfs.c, mount()), not in registers. Best effort -- if there is
- * no tmpfs module, or /tmp is missing, the shell simply gets a read-only /tmp,
- * which is what it had before.
+ * mount(2) takes six arguments here, so it needs %r8 and %r9 as well.
+ *
+ * The kernel-side signature -- mount(long *lp, rval_t *rp), taking a pointer
+ * to its arguments -- is a red herring: `mount` is a SYSENT_AP entry
+ * (uts/common/os/sysent.c:463), and syscall_ap() is what turns the *ordinary*
+ * register-and-stack arguments the trap collected into the array that mount()
+ * then walks. Passing a pointer to a ready-made array in argument one, as an
+ * earlier version of this did, just means mount() reads `spec` as a pointer
+ * and everything after it as garbage. It fails silently, which is why /tmp
+ * stayed read-only.
+ *
+ * The declared argument count is eight, so the trap will also fetch arguments
+ * seven and eight from the user stack. They are `optptr`/`optlen`, which
+ * mount() only looks at under MS_OPTIONSTR (uts/common/fs/vfs.c:1417); we do
+ * not set it, so whatever it collects there is never dereferenced.
+ */
+static long
+sys6(long num, long a, long b, long c, long d, long e, long f, long *failed)
+{
+	long ret;
+	unsigned char carry;
+	register long r10 __asm__("r10") = d;
+	register long r8 __asm__("r8") = e;
+	register long r9 __asm__("r9") = f;
+
+	__asm__ volatile ("syscall; setc %1"
+	    : "=a" (ret), "=q" (carry)
+	    : "a" (num), "D" (a), "S" (b), "d" (c), "r" (r10), "r" (r8),
+	      "r" (r9)
+	    : "rcx", "r11", "memory");
+	*failed = carry;
+	return (ret);
+}
+
+/*
+ * Best effort: if there is no tmpfs module, or /tmp is missing, the shell
+ * simply gets a read-only /tmp, which is what it had before.
  */
 static void
 mount_tmp(void)
@@ -287,22 +320,23 @@ mount_tmp(void)
 	static const char spec[] = "swap";
 	static const char dir[] = "/tmp";
 	static const char fstype[] = "tmpfs";
-	long args[8];
+	char msg[] = "init: /tmp mount failed, errno NN\n";
+	long ret, failed;
 
-	args[0] = (long)spec;
-	args[1] = (long)dir;
 	/*
 	 * MS_DATA is not optional even with no data: without it (or MS_FSS)
 	 * mount() reads `fstype` as an *index* into vfssw[] rather than as a
 	 * name (uts/common/fs/vfs.c:1175-1200).
 	 */
-	args[2] = MS_DATA;
-	args[3] = (long)fstype;
-	args[4] = 0;
-	args[5] = 0;
-	args[6] = 0;
-	args[7] = 0;
-	(void) sys(SYS_mount, (long)args, 0, 0);
+	ret = sys6(SYS_mount, (long)spec, (long)dir, MS_DATA, (long)fstype,
+	    0, 0, &failed);
+
+	if (failed) {
+		/* Two digits covers every errno this can plausibly return. */
+		msg[30] = (char)('0' + ((ret / 10) % 10));
+		msg[31] = (char)('0' + (ret % 10));
+		say(msg, sizeof (msg) - 1);
+	}
 }
 
 /* Runs in the child, and either execs or dies. */
