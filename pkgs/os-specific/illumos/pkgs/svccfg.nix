@@ -37,11 +37,28 @@
 # value constraints are enforced, and FMRIs have to parse. None of that is
 # expressible in a DTD.
 #
-# `lscf_validate_file` never calls `lscf_prep_hndl`, so this path does not
-# bind to `svc.configd` -- a manifest can be validated on the build host with
-# no repository and no running SMF. Point `SVCCFG_DTD` at the DTD shipped in
-# this package (`svccfg_xml.c:3721` reads it) and it works out of a Nix store
-# path with no /usr/share.
+# `validate` does need a repository server, which an earlier version of this
+# comment denied. `lscf_validate_file()` itself never binds -- that much is
+# true -- but it hands the parsed bundle to `tmpl_validate_bundle()`, and that
+# calls `lscf_prep_hndl()` at `cmd/svc/svccfg/svccfg_tmpl.c:4017` before
+# checking anything, because composing a manifest against its templates means
+# composing it against the templates already in the repository. With no server
+# reachable, `svccfg validate <file>` stops at "Could not connect to repository
+# server". `illumos.svc-configd` is that server; point `SVCCFG_REPOSITORY` at a
+# writable path and svccfg forks a private one for the duration
+# (`start_private_repository`, svccfg_libscf.c:763).
+#
+# Note also what the template pass is worth against an *empty* repository:
+# very little. Composition has nothing to compose against, so a manifest whose
+# dependency names a syntactically invalid FMRI still validates clean. Real
+# semantic checking needs a seeded repository.
+#
+# The parse half does run without any of that, and is worth having on its own:
+# `SVCCFG_DTD` (read at `svccfg_xml.c:3721`) points at the DTD shipped in this
+# package, so DTD validation works out of a Nix store path with no /usr/share
+# -- it catches undeclared elements and bad property types -- and `svccfg
+# inventory <file>` runs the full `lxml_get_bundle` parse with no handle at
+# all, printing the instance FMRIs it composed.
 mkDerivation {
   pname = "svccfg";
   path = "usr/src/cmd/svc/svccfg";
