@@ -1,0 +1,62 @@
+Don't hand-declare the termcap functions on Solaris when <termcap.h> is present.
+
+libedit declares tgetent/tgetflag/tgetnum/tputs/tgoto/tgetstr itself under a
+bare `#if defined(__sun)` -- three separate copies of the same block, in
+src/sys.h, src/terminal.c and src/terminal.h -- on the assumption that
+Solaris means Solaris curses
+-- whose termcap entry points take non-const `char *` and are not declared by
+any header worth including.
+
+That assumption breaks as soon as libedit is built against ncurses, which is
+the normal case on illumos and on any Solaris with ncurses installed. ncurses'
+<termcap.h> declares all six, const-correctly, so libedit's copies become
+conflicting redeclarations and the build dies:
+
+  /...-ncurses-6.6-dev/include/termcap.h:61:31: error: conflicting types for
+  'tgetstr'; have 'char *(const char *, char **)'
+  ./sys.h:132:14: note: previous declaration of 'tgetstr' with type
+  'char *(char *, char **)'
+
+Gate both copies on !HAVE_TERMCAP_H, so the fallback declarations only appear
+when no header supplies them. This is the same test terminal.c already applies
+a few lines above when deciding whether to include <term.h>:
+
+  /* Solaris's term.h does horrid things. */
+  #if defined(HAVE_TERM_H) && !defined(__sun) && !defined(HAVE_TERMCAP_H)
+
+sys.h is reached from config.h's AH_BOTTOM, after the AC_CHECK_HEADERS
+results, so HAVE_TERMCAP_H is in scope there too.
+
+--- a/src/sys.h
++++ b/src/sys.h
+@@ -123,7 +123,7 @@
+ #define	REGEX		/* Use POSIX.2 regular expression functions */
+ #undef	REGEXP		/* Use UNIX V8 regular expression functions */
+
+-#if defined(__sun)
++#if defined(__sun) && !defined(HAVE_TERMCAP_H)
+ extern int tgetent(char *, const char *);
+ extern int tgetflag(char *);
+ extern int tgetnum(char *);
+--- a/src/terminal.c
++++ b/src/terminal.c
+@@ -68,7 +68,7 @@
+ #include <term.h>
+ #endif
+
+-#if defined(__sun)
++#if defined(__sun) && !defined(HAVE_TERMCAP_H)
+ extern int tgetent(char *, const char *);
+ extern int tgetflag(char *);
+ extern int tgetnum(char *);
+--- a/src/terminal.h
++++ b/src/terminal.h
+@@ -80,7 +80,7 @@
+ #define	A_K_DE		6
+ #define	A_K_NKEYS	7
+
+-#ifdef __sun
++#if defined(__sun) && !defined(HAVE_TERMCAP_H)
+ extern int tgetent(char *, const char *);
+ extern int tgetflag(char *);
+ extern int tgetnum(char *);
