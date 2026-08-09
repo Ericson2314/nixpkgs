@@ -1,0 +1,42 @@
+Teach configure.ac about cross compiling to illumos/Solaris.
+
+CPython restricts cross builds to an explicit allowlist of hosts and errors
+out with "cross build not supported for $host" on anything else. Add a
+solaris arm to the two host case statements, in the same shape as the
+existing freebsd-cross.patch.
+
+MACHDEP needs the extra normalisation entry as well. A native build derives
+it from `uname -s` + `uname -r` and gets "sunos5"; a cross build deliberately
+leaves ac_sys_release empty, which would otherwise yield a bare "sunos" and
+disagree with sys.platform.
+
+--- a/configure.ac
++++ b/configure.ac
+@@ -342,6 +342,9 @@
+ 	*-*-wasi*)
+ 	    ac_sys_system=WASI
+ 	    ;;
++	*-*-solaris*)
++	    ac_sys_system=SunOS
++	    ;;
+ 	*)
+ 		# for now, limit cross builds to known configurations
+ 		MACHDEP="unknown"
+@@ -370,6 +373,7 @@
+ 	linux*) MACHDEP="linux";;
+ 	cygwin*) MACHDEP="cygwin";;
+ 	darwin*) MACHDEP="darwin";;
++	sunos*) MACHDEP="sunos5";;
+ 	'')	MACHDEP="unknown";;
+     esac
+
+@@ -812,6 +816,9 @@
+ 	wasm32-*-* | wasm64-*-*)
+ 		_host_ident=$host_cpu
+ 		;;
++	*-*-solaris*)
++		_host_ident=$host_cpu
++		;;
+ 	*)
+ 		# for now, limit cross builds to known configurations
+ 		MACHDEP="unknown"

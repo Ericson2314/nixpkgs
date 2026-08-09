@@ -384,6 +384,12 @@ stdenv.mkDerivation (finalAttrs: {
     # since this diff, consider submitting this patch upstream!
     ./freebsd-cross.patch
   ]
+  ++ optionals (stdenv.hostPlatform != stdenv.buildPlatform && stdenv.hostPlatform.isSunOS) [
+    # Same story as freebsd-cross.patch above: illumos is not on CPython's
+    # allowlist of cross targets, so configure stops at
+    # "cross build not supported for x86_64-unknown-solaris2.11".
+    ./illumos-cross.patch
+  ]
   ++ optionals (pythonOlder "3.13") [
     # Make sure that the virtualenv activation scripts are
     # owner-writable, so venvs can be recreated without permission
