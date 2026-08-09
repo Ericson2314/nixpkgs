@@ -12,6 +12,10 @@
   libmd,
   libmp,
   libnvpair,
+  libsec,
+  libavl,
+  libidmap,
+  libuutil,
   version,
 }:
 
@@ -84,6 +88,17 @@ symlinkJoin {
         libmd
         libmp
         libnvpair
+        # libsec and its dependencies. coreutils' gnulib compiles the illumos
+        # arm of `file-has-acl.c` because <sys/acl.h> *declares* `acl_trivial`,
+        # but its `AC_SEARCH_LIBS` only links `-lsec` if the library is already
+        # findable -- so without this the probe silently fails and the link
+        # dies on an undefined `acl_trivial`. Same reasoning as libsocket/libnsl
+        # above: a link-time probe that cannot find its library does not fail,
+        # it picks the fallback.
+        libsec
+        libavl
+        libidmap
+        libuutil
       ];
 
   postBuild = ''

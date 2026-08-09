@@ -28,21 +28,23 @@ headers are in front of the compiler.
 
 Assisted-By: Claude <noreply@anthropic.com>
 ---
- usr/src/cmd/sgs/include/sgs.h       | 31 +++++++++++--
- usr/src/cmd/sgs/include/widec.h     | 71 +++++++++++++++++++++++++++++
+ usr/src/cmd/sgs/include/sgs.h       | 31 +++++++++--
+ usr/src/cmd/sgs/include/widec.h     | 81 +++++++++++++++++++++++++++++
  usr/src/cmd/sgs/lex/common/header.c |  2 +-
+ usr/src/cmd/sgs/lex/common/ldefs.h  | 13 ++---
  usr/src/cmd/sgs/lex/common/main.c   |  7 +++
- usr/src/cmd/sgs/lex/common/once.h   |  2 +-
- usr/src/cmd/sgs/lex/common/sub1.c   |  8 ++--
- usr/src/cmd/sgs/lex/common/sub2.c   |  2 +-
- usr/src/cmd/sgs/lex/common/sub3.c   |  2 +-
- usr/src/cmd/sgs/yacc/common/y1.c    | 14 +++---
- usr/src/cmd/sgs/yacc/common/y2.c    | 42 ++++++++---------
- usr/src/cmd/sgs/yacc/common/y3.c    | 22 ++++-----
+ usr/src/cmd/sgs/lex/common/once.h   | 10 ++--
+ usr/src/cmd/sgs/lex/common/parser.y | 40 ++++++++------
+ usr/src/cmd/sgs/lex/common/sub1.c   | 12 ++---
+ usr/src/cmd/sgs/lex/common/sub2.c   |  4 +-
+ usr/src/cmd/sgs/lex/common/sub3.c   |  8 +--
+ usr/src/cmd/sgs/yacc/common/y1.c    | 14 ++---
+ usr/src/cmd/sgs/yacc/common/y2.c    | 42 +++++++--------
+ usr/src/cmd/sgs/yacc/common/y3.c    | 22 ++++----
  usr/src/cmd/sgs/yacc/common/y4.c    |  2 +-
  usr/src/tools/lex/Makefile          |  2 +-
  usr/src/tools/yacc/Makefile         |  2 +-
- 14 files changed, 156 insertions(+), 53 deletions(-)
+ 16 files changed, 207 insertions(+), 85 deletions(-)
  create mode 100644 usr/src/cmd/sgs/include/widec.h
 
 diff --git a/usr/src/cmd/sgs/include/sgs.h b/usr/src/cmd/sgs/include/sgs.h
@@ -94,10 +96,10 @@ index 89287a2ed7..e730582765 100644
  /*
 diff --git a/usr/src/cmd/sgs/include/widec.h b/usr/src/cmd/sgs/include/widec.h
 new file mode 100644
-index 0000000000..7dc696f6d2
+index 0000000000..41f699aee0
 --- /dev/null
 +++ b/usr/src/cmd/sgs/include/widec.h
-@@ -0,0 +1,71 @@
+@@ -0,0 +1,81 @@
 +/*
 + * This file and its contents are supplied under the terms of the
 + * Common Development and Distribution License ("CDDL"), version 1.0.
@@ -166,6 +168,16 @@ index 0000000000..7dc696f6d2
 + */
 +#define	watoi(s)		((int)wcstol((s), NULL, 10))
 +
++/*
++ * wcsetno(3) returns which of the EUC codesets a wide character belongs to:
++ * 0 for the single-byte (ASCII) set, 1-3 for the supplementary ones. lex uses
++ * it for one diagnostic -- rejecting a [a-z] range whose endpoints come from
++ * different codesets. Off illumos there is no EUC partitioning to consult, so
++ * distinguish only "ASCII" from "not", which gives the identical answer for
++ * every range that stays inside ASCII and still catches one that does not.
++ */
++#define	wcsetno(c)		(((c) < 0x80) ? 0 : 1)
++
 +#endif	/* __sun */
 +
 +#endif	/* _SGS_NATIVE_WIDEC_H */
@@ -182,6 +194,44 @@ index 3ea0a316b1..fa490e6d03 100644
  		(void) fprintf(fout,
  		"# define REJECT { nstr = yyreject_w(); goto yyfussy;}\n");
  		(void) fprintf(fout, "#define yyless yyless_w\n");
+diff --git a/usr/src/cmd/sgs/lex/common/ldefs.h b/usr/src/cmd/sgs/lex/common/ldefs.h
+index 18758ea191..069323be54 100644
+--- a/usr/src/cmd/sgs/lex/common/ldefs.h
++++ b/usr/src/cmd/sgs/lex/common/ldefs.h
+@@ -31,6 +31,7 @@
+ 
+ #include <stdio.h>
+ #include <stdlib.h>
++#include <stdint.h>
+ 
+ #include <widec.h>
+ #include <wctype.h>
+@@ -188,10 +189,10 @@ extern int fptr;
+ extern int prev;	/* previous input character */
+ extern int pres;	/* present input character */
+ extern int peek;	/* next input character */
+-extern int *name;
+-extern int *left;
+-extern int *right;
+-extern int *parent;
++extern intptr_t *name;
++extern intptr_t *left;
++extern intptr_t *right;
++extern intptr_t *parent;
+ extern Boolean *nullstr;
+ extern int tptr;
+ extern CHR pushc[TOKENSIZE];
+@@ -274,8 +275,8 @@ int cpyact(void);
+ int lookup(CHR *s, CHR **t);
+ int usescape(int c);
+ int alpha(int c);
+-int mn2(int a, int d, int c);
+-int mn1(int a, int d);
++int mn2(int a, intptr_t d, intptr_t c);
++int mn1(int a, intptr_t d);
+ int mn0(int a);
+ int dupl(int n);
+ 
 diff --git a/usr/src/cmd/sgs/lex/common/main.c b/usr/src/cmd/sgs/lex/common/main.c
 index 1422ec9740..b0fa5cfa55 100644
 --- a/usr/src/cmd/sgs/lex/common/main.c
@@ -208,7 +258,7 @@ index 1422ec9740..b0fa5cfa55 100644
  	sargc = argc;
  	(void) setlocale(LC_ALL, "");
 diff --git a/usr/src/cmd/sgs/lex/common/once.h b/usr/src/cmd/sgs/lex/common/once.h
-index 251996f3c9..86d6ccca67 100644
+index 251996f3c9..ab15a08f28 100644
 --- a/usr/src/cmd/sgs/lex/common/once.h
 +++ b/usr/src/cmd/sgs/lex/common/once.h
 @@ -63,7 +63,7 @@ int	ctable[2*NCH] = {
@@ -220,10 +270,158 @@ index 251996f3c9..86d6ccca67 100644
  int	sect = DEFSECTION;
  int	prev = '\n';	/* previous input character */
  int	pres = '\n';	/* present input character */
+@@ -106,10 +106,10 @@ int pflag;
+ int chset;	/* 1 = char set modified */
+ FILE *fin, *fother;
+ int fptr;
+-int *name;
+-int *left;
+-int *right;
+-int *parent;
++intptr_t *name;
++intptr_t *left;
++intptr_t *right;
++intptr_t *parent;
+ Boolean *nullstr;
+ int tptr;
+ CHR pushc[TOKENSIZE];
+diff --git a/usr/src/cmd/sgs/lex/common/parser.y b/usr/src/cmd/sgs/lex/common/parser.y
+index da5d4e94b4..9cbb8d42d5 100644
+--- a/usr/src/cmd/sgs/lex/common/parser.y
++++ b/usr/src/cmd/sgs/lex/common/parser.y
+@@ -35,7 +35,7 @@
+ #define YYSTYPE union _yystype_
+ union _yystype_
+ {
+-	int	i;
++	intptr_t	i;
+ 	CHR	*cp;
+ };
+ int	peekon = 0; /* need this to check if "^" came in a definition section */
+@@ -313,20 +313,28 @@ yylex(void)
+ 						sectbegin = TRUE;
+ 						i = treesize*(sizeof(*name)+sizeof(*left)+
+ 							sizeof(*right)+sizeof(*nullstr)+sizeof(*parent))+ALITTLEEXTRA;
+-						c = (int)myalloc(i,1);
+-						if(c == 0)
++						/*
++						 * Probe that there is enough memory for the
++						 * parse tree, then hand it straight back.
++						 * This used to round-trip the pointer through
++						 * an int, which truncates it in a 64-bit
++						 * build and makes the free() below corrupt
++						 * the heap -- lex then dies in a later
++						 * allocation, and yacc reports a double free.
++						 */
++						p = (CHR *)myalloc(i,1);
++						if(p == NULL)
+ 							error("Too little core for parse tree");
+-						p = (CHR *)c;
+ 						free(p);
+ 						/*LINTED: E_BAD_PTR_CAST_ALIGN*/
+-						name = (int *)myalloc(treesize,sizeof(*name));
++						name = (intptr_t *)myalloc(treesize,sizeof(*name));
+ 						/*LINTED: E_BAD_PTR_CAST_ALIGN*/
+-						left = (int *)myalloc(treesize,sizeof(*left));
++						left = (intptr_t *)myalloc(treesize,sizeof(*left));
+ 						/*LINTED: E_BAD_PTR_CAST_ALIGN*/
+-						right = (int *)myalloc(treesize,sizeof(*right));
++						right = (intptr_t *)myalloc(treesize,sizeof(*right));
+ 						nullstr = myalloc(treesize,sizeof(*nullstr));
+ 						/*LINTED: E_BAD_PTR_CAST_ALIGN*/
+-						parent = (int *)myalloc(treesize,sizeof(*parent));
++						parent = (intptr_t *)myalloc(treesize,sizeof(*parent));
+ 						if(name == 0 || left == 0 || right == 0 || parent == 0 || nullstr == 0)
+ 							error("Too little core for parse tree");
+ 						return(freturn(DELIM));
+@@ -470,7 +478,7 @@ Character table (%t) is supported only in ASCII compatibility mode.\n");
+ 							if(p[0]=='/' && p[1]=='*')
+ 								cpycom(p);
+ 							else
+-								(void) fprintf(fout, "%ws\n", p);
++								(void) fprintf(fout, "%ls\n", p);
+ 						if(p[0] == '%') continue;
+ 						if (*p) error("EOF before %%%%");
+ 						else error("EOF before %%}");
+@@ -500,7 +508,7 @@ start:
+ 							if (*t == 0) continue;
+ 							i = sptr*2;
+ 							if(!ratfor)(void) fprintf(fout,"# ");
+-							(void) fprintf(fout, "define %ws %d\n", t, i);
++							(void) fprintf(fout, "define %ls %d\n", t, i);
+ 							scopy(t,sp);
+ 							sname[sptr] = sp;
+ 							/* XCU4: save exclusive flag with start name */
+@@ -521,7 +529,7 @@ start:
+ 				case ' ': case '\t':		/* must be code */
+ 					lgate();
+ 					if( p[1]=='/' && p[2]=='*' ) cpycom(p);
+-					else (void) fprintf(fout, "%ws\n", p);
++					else (void) fprintf(fout, "%ls\n", p);
+ 					continue;
+ 				case '/':	/* look for comments */
+ 					lgate();
+@@ -619,7 +627,7 @@ start:
+ 						if(buf[0]=='/' && buf[1]=='*')
+ 							cpycom(buf);
+ 						else
+-							(void) fprintf(fout, "%ws\n", buf);
++							(void) fprintf(fout, "%ls\n", buf);
+ 					continue;
+ 					}
+ 				if(peek == '%'){
+@@ -706,7 +714,7 @@ start:
+ 					token[i] = 0;
+ 					i = lookup(token,def);
+ 					if(i < 0)
+-						error("definition %ws not found",token);
++						error("definition %ls not found",token);
+ 					else
+ 						munput('s',(CHR *)(subs[i]));
+ 					if (peek == '^')
+@@ -736,7 +744,7 @@ start:
+ 					if(i < 0) {
+ 						fatal = 0;
+ 						n_error++;
+-						error("undefined start condition %ws",token);
++						error("undefined start condition %ls",token);
+ 						fatal = 1;
+ 						continue;
+ 						}
+@@ -932,9 +940,9 @@ Character range specified between different codesets.");
+ 		else
+ 			(void) fprintf(fout,
+ 				"\n# line %d \"%s\"\n", yyline-1, sargv[optind]);
+-		(void) fprintf(fout, "%ws\n", buf);
++		(void) fprintf(fout, "%ls\n", buf);
+ 		while(getl(buf) && !eof)
+-			(void) fprintf(fout, "%ws\n", buf);
++			(void) fprintf(fout, "%ls\n", buf);
+         }
+ 
+ 	return(freturn(0));
 diff --git a/usr/src/cmd/sgs/lex/common/sub1.c b/usr/src/cmd/sgs/lex/common/sub1.c
-index e63a55e34b..6ee99c9d32 100644
+index e63a55e34b..17ca8ed078 100644
 --- a/usr/src/cmd/sgs/lex/common/sub1.c
 +++ b/usr/src/cmd/sgs/lex/common/sub1.c
+@@ -673,7 +673,7 @@ gch(void)
+ }
+ 
+ int
+-mn2(int a, int d, int c)
++mn2(int a, intptr_t d, intptr_t c)
+ {
+ 	if (tptr >= treesize) {
+ 		tptr++;
+@@ -720,7 +720,7 @@ mn2(int a, int d, int c)
+ }
+ 
+ int
+-mn1(int a, int d)
++mn1(int a, intptr_t d)
+ {
+ 	if (tptr >= treesize) {
+ 		tptr++;
 @@ -889,13 +889,13 @@ sect1dump(void)
  		(void) printf("str	trans\n");
  		i = -1;
@@ -258,9 +456,18 @@ index e63a55e34b..6ee99c9d32 100644
  				break;
  			case DOT:
 diff --git a/usr/src/cmd/sgs/lex/common/sub2.c b/usr/src/cmd/sgs/lex/common/sub2.c
-index 399503d7d9..c59373afe4 100644
+index 399503d7d9..c0fe834178 100644
 --- a/usr/src/cmd/sgs/lex/common/sub2.c
 +++ b/usr/src/cmd/sgs/lex/common/sub2.c
+@@ -86,7 +86,7 @@ cfoll(int v)
+ 				if (pcptr > pchar + pchlen)
+ 					error(
+ 					"Too many packed character classes");
+-				left[v] = (int)p;
++				left[v] = (intptr_t)p;
+ 				name[v] = RCCL;	/* RNCCL eliminated */
+ #ifdef DEBUG
+ 				if (debug && *p) {
 @@ -335,7 +335,7 @@ cgoto(void)
  #ifdef DEBUG
  		if (debug) {
@@ -271,7 +478,7 @@ index 399503d7d9..c59373afe4 100644
  		}
  #endif
 diff --git a/usr/src/cmd/sgs/lex/common/sub3.c b/usr/src/cmd/sgs/lex/common/sub3.c
-index 4b9cea94ab..4acb9c4faf 100644
+index 4b9cea94ab..20c4572d0d 100644
 --- a/usr/src/cmd/sgs/lex/common/sub3.c
 +++ b/usr/src/cmd/sgs/lex/common/sub3.c
 @@ -137,7 +137,7 @@ remch(wchar_t c)
@@ -283,6 +490,27 @@ index 4b9cea94ab..4acb9c4faf 100644
  			else warning(
  "Non-ASCII character of value %#x in pattern; use -w or -e lex option.", c);
  		}
+@@ -340,9 +340,9 @@ repbycgid(void)
+ 			while (ccp < ccptr && scomp(ccltoken, ccp) != 0)
+ 				ccp++;
+ 			if (ccp < ccptr) {  /* character class found in ccl */
+-				left[i] = (int)ccp;
++				left[i] = (intptr_t)ccp;
+ 			} else { /* not in ccl, add it */
+-				left[i] = (int)ccptr;
++				left[i] = (intptr_t)ccptr;
+ 				scopy(ccltoken, ccptr);
+ 				ccptr += slength(ccltoken) + 1;
+ 				if (ccptr > ccl + CCLSIZE)
+@@ -374,7 +374,7 @@ repbycgid(void)
+ 			}
+ 			/* Mimic mn1(RCCL,psave)... */
+ 			name[i] = RCCL;
+-			left[i] = (int)psave;
++			left[i] = (intptr_t)psave;
+ 			cclinter(1);
+ 		}
+ 	}
 diff --git a/usr/src/cmd/sgs/yacc/common/y1.c b/usr/src/cmd/sgs/yacc/common/y1.c
 index 0c5d9ba324..5c58a0ae95 100644
 --- a/usr/src/cmd/sgs/yacc/common/y1.c
