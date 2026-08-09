@@ -163,6 +163,8 @@ sysx(long num, long a, long b, long c, long d, long *failed, long *rval2)
 #define	VLNEXT	15
 #define	VERASE2	17
 
+#define	MS_DATA		0x0004
+
 #define	A_SHUTDOWN	2
 #define	AD_POWEROFF	6
 
@@ -289,7 +291,12 @@ mount_tmp(void)
 
 	args[0] = (long)spec;
 	args[1] = (long)dir;
-	args[2] = 0;
+	/*
+	 * MS_DATA is not optional even with no data: without it (or MS_FSS)
+	 * mount() reads `fstype` as an *index* into vfssw[] rather than as a
+	 * name (uts/common/fs/vfs.c:1175-1200).
+	 */
+	args[2] = MS_DATA;
 	args[3] = (long)fstype;
 	args[4] = 0;
 	args[5] = 0;
@@ -343,8 +350,25 @@ run_shell(void)
  */
 #define	MAX_RESPAWNS	5
 
+/*
+ * The kernel enters a fresh process with %rsp pointing at argc, which is not
+ * the alignment the SysV ABI promises a *called* function -- that is
+ * established by crt1.o, which -nostdlib means we do not have. gcc is entitled
+ * to assume it and does: it emits `movaps` to stack slots as soon as there is
+ * enough on the stack to be worth vectorising, and `movaps` to an unaligned
+ * address is a #GP that arrives as SIGSEGV before any of our code could report
+ * it -- which the kernel then turns into an init restart loop. So align the
+ * stack in asm, and only then enter C.
+ */
+__asm__(
+	".globl _start\n"
+	"_start:\n"
+	"	andq $-16, %rsp\n"
+	"	call init_main\n"
+	"	hlt\n");
+
 int
-_start(void)
+init_main(void)
 {
 	long failed, rval2, pid, err, respawns = 0;
 	/* siginfo_t, which we only need as a landing pad, is 256 bytes. */
