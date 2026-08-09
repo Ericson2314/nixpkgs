@@ -14,7 +14,9 @@
 #
 # Packaged for the `ipadm`/`dladm` closure: flow accounting is part of the
 # datalink stack, and libdladm carries libexacct for reading the flow
-# accounting files that `flowadm` and `dladm show-*` report on.
+# accounting files that `flowadm` and `dladm show-*` report on. `libpool`
+# links `-lexacct` as well, and `librestart` -- hence `svc.startd` -- links
+# `-lpool`.
 mkDerivation {
   libcMinimal = true;
   illumosLib = true;
