@@ -82,7 +82,16 @@ stdenv.mkDerivation rec {
     "--bindir=${placeholder "bin"}/bin"
     "--includedir=${placeholder "dev"}/include"
     "--libdir=${placeholder "out"}/lib"
-    (if stdenv.hostPlatform.isStatic then "--disable-tcl" else "--with-tcl=${lib.getLib tcl}/lib")
+    # `--with-tcl=` points at the *host* tcl, so asking for the Tcl extension
+    # pulls a target-platform tcl into the build. illumos has no working tcl
+    # yet (its configure misdetects `getpwuid_r`, see below), and the extension
+    # is not needed to get libsqlite3 and the `sqlite3` shell, so skip it.
+    (
+      if stdenv.hostPlatform.isStatic || stdenv.hostPlatform.isSunOS then
+        "--disable-tcl"
+      else
+        "--with-tcl=${lib.getLib tcl}/lib"
+    )
     # Enabling limit-on-update/delete by adding -DSQLITE_ENABLE_UPDATE_DELETE_LIMIT to NIX_CFLAGS_COMPILE does not work: the lemon parser generator (built early in buildPhase) doesn't receive the flag when it's invoked, as it's not been wrapped with Nix magic.
     "--enable-update-limit"
   ]
