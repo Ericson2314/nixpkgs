@@ -112,6 +112,12 @@ let
       darwin = pkgs.netbsd.getent;
       freebsd = pkgs.freebsd.getent;
       openbsd = pkgs.openbsd.getent;
+      # NetBSD's getent -- the fallback illumos would otherwise land on -- does
+      # not compile here: its `compat` shim installs a <netconfig.h> whose
+      # `struct netconfig` and `getnetconfigent` prototype conflict with the
+      # ones illumos already has in <sys/netconfig.h>, since illumos carries
+      # TI-RPC in the base system. illumos' own knows the local tables anyway.
+      solaris = pkgs.illumos.getent;
     };
     getopt = {
       linux = pkgs.util-linux;
