@@ -15,6 +15,11 @@
   # finding a shared object's own dependencies on the link path.
   libmd,
   libmp,
+
+  # illumos' own AT&T-derived lex and yacc, not flex/bison -- see the comment
+  # on the LEX/YACC makeFlags below.
+  lex,
+  yacc,
 }:
 
 # libsec.so.1 -- illumos' ACL library. It is what `acl(2)`/`facl(2)` are
@@ -35,9 +40,8 @@
 # rendering an NFSv4 ACL to text.
 #
 # The library also has two generated sources -- `acl.y` (the ACL text-format
-# grammar) and `acl_lex.l`. Upstream builds them with illumos' own yacc/lex out
-# of `usr/src/tools`, which have no build-host build here; bison's `-y` POSIX
-# mode and flex are drop-in enough for this grammar.
+# grammar) and `acl_lex.l` -- built with illumos' own yacc/lex; see the LEX/YACC
+# comment below for why flex is not a substitute here.
 mkDerivation {
   libcMinimal = true;
   illumosLib = true;
@@ -62,8 +66,8 @@ mkDerivation {
   ];
 
   extraNativeBuildInputs = [
-    buildPackages.bison
-    buildPackages.flex
+    lex
+    yacc
   ];
 
   buildInputs = [
@@ -80,11 +84,29 @@ mkDerivation {
 
   buildFlags = [ "all" ];
 
+  # `Makefile.com:77` is a multi-target rule -- `acl.tab.c acl.tab.h: acl.y` --
+  # and dmake runs it once per target, so `yacc` is invoked twice. Run in
+  # parallel, the second invocation truncates `acl.tab.h` while the compile of
+  # `acl_lex.c` is reading it, and the tokens defined near the end of the header
+  # go missing:
+  #
+  #     acl_lex.l:97: error: 'USER_TOK' undeclared
+  #
+  # which reads like a missing include rather than a race. Serialise this
+  # package rather than patching upstream's rule.
+  enableParallelBuilding = false;
+
   # `Makefile.master` points YACC and LEX at `$(ONBLD_TOOLS)/bin/$(MACH)/`,
-  # illumos' own (AT&T-derived) yacc and lex, built from `usr/src/cmd/sgs`.
-  # Neither has a build-host build here, so use bison in POSIX/yacc mode and
-  # flex. The `-P`/`-Y` arguments in the upstream definitions name the illumos
-  # skeleton files and go away with them.
+  # illumos' own AT&T-derived yacc and lex. We build those (see lex.nix and
+  # yacc.nix) rather than substituting bison/flex, because flex cannot express
+  # this scanner: in AT&T lex every character is read through the `input()`
+  # macro, and `acl_lex.l` `#undef`s `input`/`unput` and supplies functions that
+  # walk an in-memory buffer -- that is how the library parses ACL text from a
+  # string rather than from a stream. flex reads via `YY_INPUT` into its own
+  # buffer and emits `input` as a real function, so the file does not even
+  # compile ("redefinition of 'input'"); and one rule calls `unput()` and then
+  # `strdup(yytext)`, which flex's `unput()` clobbers. Silently mis-parsing ACL
+  # text is a bad failure mode for a library that decides permissions.
   #
   # See libm.nix for why `BUILD.SO` has to be redefined to call `$(LD)`
   # directly, and libnsl.nix for why crti.o/crtn.o have to be named explicitly
@@ -92,11 +114,27 @@ mkDerivation {
   # dependencies (libavl, libuutil, libnsl, libnvpair, and libnsl's libmd and
   # libmp) all have to be on the path too.
   #
-  # `YACC` goes through `makeFlagsArray` rather than `makeFlags` because it
-  # contains a space, and `makeFlags` entries are word-split.
+  # Both tools need their skeleton files named explicitly, exactly as
+  # `Makefile.master:162-163` does: `yacc -P .../yaccpar` and
+  # `lex -Y .../share/lib/ccs` (holding ncform/nceucform/nrform). Passing a
+  # bare `yacc` compiles fine and then dies at run time with
+  #
+  #     fatal: cannot find parser /usr/share/lib/ccs/yaccpar
+  #
+  # since the built-in default is an absolute path that only exists on a real
+  # illumos system.
+  #
+  # These spell out `buildPackages.illumos.*` rather than `${yacc}`/`${lex}`:
+  # splicing rewrites `nativeBuildInputs`, not string interpolation, so a bare
+  # `${yacc}` would name the *target*-platform build. Both spellings appear on
+  # purpose -- the argument for the dependency, the explicit path for the
+  # string. See lex.nix, which does the same for its own yacc.
+  #
+  # They go through `makeFlagsArray` rather than `makeFlags` because they
+  # contain spaces, and `makeFlags` entries are word-split.
   preBuild = ''
-    makeFlagsArray+=("YACC=bison -y")
-    makeFlagsArray+=("LEX=flex")
+    makeFlagsArray+=("YACC=${buildPackages.illumos.yacc}/bin/yacc -P ${buildPackages.illumos.yacc}/share/lib/ccs/yaccpar")
+    makeFlagsArray+=("LEX=${buildPackages.illumos.lex}/bin/lex -Y ${buildPackages.illumos.lex}/share/lib/ccs")
     makeFlagsArray+=("BUILD.SO=\$(LD) -o \$@ \$(GSHARED) \$(DYNFLAGS) ${crt}/lib/crti.o \$(PICS) \$(EXTPICS) ${crt}/lib/crtn.o -L${libcMinimal}/lib -L${libssp_ns}/lib -L${libavl}/lib -L${libidmap}/lib -L${libuutil}/lib -L${libnsl}/lib -L${libnvpair}/lib -L${libmd}/lib -L${libmp}/lib \$(LDLIBS)")
   '';
 
