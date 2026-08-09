@@ -93,10 +93,12 @@ mkDerivation {
     "LDFLAGS.native="
     "MACH=i386"
     "MACH64=amd64"
-    "LD=${buildPackages.writeShellScript "illumos-ld" ''
-      unset SGS_SUPPORT SGS_SUPPORT_32 SGS_SUPPORT_64
-      exec ${buildPackages.illumos.ld}/bin/ld "$@"
-    ''}"
+    "LD=${
+      buildPackages.writeShellScript "illumos-ld" ''
+        unset SGS_SUPPORT SGS_SUPPORT_32 SGS_SUPPORT_64
+        exec ${buildPackages.illumos.ld}/bin/ld "$@"
+      ''
+    }"
   ];
 
   installPhase = ''
