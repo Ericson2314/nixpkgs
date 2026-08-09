@@ -91,7 +91,7 @@ mkDerivation {
   # once the compiler driver is out of the picture.
   preBuild = ''
     makeFlagsArray+=("CPPFLAGS.first=-I${headers}/include -I\$(SRC)/lib/libbrand/common")
-    makeFlagsArray+=("BUILD.SO=\$(LD) -o \$@ \$(GSHARED) \$(DYNFLAGS) ${crt}/lib/crti.o \$(PICS) \$(EXTPICS) ${crt}/lib/crtn.o -L${libcMinimal}/lib -L${libssp_ns}/lib -L${libuutil}/lib -L${libgen}/lib -L${libnvpair}/lib -L${libsmbios}/lib -L${libdevinfo}/lib -L${libsec}/lib -L${libavl}/lib -L${libidmap}/lib -L${libnsl}/lib -L${libmd}/lib -L${libmp}/lib \$(LDLIBS)")
+    makeFlagsArray+=("BUILD.SO=\$(LD) -o \$@ \$(GSHARED) \$(DYNFLAGS) ${crt}/lib/crti.o \$(PICS) \$(EXTPICS) ${crt}/lib/crtn.o -L${libcMinimal}/lib -L${libssp_ns}/lib -L${libuutil}/lib -R${libuutil}/lib -L${libgen}/lib -R${libgen}/lib -L${libnvpair}/lib -R${libnvpair}/lib -L${libsmbios}/lib -R${libsmbios}/lib -L${libdevinfo}/lib -R${libdevinfo}/lib -L${libsec}/lib -R${libsec}/lib -L${libavl}/lib -R${libavl}/lib -L${libidmap}/lib -R${libidmap}/lib -L${libnsl}/lib -R${libnsl}/lib -L${libmd}/lib -R${libmd}/lib -L${libmp}/lib -R${libmp}/lib \$(LDLIBS)")
   '';
 
   # <libscf.h> and <libscf_priv.h> are installed into /usr/include by the

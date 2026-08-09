@@ -83,7 +83,7 @@ mkDerivation {
   # and libnsl.nix for why crti.o/crtn.o then have to be named explicitly.
   preBuild = ''
     makeFlagsArray+=("CPPFLAGS.first=-I${headers}/include -I\$(SRC)/lib/libc/port/gen")
-    makeFlagsArray+=("BUILD.SO=\$(LD) -o \$@ \$(GSHARED) \$(DYNFLAGS) ${crt}/lib/crti.o \$(PICS) \$(EXTPICS) ${crt}/lib/crtn.o -L${libcMinimal}/lib -L${libssp_ns}/lib -L${libnsl}/lib -L${libmd}/lib -L${libmp}/lib \$(LDLIBS)")
+    makeFlagsArray+=("BUILD.SO=\$(LD) -o \$@ \$(GSHARED) \$(DYNFLAGS) ${crt}/lib/crti.o \$(PICS) \$(EXTPICS) ${crt}/lib/crtn.o -L${libcMinimal}/lib -L${libssp_ns}/lib -L${libnsl}/lib -R${libnsl}/lib -L${libmd}/lib -R${libmd}/lib -L${libmp}/lib -R${libmp}/lib \$(LDLIBS)")
   '';
 
   makeFlags = [

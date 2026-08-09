@@ -92,7 +92,7 @@ mkDerivation {
     # CPPFLAGS because a command-line CPPFLAGS would discard Makefile.com's own
     # -DSYSV -D_REENTRANT.
     makeFlagsArray+=("CPPFLAGS.first=-I${headers}/include -I\$(SRC)/lib/libsocket/common")
-    makeFlagsArray+=("BUILD.SO=\$(LD) -o \$@ \$(GSHARED) \$(DYNFLAGS) \$(PICS) \$(EXTPICS) -L${libcMinimal}/lib -L${libssp_ns}/lib -L${libnsl}/lib -L${libmd}/lib -L${libmp}/lib \$(LDLIBS)")
+    makeFlagsArray+=("BUILD.SO=\$(LD) -o \$@ \$(GSHARED) \$(DYNFLAGS) \$(PICS) \$(EXTPICS) -L${libcMinimal}/lib -L${libssp_ns}/lib -L${libnsl}/lib -R${libnsl}/lib -L${libmd}/lib -R${libmd}/lib -L${libmp}/lib -R${libmp}/lib \$(LDLIBS)")
   '';
 
   makeFlags = [
