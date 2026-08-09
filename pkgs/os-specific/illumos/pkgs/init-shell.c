@@ -427,19 +427,43 @@ init_main(void)
 		}
 
 		/*
-		 * Wait for it. The shell is the only child pid 1 ever has, so
-		 * any successful wait is that shell; a failure means there is
-		 * nothing left to wait for (ECHILD) or a signal interrupted us
-		 * (EINTR), and neither is worth distinguishing here.
+		 * Wait for *that* child, not for any child.
+		 *
+		 * pid 1 inherits every orphan on the system, so the shell is
+		 * emphatically not the only child it has -- an earlier version
+		 * assumed it was, and treated any successful wait as the shell
+		 * exiting. Daemonising is precisely the case that breaks that:
+		 * `svccfg` with SVCCFG_REPOSITORY set forks a private
+		 * `svc.configd`, which double-forks (`daemonize_start()`,
+		 * cmd/svc/configd/configd.c:457) so that its working process is
+		 * orphaned and reparented here. When that process later exited,
+		 * pid 1 reaped it, concluded the shell had died and started a
+		 * second one on top of the first -- which then could not take
+		 * the terminal, because the first shell still held it:
+		 *
+		 *     init: shell exited; restarting it
+		 *     -bash: cannot set terminal process group (-1)
+		 *     -bash: no job control in this shell
+		 *
+		 * The shell had not exited at all. So reap whatever arrives,
+		 * and keep waiting unless it is the one we started. si_pid is
+		 * the first member of siginfo_t's union, which on LP64 begins
+		 * at byte 16 -- three ints and the explicit `si_pad`
+		 * (uts/common/sys/siginfo.h).
 		 */
 		for (;;) {
 			err = sysx(SYS_waitsys, P_ALL, 0, (long)si, WEXITED,
 			    &failed, 0);
-			/* Only EINTR is worth retrying; ECHILD means gone. */
-			if (!failed || err != EINTR)
+			if (failed) {
+				/* EINTR is worth retrying; ECHILD is not. */
+				if (err == EINTR)
+					continue;
 				break;
+			}
+			if ((long)((int *)si)[4] == pid)
+				break;
+			/* Somebody else's orphan. Reaped; carry on waiting. */
 		}
-		(void) pid;
 
 		if (++respawns > MAX_RESPAWNS) {
 			say("init: shell keeps exiting; not restarting it\n",
