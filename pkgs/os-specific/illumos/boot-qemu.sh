@@ -228,6 +228,22 @@ cp -RL --preserve=mode "$unix/kernel" "$unix/platform" "$unix/usr" "$work/ba/"
 chmod -R u+w "$work/ba/kernel" "$work/ba/platform" "$work/ba/usr"
 cp "$src/uts/intel/os/name_to_sysnum" "$src/uts/intel/os/minor_perm" \
    "$src/uts/intel/os/dacf.conf" "$work/ba/etc/"
+
+# /etc/mach lists the platform-support modules psm_modload() will try, loaded
+# in reverse order (uts/intel/os/mach: pcplusmp, apix, xpv_psm). It is not
+# optional scaffolding: psm_get_impl_module() on its own only ever offers
+# DEFAULT_PSM_MODULE -- uppc -- and open_mach_list()
+# (uts/common/os/modsysfile.c:2998) reads this file for everything else. With
+# no /etc/mach the machine silently runs on uppc, which has no I/O APIC, so a
+# PCI interrupt has to be routed through an ACPI PCI link device whose _SRS
+# method fails under qemu:
+#
+#     uppc: WARNING: psm: set_irq: _SRS failed
+#
+# and the driver's attach(9E) unwinds. xpv_psm is not built here, so expect one
+# "Skipping psm: xpv_psm".
+cp "$src/uts/intel/os/mach" "$work/ba/etc/mach"
+
 # /etc/driver_aliases is written by add_drv(8) from the `alias=` attributes on
 # the `driver` actions in the packaging manifests, so it has to be synthesised
 # too. These are copied verbatim from the gate:
