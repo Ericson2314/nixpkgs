@@ -1,0 +1,123 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Mon, 10 Aug 2026 12:00:00 -0400
+Subject: [PATCH] svcs: build without libzonecfg
+
+TIER 4 -- NOT UPSTREAMABLE, KEEP LOCAL. This is a bring-up shim, not a fix.
+It removes a (small) feature to avoid a dependency chain, and upstream should
+not take it as written: a real submission would wire `HAVE_LIBZONECFG` to a
+build-time knob and *default it on*, so a normal gate build is unchanged and
+only an explicitly reduced configuration opts out. Here the macro is simply
+never defined. Same shape, and the same reasoning, as patch 0016
+(`svc.startd: build without libbe and libfmevent`).
+
+`svcs` links `-lzonecfg` for exactly one symbol. Every zone-shaped thing in
+`svcs.c` and `explain.c` -- `getzoneid`, `getzonenamebyid`, `ZONENAME_MAX`,
+`GLOBAL_ZONEID` -- comes from libc and <zone.h>. The one libzonecfg call is
+`zone_get_rootpath()`, at `svcs.c:477`, reached only from
+`pg_get_single_val()` and only when all of the following hold: a zone was
+named with `-z`/`-Z`, the property being read is `SCF_PROPERTY_LOGFILE` or
+`SCF_PROPERTY_ALT_LOGFILE`, and the read succeeded. Its whole effect is
+cosmetic, and the comment above it says so: "As a convenience, we're going to
+prepend the zone path to the name of the log file."
+
+So what is given up is precisely the log-path prefixing of `svcs -z <zone>
+-L`. With the guard off, the log file is reported by its path *within* the
+zone rather than as seen from the global zone. On a system with no
+`zoneadm`, no configured zones and no way to create one, that is not a
+reachable code path at all: `g_zonename` can only become non-NULL via `-z`
+or `-Z`, and `-Z` already requires being in the global zone with zones to
+enumerate.
+
+What it buys is the entire libzonecfg dependency chain, seven packages that
+would otherwise have to be built before `svcs` could exist at all:
+
+  * libbrand   -- libxml2, libc
+  * librcm     -- libc, libnvpair
+  * libvarpd   -- libavl, libumem, libidspace, libnvpair, libmd, librename
+  * libdladm   -- libdevinfo, libinetutil, libsocket, libscf, librcm,
+                  libnvpair, libexacct, libkstat, libpool, libvarpd
+  * libdlpi    -- libc, libinetutil, libdladm
+  * libuuid    -- libsocket, libnsl, libc, libdlpi
+  * libzonecfg -- the above plus libsec, libsecdb, libbsm, libproc, libpool,
+                  libscf, libsysevent, libuutil, libxml2
+
+and none of it can be skipped by linking alone, because GNU ld resolves each
+shared object's own `DT_NEEDED` list along the runtime search path:
+svcs -> libzonecfg -> libuuid -> libdlpi -> libdladm is a hard chain.
+
+Note one trap for whoever does build it. `libzonecfg`'s `OBJECTS` includes
+`definit.o`, whose source is `usr/src/common/definit/definit.c` -- outside
+the library's own directory, reached through a `pics/%.o: $(SRC)/common/definit/%.c`
+rule, and with nothing in `LDLIBS` to hint at it. That is the recurring
+"one library deeper than the Makefile advertises" pattern; `libexacct` hid
+`common/exacct` and `libproc` hid `common/list` the same way. Treat the list
+above as a floor.
+
+What retires this patch: packaging libzonecfg. That is expected to happen for
+an unrelated reason rather than for `svcs` -- `libdladm` is the expensive node
+in the chain and is wanted independently for `dladm`/`ipadm` once there is a
+network stack to configure. When it is built for that, `svcs` should drop this
+patch and link `-lzonecfg` properly.
+
+Assisted-By: Claude <noreply@anthropic.com>
+---
+diff --git a/usr/src/cmd/svc/svcs/Makefile b/usr/src/cmd/svc/svcs/Makefile
+index 5592c76..8221cd4 100644
+--- a/usr/src/cmd/svc/svcs/Makefile
++++ b/usr/src/cmd/svc/svcs/Makefile
+@@ -34,7 +34,12 @@ include ../../Makefile.cmd
+ include ../../Makefile.ctf
+ 
+ POFILE =	$(PROG)_all.po
+-LDLIBS +=	-lcontract -lscf -luutil -lumem -lnvpair -lzonecfg -lproc
++#
++# -lzonecfg is omitted, and svcs.c's one use of it is compiled out behind
++# HAVE_LIBZONECFG.  Define HAVE_LIBZONECFG and add -lzonecfg back to restore
++# it; see the commit message for why this build does not.
++#
++LDLIBS +=	-lcontract -lscf -luutil -lumem -lnvpair -lproc
+ CPPFLAGS += -I ../common
+ 
+ CERRWARN += $(CNOWARN_UNINIT)
+diff --git a/usr/src/cmd/svc/svcs/svcs.c b/usr/src/cmd/svc/svcs/svcs.c
+index bae26d5..f1680ef 100644
+--- a/usr/src/cmd/svc/svcs/svcs.c
++++ b/usr/src/cmd/svc/svcs/svcs.c
+@@ -79,7 +79,9 @@
+ #include <stdlib.h>
+ #include <strings.h>
+ #include <time.h>
++#ifdef HAVE_LIBZONECFG
+ #include <libzonecfg.h>
++#endif
+ #include <zone.h>
+ 
+ #ifndef TEXT_DOMAIN
+@@ -364,7 +366,10 @@ int
+ pg_get_single_val(scf_propertygroup_t *pg, const char *propname, scf_type_t ty,
+     void *vp, size_t sz, uint_t flags)
+ {
+-	char *buf, root[MAXPATHLEN];
++	char *buf;
++#ifdef HAVE_LIBZONECFG
++	char root[MAXPATHLEN];
++#endif
+ 	size_t buf_sz;
+ 	int ret = -1, r;
+ 	boolean_t multi = B_FALSE;
+@@ -473,10 +478,12 @@ out:
+ 	 * As a convenience, we're going to prepend the zone path to the
+ 	 * name of the log file.
+ 	 */
++#ifdef HAVE_LIBZONECFG
+ 	root[0] = '\0';
+ 	(void) zone_get_rootpath(g_zonename, root, sizeof (root));
+ 	(void) strlcat(root, vp, sizeof (root));
+ 	(void) snprintf(vp, sz, "%s", root);
++#endif
+ 
+ 	return (ret);
+ }
+-- 
+2.51.0
