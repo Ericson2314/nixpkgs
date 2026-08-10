@@ -125,7 +125,17 @@ lib.warnIf (withDocs != null)
       "bash_cv_dev_fd=standard"
       "gt_cv_func_printf_posix=yes"
     ]
-    ++ lib.optionals (stdenv.hostPlatform.libc == "musl") [
+    ++ lib.optionals (stdenv.hostPlatform.libc == "musl" || stdenv.hostPlatform.isNetBSD) [
+      # Where configure finds GNU gettext neither in libc nor in a separate
+      # libintl, it leaves NLS on and falls back to bash's bundled `lib/intl`
+      # -- a vendored copy of an old gettext that no longer compiles, its
+      # `xsize.h` wanting a `_GL_INLINE` that bash's `config.h` never defines:
+      #
+      #     xsize.h:38:23: error: unknown type name '_GL_INLINE'
+      #
+      # musl has been here for exactly that reason. NetBSD keeps gettext in a
+      # separate libintl which this package set does not build, so it lands in
+      # the same fallback.
       "--disable-nls"
     ]
     ++ lib.optionals stdenv.hostPlatform.isFreeBSD [
