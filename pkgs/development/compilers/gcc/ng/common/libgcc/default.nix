@@ -449,6 +449,29 @@ stdenv.mkDerivation (finalAttrs: {
 
   postInstall = ''
     install -c -m 644 gthr-default.h "$dev/include"
+  ''
+  # illumos installs the *shared* libgcc a directory below the static one.
+  # `libgcc_s` goes to `$(slibdir)`, which config/t-sol2 derives from
+  # MULTILIB_OSDIRNAME -- `../amd64` for the 64-bit multilib -- while
+  # `libgcc.a` and the crt objects go to `$(inst_libdir)` and stay in `lib`.
+  # That is the correct *runtime* layout for illumos, whose ld.so.1 searches
+  # /lib/amd64, and it is what the platform's own /usr/lib/amd64/libgcc_s.so.1
+  # looks like.
+  #
+  # It is the wrong *link-time* layout for us. Consumers get a single
+  # `-L$out/lib` from the setup hook, so `-lgcc_s` -- which `-shared-libgcc`
+  # puts on every libstdc++ link now that the split build drives it with the C
+  # compiler -- finds nothing:
+  #
+  #     ld.bfd: cannot find -lgcc_s: No such file or directory
+  #
+  # Link it up rather than moving it, so the library keeps the location its
+  # DT_SONAME and every consumer's RUNPATH already agree on.
+  + lib.optionalString (enableShared && stdenv.hostPlatform.isIllumos) ''
+    for f in "$out"/lib/amd64/libgcc_s.so*; do
+      [ -e "$f" ] || continue
+      ln -sfn "amd64/$(basename "$f")" "$out/lib/$(basename "$f")"
+    done
   '';
 
   doCheck = true;
