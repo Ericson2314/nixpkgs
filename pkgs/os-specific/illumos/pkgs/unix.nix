@@ -332,9 +332,35 @@ mkDerivation {
     "intel/SDC"
 
     # psm_modload() (startup.c:1649) loads every module under
-    # platform/i86pc/kernel/mach; uppc is the plain 8259/8254 one that works
-    # without an APIC.
+    # platform/i86pc/kernel/mach and keeps the highest-priority one whose
+    # probe succeeds. uppc is the plain 8259/8254 fallback that works without
+    # an APIC; pcplusmp and apix drive the local APIC and the I/O APIC.
+    #
+    # Shipping only uppc means running on the 8259 with no I/O APIC, which is
+    # not what any real illumos install does on this hardware. Note that
+    # psm_get_impl_module() offers DEFAULT_PSM_MODULE -- uppc -- and nothing
+    # else on its own; the rest come from /etc/mach, which the image builder
+    # has to stage (see boot-qemu.sh). With it, apix wins the probe:
+    #
+    #     apix: NOTICE: apic: Using APIC interrupt routing mode
+    #
+    # This does *not*, on its own, fix e1000g. Both under uppc and under apix
+    # the boot log still carries `psm: set_irq: _SRS failed`, and e1000g's
+    # attach(9E) still reaches mac_register() and then unwinds:
+    #
+    #     mac: NOTICE: e1000g0 registered
+    #     mac: NOTICE: e1000g0 unregistered
+    #
+    # leaving the devinfo node bound to the driver but DI_DRIVER_DETACHED,
+    # which from userland is indistinguishable from a missing driver. Under
+    # apix the failing step no longer prints anything of its own, so the next
+    # move is to find which `goto attach_fail` in e1000g_main.c is taken.
+    #
+    # Both PSMs are shipped because which one probes depends on the emulated
+    # chipset. Each links -N misc/acpica, which is already above.
     "i86pc/uppc"
+    "i86pc/pcplusmp"
+    "i86pc/apix"
 
     # pipe(2) is a *loadable* syscall: common/os/sysent.c:488 is
     # `/* 42 */ SYSENT_LOADABLE(), /* pipe */`, and the implementation ships as
