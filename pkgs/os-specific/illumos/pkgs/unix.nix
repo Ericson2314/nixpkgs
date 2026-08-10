@@ -487,6 +487,16 @@ mkDerivation {
     # will anything else that seeds a PRNG.
     "intel/random"
 
+    # devinfo(4D), the snapshot device behind libdevinfo. Every consumer of the
+    # device tree goes through it -- di_init(3DEVINFO) opens
+    # /devices/pseudo/devinfo@0:devinfo and reads a packed snapshot -- so
+    # without it `prtconf`, `devfsadm` and `dladm show-phys` have no way to see
+    # hardware at all. It is also the only way to ask the kernel to *attach*
+    # nodes it has merely bound: DINFOFORCE is what makes di_init walk the tree
+    # calling ndi_devi_config(), which is how a NIC on the PCI bus comes up on
+    # a system where nothing else has opened it.
+    "intel/devinfo"
+
     # The transports themselves, each -Ndrv/ip -Nfs/sockfs. These are what
     # strplumb() modloads below, and what an AF_INET socket needs; arp(7P) is
     # the STREAMS module ip plumbs under itself, and dld(7D) is the link layer
