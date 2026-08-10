@@ -1,0 +1,24 @@
+--- a/src/tools/gcc.jam	2026-08-10 01:20:24.280369089 -0400
++++ b/src/tools/gcc.jam	2026-08-10 01:20:24.281369085 -0400
+@@ -1011,6 +1011,21 @@
+     toolset.flags gcc.link OPTIONS <target-os>solaris/<strip>on : -Wl,-s ;
+ 
+     toolset.flags gcc.link RPATH <target-os>solaris : <dll-path> ;
++    # RPATH without RPATH_OPTION expands to `-Wl,-Wl,<path>` in the link.dll
++    # action below, which the driver drops, so <dll-path> silently has no
++    # effect and the installed libraries get no runpath to their own libdir.
++    # Every other target-os pairs the two (see darwin, osf and the generic
++    # set); solaris is simply missing the second half.
++    toolset.flags gcc.link RPATH_OPTION <target-os>solaris : -rpath ;
++    # Likewise, solaris is excluded from `generic-os` above, so it never picks
++    # up the HAVE_SONAME/SONAME_OPTION pair that `soname-os` grants everyone
++    # else, and no library is linked with -h. With no DT_SONAME, the linker
++    # records each DT_NEEDED as the *path it was given on the command line* --
++    # for Boost's own inter-library dependencies that is the relative
++    # `bin.v2/libs/<lib>/build/.../libboost_<lib>.so.<ver>` build-tree path,
++    # which no runtime loader can ever resolve.
++    toolset.flags gcc.link HAVE_SONAME <target-os>solaris : "" ;
++    toolset.flags gcc.link SONAME_OPTION <target-os>solaris : -h ;
+     # Solaris linker does not have a separate -rpath-link, but allows using
+     # -L for the same purpose.
+     toolset.flags gcc.link LINKPATH <target-os>solaris : <xdll-path> ;
