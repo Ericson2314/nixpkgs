@@ -74,7 +74,15 @@ static const char *const consoles[] = {
  * looks at it: a name of "init" with pid 1 is init, anything else is telinit.
  */
 static const char *const prog_argv[] = { "/sbin/init", 0 };
-static const char *const prog_envp[] = { 0 };
+
+/*
+ * LD_DEBUG is how far this shim can see without modifying the program it
+ * execs: ld.so.1 writes its trace to stderr, which by then is the console, so
+ * it shows how much of the link completed and which object was being worked on
+ * when it stopped. Set -DLD_DEBUG_ENV at build time to change what is traced;
+ * "basic" is quiet, "libs,reloc" says exactly where it stopped.
+ */
+static const char *const prog_envp[] = { LD_DEBUG_ENV, 0 };
 
 static const char prog[] = PROG;
 

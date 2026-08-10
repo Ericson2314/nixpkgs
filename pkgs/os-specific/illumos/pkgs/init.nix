@@ -157,6 +157,10 @@ mkDerivation {
   # than letting move-sbin-to-bin.sh relocate it.
   dontMoveSbin = true;
 
+  # Keep symbols: the faulting PC from the debug handler has to be mappable
+  # back to a function name with nm.
+  dontStrip = true;
+
   # `install` also removes /etc/init and /usr/sbin/init compat links and
   # installs /etc/default/init, none of which we want against a live ROOT.
   # Install by hand instead.

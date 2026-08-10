@@ -1,6 +1,14 @@
 {
   stdenv,
   illumos,
+
+  # What to trace in ld.so.1 while the shim is being used to debug an early
+  # crash. "basic" is quiet; "libs,reloc" says exactly where linking stopped.
+  # Empty means do not set LD_DEBUG at all. Anything else is passed through to
+  # ld.so.1 and, because the environment is inherited, also traces every
+  # process init goes on to exec -- which drowns out what init and svc.startd
+  # are saying.
+  ldDebug ? "",
 }:
 
 # A debugging /sbin/init: opens the console the way init-shell does, puts it on
@@ -25,6 +33,9 @@ stdenv.mkDerivation {
     $CC -O2 -static -nostdlib -nostartfiles -ffreestanding \
         -fno-stack-protector -fno-pie -no-pie -e _start \
         -DPROG='"${illumos.init}/sbin/init"' \
+        -DLD_DEBUG_ENV='"${
+          if ldDebug == "" then "_NO_LD_DEBUG=1" else "LD_DEBUG=${ldDebug}"
+        }"' \
         -o init ${./init-console.c}
     runHook postBuild
   '';
