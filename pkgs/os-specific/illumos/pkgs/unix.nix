@@ -75,6 +75,13 @@ mkDerivation {
     nawk
     # uts/common/rpc and uts/common/nfs generate headers with rpcgen.
     rpcgen
+    # The amd64 assembly for misc/md5 and misc/sha1 is *generated*, by the
+    # OpenSSL-style perl scripts under $(SRC)/common/crypto (see
+    # uts/intel/md5/Makefile:91, `md5_amd64.S: $(COMDIR)/amd64/md5_amd64.pl`).
+    # Makefile.master:183 already says `PERL = perl`, so it only has to be on
+    # $PATH. Without it dmake reports the far-from-obvious
+    # "*** Error code 127 ... Command failed for target `md5_amd64.S'".
+    buildPackages.perl
     # The three onbld tools the unix build shells out to: the multiboot-header
     # patcher, the dboot embedder, and the console-font converter.
     mbh-patch
@@ -404,6 +411,68 @@ mkDerivation {
     "intel/mntfs"
     "intel/sharefs"
     "intel/tmpfs"
+
+    # Sockets. `socket(2)` itself is not in genunix: the whole family lives in
+    # fs/sockfs (common/fs/sockfs/socksyscalls.c), and AF_UNIX is implemented
+    # there too (sockcommon_sops.c, sockcommon_vnops.c). Without this module
+    # there are no sockets of any kind in userland, unix-domain included --
+    # which is what SMF's socket plumbing and nix-daemon both need.
+    #
+    # sockfs is a filesystem module, but it is not free-standing: its Makefile
+    # (uts/intel/sockfs/Makefile) has `LDFLAGS += -Ndrv/ip`, and krtld resolves
+    # -N at modload() time whether or not there is a NIC. So the IP stack has
+    # to come with it.
+    #
+    #   ip     -Nmisc/md5 -Ncrypto/swrand -Nmisc/hook -Nmisc/neti
+    #          -Nmisc/cc -Ncc/cc_{sunreno,newreno,cubic}
+    #   md5    -Nmisc/kcf          (the kernel crypto framework)
+    #   swrand -Nmisc/kcf -Nmisc/sha1
+    #   sha1   -Nmisc/kcf
+    #   neti   -Nmisc/hook
+    #
+    # misc/mac and misc/dls are already above -- fs/dev needs them.
+    "intel/kcf"
+    "intel/md5"
+    "intel/sha1"
+    "intel/swrand"
+    "intel/hook"
+    "intel/neti"
+    "intel/cc"
+    "intel/cc_sunreno"
+    "intel/cc_newreno"
+    "intel/cc_cubic"
+    "intel/ip"
+    "intel/sockfs"
+
+    # AF_UNIX is *not* self-contained in sockfs. sockfs implements the socket
+    # layer, but the unix-domain transport underneath it is TPI: soconfig(8)'s
+    # table (cmd/cmd-inet/etc/sock2path.d/system%2Fkernel) maps family 1 onto
+    # the device paths /dev/ticotsord and /dev/ticlts, which are minor nodes of
+    # drv/tl, the transport-loopback driver (uts/common/io/tl.c:524 onwards).
+    # No tl, no unix-domain sockets. tl also links -Ndrv/ip.
+    "intel/tl"
+
+    # AF_ROUTE (family 24, `rts`). ifconfig/route/ipadm all talk to the kernel
+    # routing table through a PF_ROUTE socket, so this is not optional once
+    # there is any network configuration to do.
+    "intel/rts"
+
+    # The STREAMS modules a TPI transport gets pushed. timod turns a stream
+    # into a TLI/XTI endpoint, which is what libnsl's t_open(3NSL) -- and so
+    # the RPC/`netconfig` path -- expects; strplumb() modloads it by name.
+    "intel/timod"
+    "intel/tirdwr"
+
+    # The transports themselves, each -Ndrv/ip -Nfs/sockfs. These are what
+    # strplumb() modloads below, and what an AF_INET socket needs; arp(7P) is
+    # the STREAMS module ip plumbs under itself, and dld(7D) is the link layer
+    # a NIC driver registers with -- "strplumb: failed to initialize drv/dld"
+    # in the boot log is exactly this set being absent.
+    "intel/tcp"
+    "intel/udp"
+    "intel/icmp"
+    "intel/arp"
+    "intel/dld"
 
     # main() (common/os/main.c:535) calls strplumb() unconditionally on a
     # non-networked boot. strplumb() is a *stub* (common/os/modstubs.S), so an
