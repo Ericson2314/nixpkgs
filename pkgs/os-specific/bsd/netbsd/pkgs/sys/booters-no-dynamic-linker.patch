@@ -1,25 +1,55 @@
-From 8eda7e2ac3e0515adbd693ee18f2d96f02c7dd38 Mon Sep 17 00:00:00 2001
+From 50830271b4f1c6226aaa6d050ba620ad4ce338e3 Mon Sep 17 00:00:00 2001
 From: John Ericson <John.Ericson@Obsidian.Systems>
 Date: Tue, 13 Oct 2026 15:12:40 -0400
-Subject: [PATCH] Let the i386 booters link with a PHDR segment present.
+Subject: [PATCH] Let the i386 boot programs link under binutils 2.46.
 
-Building the standalone boot programs fails at link:
+Three separate problems, all of which stop `sys` from building.
+
+**The BIOS booters.** They fail at link with
 
     ld: bootxx_ffsv1.sym: error: PHDR segment not covered by LOAD segment
 
-These are freestanding images linked with `-nostdlib` at a fixed text address,
-so a program header segment has no business being there, but the linker emits
-one anyway and then refuses its own output.
+which binutils now treats as a hard error. They are freestanding images
+linked `-nostdlib` at a fixed text address, so a program header segment has
+no business being there; the linker emits one anyway and then rejects its own
+output. NetBSD hit this in `efiboot` and fixed it there with
+`--no-dynamic-linker --noinhibit-exec`, but the rest never got the same
+treatment. `Makefile.booters` covers `pxeboot` and friends; `boot` (biosboot)
+and `bootxx` each carry their own link rules and need it separately.
 
-NetBSD hit the same thing in `efiboot` and fixed it there by adding
-`--no-dynamic-linker --noinhibit-exec`; `Makefile.booters` covers the rest of
-the i386 boot programs and never got the same treatment. Apply it here, so
-`bootxx` and its siblings link too.
+**The EFI booters' linker scripts.** These already pass those flags and still
+fail, because their cause is different. Both scripts declare
+
+    PHDRS { text PT_LOAD; headers PT_PHDR FILEHDR PHDRS; }
+
+where `headers` is a PT_PHDR segment that no output section is ever assigned
+to -- nothing in either script says `:headers`. So the program headers sit
+outside every PT_LOAD, which is exactly what the new check rejects.
+
+Delete the `PHDRS` block entirely, and with it the one `:text` assignment
+that referenced it, leaving ld to lay out segments itself. That is the shape
+gnu-efi upstream settled on, and the result is a well-formed ELF with the
+headers covered. Folding `FILEHDR PHDRS` into the `text` PT_LOAD instead does
+not work here: the script starts the image at `. = 0` with `.hash` first, so
+there is no room, and ld fails with "not enough room for program headers".
+
+**The PE conversion.** With the link fixed, the `objcopy` that turns the ELF
+into the PE image firmware loads fails with
+
+    objcopy: bootx64.efi.so: file format not recognized
+
+`--target` sets the input format as well as the output format, so objcopy
+tries to read an ELF file as PE. `--output-target` says what was meant.
 
 Assisted-by: Claude Code (Claude Opus 5.5)
 ---
- sys/arch/i386/stand/Makefile.booters | 1 +
- 1 file changed, 1 insertion(+)
+ sys/arch/i386/stand/Makefile.booters          | 1 +
+ sys/arch/i386/stand/boot/Makefile.boot        | 1 +
+ sys/arch/i386/stand/bootxx/Makefile.bootxx    | 1 +
+ sys/arch/i386/stand/efiboot/Makefile.efiboot  | 2 +-
+ sys/arch/i386/stand/efiboot/bootia32/ldscript | 8 +-------
+ sys/arch/i386/stand/efiboot/bootx64/ldscript  | 8 +-------
+ 6 files changed, 6 insertions(+), 15 deletions(-)
 
 diff --git a/sys/arch/i386/stand/Makefile.booters b/sys/arch/i386/stand/Makefile.booters
 index a50427de6530..54a7769cffaf 100644
@@ -33,3 +63,92 @@ index a50427de6530..54a7769cffaf 100644
  LDFLAGS+=-Wl,-z,noseparate-code -Wl,-M -Wl,-e,start 	# -N does not work properly.
  
  LIBLIST=${LIBI386} ${LIBSA} ${LIBZ} ${LIBSA} ${LIBKERN} ${LIBI386} ${LIBSA}
+diff --git a/sys/arch/i386/stand/boot/Makefile.boot b/sys/arch/i386/stand/boot/Makefile.boot
+index 5a7d1b3d8fb4..ec580e83535f 100644
+--- a/sys/arch/i386/stand/boot/Makefile.boot
++++ b/sys/arch/i386/stand/boot/Makefile.boot
+@@ -31,6 +31,7 @@ BINMODE=444
+ .PATH:	${.CURDIR}/.. ${.CURDIR}/../../lib
+ 
+ LDFLAGS+= -nostdlib -Wl,-N -Wl,-e,boot_start
++LDFLAGS+= -Wl,--no-dynamic-linker -Wl,--noinhibit-exec
+ CPPFLAGS+= -I ${.CURDIR}/..  -I ${.CURDIR}/../../lib -I ${S}/lib/libsa
+ CPPFLAGS+= -I ${.OBJDIR}
+ # Make sure we override any optimization options specified by the user
+diff --git a/sys/arch/i386/stand/bootxx/Makefile.bootxx b/sys/arch/i386/stand/bootxx/Makefile.bootxx
+index 2be55256c2f3..b5f5cbb93161 100644
+--- a/sys/arch/i386/stand/bootxx/Makefile.bootxx
++++ b/sys/arch/i386/stand/bootxx/Makefile.bootxx
+@@ -39,6 +39,7 @@ BINMODE=444
+ .PATH:	${.CURDIR}/.. ${.CURDIR}/../../lib
+ 
+ LDFLAGS+= -nostdlib -Wl,-N -Wl,-e,start
++LDFLAGS+= -Wl,--no-dynamic-linker -Wl,--noinhibit-exec
+ CPPFLAGS+= -DBOOTXX
+ # CPPFLAGS+= -D__daddr_t=int32_t
+ CPPFLAGS+= -I ${.CURDIR}/../../lib -I ${.OBJDIR}
+diff --git a/sys/arch/i386/stand/efiboot/Makefile.efiboot b/sys/arch/i386/stand/efiboot/Makefile.efiboot
+index 54bde7d8a77e..58612e563fb4 100644
+--- a/sys/arch/i386/stand/efiboot/Makefile.efiboot
++++ b/sys/arch/i386/stand/efiboot/Makefile.efiboot
+@@ -133,7 +133,7 @@ CLEANFILES+=	${PROG}.so ${PROG}.tmp
+ ${PROG}: ${PROG}.so
+ 	${OBJCOPY} -j .text -j .sdata -j .data -j .dynamic -j .dynsym	\
+ 	    -j .rel -j .rel.* -j .rela -j .rela.* -j .reloc		\
+-	    --subsystem efi-app	--target=${OBJFMT} ${PROG}.so ${.TARGET}
++	    --subsystem efi-app	--output-target=${OBJFMT} ${PROG}.so ${.TARGET}
+ 
+ .include <bsd.prog.mk>
+ 
+diff --git a/sys/arch/i386/stand/efiboot/bootia32/ldscript b/sys/arch/i386/stand/efiboot/bootia32/ldscript
+index a14e3186e9d6..6d084d79804d 100644
+--- a/sys/arch/i386/stand/efiboot/bootia32/ldscript
++++ b/sys/arch/i386/stand/efiboot/bootia32/ldscript
+@@ -3,12 +3,6 @@ OUTPUT_FORMAT("elf32-i386", "elf32-i386", "elf32-i386")
+ OUTPUT_ARCH(i386)
+ ENTRY(_start)
+ 
+-PHDRS
+-{
+-  text PT_LOAD;
+-  headers PT_PHDR FILEHDR PHDRS;
+-}
+-
+ SECTIONS
+ {
+   . = 0;
+@@ -20,7 +14,7 @@ SECTIONS
+    *(.text)
+    *(.text.*)
+    *(.gnu.linkonce.t.*)
+-  } :text
++  }
+   . = ALIGN(4096);
+   .sdata :
+   {
+diff --git a/sys/arch/i386/stand/efiboot/bootx64/ldscript b/sys/arch/i386/stand/efiboot/bootx64/ldscript
+index 0f9f10132b3e..f633ed20000e 100644
+--- a/sys/arch/i386/stand/efiboot/bootx64/ldscript
++++ b/sys/arch/i386/stand/efiboot/bootx64/ldscript
+@@ -4,12 +4,6 @@ OUTPUT_FORMAT("elf64-x86-64", "elf64-x86-64", "elf64-x86-64")
+ OUTPUT_ARCH(i386:x86-64)
+ ENTRY(_start)
+ 
+-PHDRS
+-{
+-  text PT_LOAD;
+-  headers PT_PHDR FILEHDR PHDRS;
+-}
+-
+ SECTIONS
+ {
+   . = 0;
+@@ -26,7 +20,7 @@ SECTIONS
+    *(.text)
+    *(.text.*)
+    *(.gnu.linkonce.t.*)
+-  } :text
++  }
+   . = ALIGN(4096);
+   .reloc :
+   {
