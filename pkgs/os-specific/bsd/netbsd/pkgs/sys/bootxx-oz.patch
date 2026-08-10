@@ -1,0 +1,19 @@
+Build the i386 primary bootstraps with `-Oz` under gcc.
+
+They must fit a fixed number of disk sectors, and with current GCC several
+no longer do at `-Os`. NetBSD already adds `-Oz` for `bootxx_ustarfs` and
+`bootxx_msdos` under clang for the same reason; do it for every primary
+bootstrap under gcc, which has supported `-Oz` since GCC 12.
+
+--- a/sys/arch/i386/stand/bootxx/Makefile.bootxx
++++ b/sys/arch/i386/stand/bootxx/Makefile.bootxx
+@@ -55,6 +55,9 @@
+ # Make sure we override any optimization options specified by the user
+ .include "${.PARSEDIR}/../Makefile.inc"
+ COPTS=	${OPT_SIZE.${ACTIVE_CC}}
++.if ${ACTIVE_CC} == "gcc"
++COPTS+=	-Oz
++.endif
+ DBG=
+ 
+ CPPFLAGS+= -DNO_LBA_CHECK

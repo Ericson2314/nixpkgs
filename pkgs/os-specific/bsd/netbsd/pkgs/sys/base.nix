@@ -31,6 +31,12 @@
     # Upstream fixed this for `efiboot`; the other i386 booters share
     # `Makefile.booters`, which never got the same flags.
     ./booters-no-dynamic-linker.patch
+
+    # `### bootxx_ffsv2 size 7920 is larger than 7680`, and likewise for
+    # other primary bootstraps. They have a fixed sector budget that current
+    # GCC overruns at `-Os`, so build them `-Oz` -- which is what NetBSD
+    # already does for some of them under clang.
+    ./bootxx-oz.patch
   ];
 
   postPatch = ''
