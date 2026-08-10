@@ -48,11 +48,29 @@
  *     illumos has no setsid syscall of its own: it is setpgrp(2) with
  *     PGRPSYS_SETSID (uts/common/sys/pgrpsys.h:32).
  *
- *   * A freshly opened asy(4D) has no sane termios. ldterm is pushed (the
- *     console stream assembles lines and delivers them on Enter), but ECHO is
- *     clear, so typed characters are invisible. Nothing else sets this up --
- *     on a real system it is what ttymon(8) is for -- so init does a TCSETS
- *     with a conventional line-oriented setting before exec'ing the shell.
+ *   * A freshly opened asy(4D) is a *bare* STREAMS device. Nothing but the
+ *     driver is on the stream, so there is no line discipline: no canonical
+ *     mode, no ECHO, and no ioctl that could turn either on -- TCSETS is
+ *     answered by asy(4D) itself, which rejects what it does not implement.
+ *     The symptom is a shell whose prompt appears and whose input works, but
+ *     which never shows a character you type; `stty echo icanon` on it says
+ *     "unable to perform all requested operations".
+ *
+ *     Pushing the line discipline is not consconfig()'s job and never was.
+ *     For a serial console -- CONSOLE_TIP, which is what `console=ttya`
+ *     selects -- consconfig_init_input() only calls i_consconfig_createvp()
+ *     on the device path and pushes nothing at all
+ *     (uts/common/io/consconfig_dacf.c). ldterm and ttcompat reach the stream
+ *     through *autopush*: the `asy -1 0 ldterm ttcompat` line of /etc/iu.ap
+ *     (cmd/netadm/iu.ap.sh), loaded into sad(4D) by the
+ *     `ap::sysinit:/sbin/autopush -f /etc/iu.ap` entry in inittab. Neither
+ *     autopush(8) nor an inittab exists here, so init pushes the two modules
+ *     itself, in that order, and only then does TCSETS mean anything.
+ *
+ *   * Even with ldterm on the stream, ECHO is clear in its defaults, so typed
+ *     characters are still invisible. Nothing else sets this up -- on a real
+ *     system it is what ttymon(8) is for -- so init does a TCSETS with a
+ *     conventional line-oriented setting before exec'ing the shell.
  */
 
 typedef unsigned int tcflag_t;
@@ -128,6 +146,11 @@ sysx(long num, long a, long b, long c, long d, long *failed, long *rval2)
 #define	_TIOC		('T' << 8)
 #define	TCGETS		(_TIOC | 13)
 #define	TCSETSF		(_TIOC | 16)
+
+/* uts/common/sys/stropts.h:227,230,239 */
+#define	STR		('S' << 8)
+#define	I_PUSH		(STR | 002)
+#define	I_FIND		(STR | 013)
 
 /* uts/common/sys/termios.h */
 #define	BRKINT	0000002
@@ -232,6 +255,33 @@ sleep_secs(long secs)
 }
 
 /*
+ * Put a line discipline on the console stream, which is what autopush(8)
+ * would have done from /etc/iu.ap on a system that had either. See the header
+ * comment: without this the console is a bare asy(4D) and no amount of TCSETS
+ * will give it echo.
+ *
+ * I_FIND first, so that this stays correct if the stream ever *does* arrive
+ * pre-configured -- pushing a second ldterm would put two line disciplines in
+ * series, which echoes every character twice. Errors are ignored beyond that:
+ * if the modules cannot be loaded there is nothing useful to do about it, and
+ * setup_tty() below already copes with a stream that answers no TCGETS.
+ */
+static void
+push_ldterm(long fd)
+{
+	static const char ldterm[] = "ldterm";
+	static const char ttcompat[] = "ttcompat";
+	long failed, found;
+
+	found = sysx(SYS_ioctl, fd, I_FIND, (long)ldterm, 0, &failed, 0);
+	if (!failed && found == 1)
+		return;
+
+	(void) sys(SYS_ioctl, fd, I_PUSH, (long)ldterm);
+	(void) sys(SYS_ioctl, fd, I_PUSH, (long)ttcompat);
+}
+
+/*
  * Give the console the termios a line-oriented terminal is expected to have.
  * Read-modify-write rather than assign, so that whatever ldterm and the driver
  * already agree on about baud and character size is left alone; the flags we
@@ -246,9 +296,18 @@ setup_tty(long fd)
 
 	(void) sysx(SYS_ioctl, fd, TCGETS, (long)&t, 0, &failed, 0);
 	if (failed) {
-		/* No line discipline at all: build one from scratch. */
+		/*
+		 * No line discipline at all: build one from scratch. All four
+		 * flag words, not just c_cflag -- the |= below is a
+		 * read-modify-write, and reading an uninitialised automatic
+		 * would fold whatever was on the stack into the terminal
+		 * settings.
+		 */
 		for (i = 0; i < NCCS; i++)
 			t.c_cc[i] = 0;
+		t.c_iflag = 0;
+		t.c_oflag = 0;
+		t.c_lflag = 0;
 		t.c_cflag = B9600 | CS8 | CREAD | CLOCAL;
 	}
 
@@ -357,6 +416,7 @@ run_shell(void)
 		poweroff();
 
 	(void) sys(SYS_ioctl, fd, TIOCSCTTY, 0);
+	push_ldterm(fd);
 	setup_tty(fd);
 
 	(void) sys(SYS_fcntl, fd, F_DUP2FD, 0);
