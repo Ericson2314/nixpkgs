@@ -872,7 +872,11 @@ stdenv.mkDerivation (finalAttrs: {
     license = lib.licenses.psfl;
     pkgConfigModules = [ "python3" ];
     platforms =
-      lib.platforms.linux ++ lib.platforms.darwin ++ lib.platforms.windows ++ lib.platforms.freebsd;
+      lib.platforms.linux
+      ++ lib.platforms.darwin
+      ++ lib.platforms.windows
+      ++ lib.platforms.freebsd
+      ++ lib.platforms.netbsd;
     mainProgram = executable;
     teams = [ lib.teams.python ];
     # static build on aarch64-darwin breaks with:
