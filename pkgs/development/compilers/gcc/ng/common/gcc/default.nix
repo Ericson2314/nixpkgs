@@ -12,8 +12,8 @@
   langFortran ? false,
   langGo ? false,
   langJava ? false,
-  langObjC ? stdenv.targetPlatform.isDarwin,
-  langObjCpp ? stdenv.targetPlatform.isDarwin,
+  langObjC ? true,
+  langObjCpp ? true,
   langJit ? false,
   enablePlugin ? lib.systems.equals stdenv.hostPlatform stdenv.buildPlatform,
   buildPackages,
@@ -42,10 +42,30 @@
   # derives it, Cygwin excluded: there they would also emit `-lgcc_eh`, which no
   # stage of this package set produces.
   enableTargetShared ? stdenv.targetPlatform.hasSharedLibraries && !stdenv.targetPlatform.isCygwin,
+  # Targets this compiler serves, as a list of config triples. There is no
+  # single-target build here: the compiler is always built with
+  # `--enable-targets` and never with `--target`.
+  #
+  # A configure-time default target is a hiding place. Anything still tied to one
+  # machine keeps working as long as that machine is the default, so the
+  # dependency is never noticed -- it surfaces only for whichever target was not
+  # chosen. With no default there is nowhere for it to hide.
+  #
+  # Note what this does to the store path, which is the point. The derivation
+  # depends on the *list*, not on `targetPlatform`: two different lists should
+  # give two different compilers, but the same list must give the same path no
+  # matter which platform is being built for. That equality is the test -- if a
+  # target dependency remains anywhere, the paths diverge and say so.
+  #
+  # Needs a GCC with `--enable-targets`. No released GCC has one.
+  enableTargets ? [ stdenv.targetPlatform.config ],
 }:
 let
-  inherit (stdenv) targetPlatform hostPlatform;
-  targetPrefix = lib.optionalString (targetPlatform != hostPlatform) "${targetPlatform.config}-";
+  inherit (stdenv) hostPlatform;
+  # No target in the name. A target-insensitive compiler still carrying a target
+  # in its name would land at a different store path per target, which both
+  # defeats the purpose and hides whether the contents actually differ.
+  targetPrefix = "";
 in
 stdenv.mkDerivation (finalAttrs: {
   pname = "${targetPrefix}${if langFortran then "gfortran" else "gcc"}";
@@ -175,27 +195,6 @@ stdenv.mkDerivation (finalAttrs: {
 
   depsBuildBuild = [ buildPackages.stdenv.cc ];
 
-  # The target assembler and linker have to be *runnable here*, during
-  # configure. GCC probes them for capabilities, and a probe it cannot run is
-  # not an error -- it silently records "no". Without the target `ld` on
-  # `PATH`, every `gcc_cv_ld_*` probe fails that way, and the two that matter
-  # most are `HAVE_GAS_HIDDEN` (which needs `gcc_cv_as_hidden` *and*
-  # `gcc_cv_ld_hidden`) and `HAVE_LD_EH_FRAME_HDR`.
-  #
-  # Losing `HAVE_GAS_HIDDEN` is the nasty one: `-fvisibility=hidden` degrades
-  # into a no-op that merely warns, so every symbol stays preemptible and GCC's
-  # own same-translation-unit `R_X86_64_PC32` references become invalid when
-  # linking a shared library.
-  #
-  # The *unwrapped* bintools: `as` and `ld` proper carry no target-libc
-  # reference, so the decoupling this package set exists for still holds.
-  #
-  # Note this is `PATH` rather than `--with-as`/`--with-ld` on purpose. We want
-  # configure to *ask* the real tools what they support, and we want it to bake
-  # nothing else: those flags record `DEFAULT_ASSEMBLER`/`DEFAULT_LINKER` as
-  # absolute store paths, and the driver then runs exactly those binaries
-  # instead of the wrapped ones it is meant to defer to.
-  depsBuildTarget = [ (bintools.bintools or bintools) ];
 
   nativeBuildInputs = [
     autoreconfHook269
@@ -245,14 +244,6 @@ stdenv.mkDerivation (finalAttrs: {
       substituteInPlace configure \
         --replace 'noconfigdirs=""' 'noconfigdirs="$noconfigdirs $target_libraries"'
     ''
-    # HACK: if host and target config are the same, but the platforms are
-    # actually different we need to convince the configure script that it
-    # is in fact building a cross compiler although it doesn't believe it.
-    +
-      lib.optionalString (targetPlatform.config == hostPlatform.config && targetPlatform != hostPlatform)
-        ''
-          substituteInPlace configure --replace is_cross_compiler=no is_cross_compiler=yes
-        ''
     # Cannot configure from src dir
     + ''
       cd "$buildRoot"
@@ -277,10 +268,12 @@ stdenv.mkDerivation (finalAttrs: {
 
   dontDisableStatic = true;
 
+  # No `target`. `--target` is not redundant here, it is the thing being
+  # removed: passing it would give one machine a privileged position again and
+  # hide anything still tied to it.
   configurePlatforms = [
     "build"
     "host"
-    "target"
   ];
 
   configureFlags = [
@@ -292,7 +285,11 @@ stdenv.mkDerivation (finalAttrs: {
     # though nixpkgs expects one (since not all information is serialized into
     # the config attribute). The easiest way out of these problems is to always
     # set the program prefix, so gcc will conform to our expectations.
-    "--program-prefix=${targetPrefix}"
+    # Every target this compiler serves, none of them privileged.
+    "--enable-targets=${lib.concatStringsSep "," enableTargets}"
+
+    # No `--program-prefix`. The prefix existed to distinguish one target's
+    # compiler from another's; there is one compiler now.
 
     "--disable-dependency-tracking"
     "--enable-fast-install"
@@ -324,15 +321,14 @@ stdenv.mkDerivation (finalAttrs: {
     "--without-headers"
     "--with-gnu-as"
     "--with-gnu-ld"
-    # Deliberately no `--with-as` / `--with-ld`. Those bake
-    # `DEFAULT_ASSEMBLER` and `DEFAULT_LINKER` -- absolute store paths -- into
-    # the compiler, so the driver runs exactly those binaries and stops
-    # deferring to the wrapped tools it is meant to use.
+    # No `--with-as` / `--with-ld`: those bake `DEFAULT_ASSEMBLER` and
+    # `DEFAULT_LINKER` as absolute store paths, and the driver then runs exactly
+    # those binaries rather than deferring to the wrapped ones.
     #
-    # Nothing has to be baked. At configure time the tools are on `PATH` via
-    # `depsBuildTarget`, which is what the capability probes need; at use time
-    # the driver finds them on `PATH` under their target-prefixed names, via
-    # the `find_a_program` patches above.
+    # Nothing about a target toolchain is asked here at all. `target-specs`
+    # probes it afterwards, against whichever toolchain is in use, and the driver
+    # finds the tools on `PATH` under their target-prefixed names via the
+    # `find_a_program` patches above.
     "--with-system-zlib"
     "--with-system-libbacktrace"
     "--without-included-gettext"
@@ -359,12 +355,7 @@ stdenv.mkDerivation (finalAttrs: {
     "--enable-plugin"
     "--enable-plugins"
   ]
-  ++
-    # Only pass when the arch supports it.
-    # Exclude RISC-V because GCC likes to fail when the string is empty on RISC-V.
-    lib.optionals (targetPlatform.isAarch || targetPlatform.isAvr || targetPlatform.isx86_64) [
-      "--with-multilib-list="
-    ];
+  ;
 
   # `LIMITS_H_TEST` decides whether gcc's generated `syslimits.h` chains to the
   # target libc's `limits.h` (`#include_next`) or is emitted self-contained. It
@@ -382,8 +373,13 @@ stdenv.mkDerivation (finalAttrs: {
 
   doCheck = false;
 
+  # The plugin headers land under lib/gcc/<target>/<version>/, one directory per
+  # target, so glob rather than naming a target.
   postInstall = ''
-    moveToOutput "lib/gcc/${targetPlatform.config}/${version}/plugin/include" "''${!outputDev}"
+    for d in "$out"/lib/gcc/*/"${version}"/plugin/include; do
+      test -d "$d" || continue
+      moveToOutput "''${d#$out/}" "''${!outputDev}"
+    done
   '';
 
   passthru = {

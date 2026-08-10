@@ -165,9 +165,7 @@ makeScopeWithSplicing' {
 
       stdenv = overrideCC stdenv gccPackages.gcc;
 
-      gcc-unwrapped = callPackage ./gcc {
-        bintools = binutils;
-      };
+      gcc-unwrapped = callPackage ./gcc { };
 
       libiberty = callPackage ./libiberty { };
       libsanitizer = callPackage ./libsanitizer { };
