@@ -352,9 +352,29 @@ mkDerivation {
     #     mac: NOTICE: e1000g0 unregistered
     #
     # leaving the devinfo node bound to the driver but DI_DRIVER_DETACHED,
-    # which from userland is indistinguishable from a missing driver. Under
-    # apix the failing step no longer prints anything of its own, so the next
-    # move is to find which `goto attach_fail` in e1000g_main.c is taken.
+    # which from userland is indistinguishable from a missing driver.
+    #
+    # What is known about that failure, so the next person does not redo it:
+    #
+    #  * The register/unregister pair happens exactly once per
+    #    di_init(DINFOFORCE), so it is the force-attach driving it and nothing
+    #    asynchronous.
+    #  * It is *not* one of the `goto attach_fail` paths that logs. Every one
+    #    of those calls e1000g_log(CE_WARN, ...), which is cmn_err with a `!`
+    #    prefix (e1000g_debug.c:151, e1000g_log_mode = E1000G_LOG_PRINT), and
+    #    `!` messages do reach a log(4D) reader registered with I_CONSLOG --
+    #    proven by "Skipping psm: xpv_psm" above, which is emitted the same
+    #    way. No e1000g message appears at all.
+    #  * The two silent `goto attach_fail`s (e1000g_set_driver_params and the
+    #    e1000g_check_acc_handle FM check) are both *before* mac_register, so
+    #    they cannot be it either.
+    #  * di_devfs_path() reports the node as `/pci@0,0/pci1af4,1100` with no
+    #    unit address, unlike its attached siblings (`isa@1`,
+    #    `asy@1,3f8`) -- i.e. it never reached DS_INITIALIZED.
+    #
+    # Which leaves "attach succeeded and something detached it again inside
+    # the same ndi_devi_config() walk" as the hypothesis to test next, most
+    # cheaply by open(2)ing the driver's minor node to hold it.
     #
     # Both PSMs are shipped because which one probes depends on the emulated
     # chipset. Each links -N misc/acpica, which is already above.
