@@ -235,6 +235,11 @@ cp "$src/uts/intel/os/name_to_sysnum" "$src/uts/intel/os/minor_perm" \
 # mouse8042, pseudo) and system-kernel-platform.p5m (isa). Without the
 # `pseudo zconsnex` line, i_ndi_make_spec_children() complains
 # "init_spec_child: parent=pseudo, bad spec (zconsnex)" on every boot.
+#
+# The NIC entries are what make `-nic` above do anything: 8086:100e is qemu's
+# e1000 (driver-network-e1000g.p5m) and 1af4:1000/1041 its virtio-net
+# (driver-network-vioif.p5m). Without an alias the PCI node is created but
+# binds to no driver, so it never appears in /devices and mac never sees it.
 cat >"$work/ba/etc/driver_aliases" <<'EOF'
 asy "pciclass,0700"
 asy "pci11c1,480"
@@ -245,6 +250,11 @@ npe "pciex_root_complex"
 pcieb "pciexclass,060400"
 pcieb "pciexclass,060401"
 pseudo "zconsnex"
+e1000g "pci8086,100e"
+e1000g "pci8086,10d3"
+vioif "pci1af4,1"
+vioif "pci1af4,1000"
+vioif "pci1af4,1041"
 EOF
 
 # /etc/driver_classes is the third file add_drv(8) owns, and the copy in the
@@ -445,8 +455,29 @@ EOF
 PATH="$grub/bin:$xorriso/bin:$PATH" \
     grub-mkrescue -o "$work/illumos.iso" "$work/iso" >"$work/mkrescue.log" 2>&1
 
+# A NIC, so there is something for the newly packaged link layer to bind to.
+# qemu's default is no network device at all once any -netdev/-nic is given,
+# and without one dld/mac have nothing to enumerate and `dladm show-phys` is
+# empty -- which looks exactly like a missing driver.
+#
+#   ILLUMOS_NIC  the qemu model name: "e1000" for e1000g(4D) (the default,
+#                since it is the better-tested driver of the two here) or
+#                "virtio-net-pci" for vioif(4D). "none" leaves the guest
+#                without a network device, as before.
+#
+# `user` networking rather than a tap: it needs no privileges and no host
+# configuration, and the guest gets 10.0.2.15 with a gateway and DNS at
+# 10.0.2.2 and 10.0.2.3.
+nic=${ILLUMOS_NIC:-e1000}
+if [ "$nic" = none ]; then
+    netargs=(-nic none)
+else
+    netargs=(-nic "user,model=$nic")
+fi
+
 echo "=== booting $work/illumos.iso (^A x to quit) ==="
 exec "$qemu" \
     -display none -no-reboot -m 4096 \
     -cdrom "$work/illumos.iso" \
+    "${netargs[@]}" \
     -serial mon:stdio

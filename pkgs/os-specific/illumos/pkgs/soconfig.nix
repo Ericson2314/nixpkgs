@@ -52,6 +52,23 @@ mkDerivation {
 
   extraNativeBuildInputs = [ cw ];
 
+  # soconfig is in `$(ROOTFS_PROG)`, and cmd/Makefile.cmd:485 gives every
+  # member of that list `-Wl,-I/lib/ld.so.1` -- the *32-bit* interpreter.
+  # Upstream corrects it in cmd/Makefile.cmd.64:34
+  # (`-Wl,-I/lib/$(MACH64)/ld.so.1`), which only takes effect for a program
+  # with an `amd64` subdirectory; this one has none, so the 32-bit path
+  # survives and the resulting binary dies at exec with
+  #
+  #     soconfig: Cannot find /lib/ld.so.1
+  #
+  # -- which reads like a broken image rather than a wrong ELF interpreter.
+  # Fix the macro at the source instead of appending a second -I, since the
+  # link-editor takes the *first* interpreter it is given.
+  postPatch = ''
+    substituteInPlace usr/src/cmd/Makefile.cmd \
+      --replace-fail '-Wl,-I/lib/ld.so.1' '-Wl,-I/lib/$(MACH64)/ld.so.1'
+  '';
+
   # The single-suffix `%: %.c` rule in cmd/Makefile.targ.
   buildFlags = [ "soconfig" ];
 
