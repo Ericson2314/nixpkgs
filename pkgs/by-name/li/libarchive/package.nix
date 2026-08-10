@@ -47,6 +47,14 @@ stdenv.mkDerivation (finalAttrs: {
     "dev"
   ];
 
+  # The cpio reader's private `be32dec`/`le32dec` collide with NetBSD's, which
+  # arrive via `<sys/types.h>` from `<stdlib.h>` and differ in return type.
+  # Kept conditional: libarchive is depended on widely enough that patching it
+  # unconditionally would rebuild a large part of the tree for no one's benefit.
+  patches = lib.optionals stdenv.hostPlatform.isNetBSD [
+    ./cpio-rename-private-endian-decoders.patch
+  ];
+
   postPatch =
     let
       skipTestPaths = [

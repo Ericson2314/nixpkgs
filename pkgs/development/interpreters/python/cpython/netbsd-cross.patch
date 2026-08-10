@@ -1,0 +1,35 @@
+Teach configure.ac about cross compiling to NetBSD.
+
+CPython restricts cross builds to an explicit allowlist of hosts and errors
+out with "cross build not supported for $host" on anything else:
+
+    checking MACHDEP... configure: error: cross build not supported for
+    x86_64-unknown-netbsd
+
+Add a netbsd arm to the two host case statements, in the same shape as the
+existing freebsd-cross.patch. Nothing else is needed: unlike Solaris, NetBSD
+needs no MACHDEP normalisation entry, since the cross value ("netbsd") already
+matches what the rest of the build expects.
+
+--- a/configure.ac
++++ b/configure.ac
+@@ -342,6 +342,9 @@
+ 	*-*-wasi*)
+ 	    ac_sys_system=WASI
+ 	    ;;
++	*-*-netbsd*)
++	    ac_sys_system=NetBSD
++	    ;;
+ 	*)
+ 		# for now, limit cross builds to known configurations
+ 		MACHDEP="unknown"
+@@ -812,6 +815,9 @@
+ 	wasm32-*-* | wasm64-*-*)
+ 		_host_ident=$host_cpu
+ 		;;
++	*-*-netbsd*)
++		_host_ident=$host_cpu
++		;;
+ 	*)
+ 		# for now, limit cross builds to known configurations
+ 		MACHDEP="unknown"

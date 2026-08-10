@@ -294,6 +294,21 @@ stdenv.mkDerivation (
       NIX_CFLAGS_COMPILE = lib.optionalString (
         stdenv.hasCC && stdenv.cc.isClang && lib.versionAtLeast stdenv.cc.version "21"
       ) "-fno-strict-aliasing";
+    }
+    # A threaded perl calls `pthread_kill` from `Perl_csighandler3`, and on
+    # NetBSD that lives in libpthread: libc carries stubs for a handful of
+    # pthread entry points, but not this one. perl-cross does not work out
+    # `-lpthread` for itself here, so the final link comes up short:
+    #
+    #     gcc -Wl,-E -o perl perlmain.o libperl.a -lm
+    #     libperl.a(mg.o): undefined reference to `pthread_kill'
+    #
+    # Added as a whole attribute rather than an `optionalString`, so that perl
+    # -- a stdenv bootstrap package -- keeps its exact derivation everywhere
+    # else. An empty `NIX_LDFLAGS` is still an environment variable, and would
+    # rebuild the world.
+    // lib.optionalAttrs (crossCompiling && stdenv.hostPlatform.isNetBSD && enableThreading) {
+      NIX_LDFLAGS = "-lpthread";
     };
 
     # copied from python
