@@ -463,6 +463,30 @@ mkDerivation {
     "intel/timod"
     "intel/tirdwr"
 
+    # The MAC-type plugins. misc/mac has no Ethernet knowledge of its own:
+    # mac_init_ops() looks the plugin up by media type at driver registration
+    # (common/io/mac/mac_provider.c -> mactype_getplugin("mac_ether")), so a
+    # NIC driver's mac_register() fails outright without mac/mac_ether.
+    # mac_ipv4/mac_ipv6 are the same thing for the IP-over-anything pseudo
+    # media that dld uses for tunnels.
+    "intel/mac_ether"
+    "intel/mac_ipv4"
+    "intel/mac_ipv6"
+
+    # The NIC drivers for the two things qemu will hand us: e1000g(4D) for
+    # `-nic ...,model=e1000` (the default on q35/i440fx with `-net nic`) and
+    # vioif(4D) for `model=virtio-net-pci`. vioif links -Nmisc/virtio.
+    # Both are -N misc/mac, which is already loaded for fs/dev.
+    "intel/e1000g"
+    "intel/virtio"
+    "intel/vioif"
+
+    # /dev/random and /dev/urandom, via the kernel crypto framework's
+    # random(4D) (-Nmisc/kcf, and crypto/swrand is the entropy provider, both
+    # already above). sshd will not start without a random source, and neither
+    # will anything else that seeds a PRNG.
+    "intel/random"
+
     # The transports themselves, each -Ndrv/ip -Nfs/sockfs. These are what
     # strplumb() modloads below, and what an AF_INET socket needs; arp(7P) is
     # the STREAMS module ip plumbs under itself, and dld(7D) is the link layer
