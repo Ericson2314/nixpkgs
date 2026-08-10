@@ -320,7 +320,27 @@ stdenv.mkDerivation {
   };
 
   passthru = {
-    inherit boostBuildPatches;
+    # b2's `# sun` block in `src/tools/gcc.jam` sets `RPATH` but never
+    # `RPATH_OPTION`, and solaris is left out of the `generic-os` set that
+    # hands every other target the `HAVE_SONAME`/`SONAME_OPTION` pair. So on
+    # `target-os=solaris` no shared library is linked with `-h` or with
+    # `-rpath`: each `libboost_*.so` comes out with no `DT_SONAME` and no
+    # runpath to its own libdir.
+    #
+    # With no `DT_SONAME` the linker records each `DT_NEEDED` as the literal
+    # path it was handed, which for Boost's own inter-library edges is b2's
+    # relative build-tree path. `libboost_iostreams.so.1.89.0` ends up needing
+    # `bin.v2/libs/regex/build/.../libboost_regex.so.1.89.0`, so anything
+    # pulling in iostreams dies at startup under ld.so.1 with "open failed: No
+    # such file or directory". That is what stopped `nix` from running on
+    # illumos, which reaches Boost through nix-util.
+    #
+    # This has to go to `boost-build` rather than into `patches`: nixpkgs
+    # builds with `--with-bjam=b2` from the separate `boost-build` package, so
+    # the copy of `gcc.jam` in *this* source tree is never read. Patching it
+    # here changes the output hash and nothing else -- verified.
+    boostBuildPatches =
+      boostBuildPatches ++ lib.optional stdenv.hostPlatform.isSunOS ./solaris-soname-rpath.patch;
   };
 
   preConfigure =
