@@ -1,0 +1,52 @@
+Teach configure about dl_iterate_phdr on NetBSD.
+
+`unwind-dw2-fde-dip.c` only uses `PT_GNU_EH_FRAME` -- the path that finds
+unwind tables through the dynamic loader -- when three things hold:
+
+    #if !defined(inhibit_libc) && defined(HAVE_LD_EH_FRAME_HDR) \
+        && defined(TARGET_DL_ITERATE_PHDR) \
+        && (defined(__OpenBSD__) || defined(__NetBSD__))
+
+The guard names NetBSD, but `TARGET_DL_ITERATE_PHDR` can never be defined for
+it: the case that sets `gcc_cv_target_dl_iterate_phdr` covers only solaris2,
+dragonfly/freebsd and linux-musl, so NetBSD falls through as "unknown".
+
+    checking dl_iterate_phdr in target C library... unknown
+
+Without it the unwinder has no `dl_iterate_phdr` path and falls back to
+registered frames alone, so a C++ throw finds no handler and aborts.
+
+NetBSD has provided `dl_iterate_phdr` since 5.0, declared in `<link_elf.h>`, so
+answer yes for it directly, as solaris2 and linux-musl already do. Probing the
+header the way the freebsd arm does is not an option here: `target_header_dir`
+is empty in a compiler configured `--without-headers`, so the grep cannot
+succeed and the probe records "no" -- the same "cannot reach it, so record
+absent" failure this patch exists to fix.
+
+Both `configure.ac` and the generated `configure` are patched, since the build
+uses the shipped script rather than regenerating it.
+
+--- a/gcc/configure.ac
++++ b/gcc/configure.ac
+@@ -7143,6 +7143,9 @@
+       gcc_cv_target_dl_iterate_phdr=no
+     fi
+     ;;
++  *-*-netbsd*)
++    gcc_cv_target_dl_iterate_phdr=yes
++    ;;
+   *-linux-musl*)
+     gcc_cv_target_dl_iterate_phdr=yes
+     ;;
+--- a/gcc/configure
++++ b/gcc/configure
+@@ -33645,6 +33645,9 @@
+       gcc_cv_target_dl_iterate_phdr=no
+     fi
+     ;;
++  *-*-netbsd*)
++    gcc_cv_target_dl_iterate_phdr=yes
++    ;;
+   *-linux-musl*)
+     gcc_cv_target_dl_iterate_phdr=yes
+     ;;

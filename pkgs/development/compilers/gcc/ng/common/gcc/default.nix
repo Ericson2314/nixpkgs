@@ -144,6 +144,19 @@ stdenv.mkDerivation (finalAttrs: {
       ];
       hash = "sha256-i+J4B5f+zrXERPqJxwjEm/JHZhDsV6Gmxx/n9+G0shM=";
     })
+  ]
+  # `TARGET_DL_ITERATE_PHDR` is never defined for NetBSD, so the unwinder
+  # cannot take its `PT_GNU_EH_FRAME` path and every C++ throw aborts. The
+  # guard in `unwind-dw2-fde-dip.c` names NetBSD; only configure's case
+  # statement omits it.
+  #
+  # Only NetBSD's configure case changes, so this is scoped rather than
+  # applied always, leaving the compiler for every other target untouched.
+  #
+  # TODO on staging, move this back into the list above and apply it
+  # unconditionally. The rebuild is only a problem outside staging.
+  ++ lib.optionals stdenv.targetPlatform.isNetBSD [
+    (getVersionFile "gcc/netbsd-dl-iterate-phdr.diff")
   ];
 
   enableParallelBuilding = true;
