@@ -23,6 +23,10 @@ stdenvNoCC.mkDerivation (finalAttrs: {
   '';
 
   passthru = {
+    # This package is the headers-only stand-in used to bootstrap a toolchain
+    # before the real libc exists. Runtimes built against it can compile, but
+    # there is nothing here to link against.
+    headersOnly = true;
     tests = {
       inherit (nixosTests) wine;
     };
