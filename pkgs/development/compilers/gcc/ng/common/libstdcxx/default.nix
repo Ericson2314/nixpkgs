@@ -57,6 +57,15 @@ stdenv.mkDerivation (finalAttrs: {
       cp libgcc/gthr*.h "$out/libgcc"
       cp libgcc/unwind-pe.h "$out/libgcc"
 
+    ''
+    # Not every threading model's header sits at the top of `libgcc`; the
+    # target-specific ones live under `libgcc/config/<cpu>/`. libstdc++'s rule
+    # for `gthr-default.h` names whichever one applies by its path relative to
+    # the tree root, so that layout has to be reproduced here or the build
+    # stops with "No rule to make target ...".
+    + ''
+      cp --parents libgcc/config/*/gthr*.h "$out"
+
       cp -r libstdc++-v3 "$out"
 
       cp -r libiberty "$out"
