@@ -399,6 +399,11 @@ rec {
 
   x86_64-netbsd = {
     config = "x86_64-unknown-netbsd";
+    # First platform to take the split GCC package set, as the `useGccNG`
+    # default anticipated. NetBSD is a good place to dogfood it: it is low
+    # enough tier that a regression is cheap, and its cross build exercises the
+    # parts of `ng` that a native build never reaches.
+    useGccNG = true;
   };
 
   # this is broken and never worked fully
