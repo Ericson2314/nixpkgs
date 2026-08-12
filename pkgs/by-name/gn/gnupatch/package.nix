@@ -24,9 +24,24 @@ stdenv.mkDerivation (finalAttrs: {
 
   nativeBuildInputs = [ autoreconfHook ];
 
-  configureFlags = lib.optionals (stdenv.hostPlatform != stdenv.buildPlatform) [
-    "ac_cv_func_strnlen_working=yes"
-  ];
+  configureFlags =
+    lib.optionals (stdenv.hostPlatform != stdenv.buildPlatform) [
+      "ac_cv_func_strnlen_working=yes"
+    ]
+    # gnulib's `utimens` module miscompiles wherever the system supplies
+    # `utimens`, which in practice means NetBSD. `utimens.h` renames the function
+    # to `rpl_utimens`, and only afterwards does `utimens.c` include
+    # `<sys/stat.h>` -- so NetBSD's own declaration is renamed too and the system
+    # function is left declared nowhere, while the body `#undef`s the macro and
+    # calls it regardless:
+    #
+    #     utimens.c:541: error: implicit declaration of function 'utimens'
+    #
+    # Report the functions absent, so gnulib uses its own `fdutimens` path.
+    ++ lib.optionals stdenv.hostPlatform.isNetBSD [
+      "ac_cv_func_utimens=no"
+      "ac_cv_func_lutimens=no"
+    ];
 
   doCheck = stdenv.hostPlatform.libc != "musl";
   nativeCheckInputs = [ ed ];
