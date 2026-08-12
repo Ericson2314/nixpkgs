@@ -53,6 +53,25 @@ stdenv.mkDerivation (finalAttrs: {
     "ZLESS_PROG=zless"
   ];
 
+  # gnulib's `utimens` module miscompiles wherever the system supplies
+  # `utimens`, which in practice means NetBSD. `utimens.h` renames the function
+  # to `rpl_utimens`, and only afterwards does `utimens.c` include
+  # `<sys/stat.h>` -- so NetBSD's own declaration is textually renamed as well
+  # and the system function is left declared nowhere. The body `#undef`s the
+  # macro and calls it regardless:
+  #
+  #     utimens.c:541: error: implicit declaration of function 'utimens';
+  #                    did you mean 'futimens'?
+  #
+  # Harmless until GCC 14 made implicit declarations an error. Tell configure
+  # the functions are absent, so gnulib uses its own `fdutimens` path -- what
+  # it does on every other platform, and what its own comment says it would
+  # rather do here too, NetBSD's native `utimens` not validating its arguments.
+  configureFlags = lib.optionals stdenv.hostPlatform.isNetBSD [
+    "ac_cv_func_utimens=no"
+    "ac_cv_func_lutimens=no"
+  ];
+
   env = lib.optionalAttrs (stdenv.hostPlatform.isMusl && stdenv.hostPlatform.isx86_32) {
     NIX_CFLAGS_LINK = "-no-pie";
   };
