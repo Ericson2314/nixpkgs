@@ -331,6 +331,24 @@ stdenv.mkDerivation (
       NIX_CFLAGS_COMPILE = lib.optionalString (
         stdenv.hasCC && stdenv.cc.isClang && lib.versionAtLeast stdenv.cc.version "21"
       ) "-fno-strict-aliasing";
+    }
+    # Added as a whole attribute rather than as an empty string, so that the
+    # variable stays absent -- and every other platform's perl, and so its
+    # stdenv, unchanged. `lib.optionalString` would yield `""`, which still
+    # *sets* the variable and rebuilds the world.
+    #
+    # TODO on staging, fold this back into the attrset above as a plain
+    # `NIX_LDFLAGS = lib.optionalString cond "-lpthread";`, to match
+    # `NIX_CFLAGS_COMPILE`. The mass rebuild is only a problem outside staging.
+    // lib.optionalAttrs (crossCompiling && stdenv.hostPlatform.isNetBSD && enableThreading) {
+      # A threaded perl calls `pthread_kill` from `Perl_csighandler3`, and on
+      # NetBSD that lives in libpthread: libc carries stubs for a handful of
+      # pthread entry points, but not this one. perl-cross does not work out
+      # `-lpthread` for itself here, so the final link comes up short:
+      #
+      #     gcc -Wl,-E -o perl perlmain.o libperl.a -lm
+      #     libperl.a(mg.o): undefined reference to `pthread_kill'
+      NIX_LDFLAGS = "-lpthread";
     };
 
     # copied from python
