@@ -171,5 +171,22 @@ symlinkJoin {
     fixupPhase
   '';
 
+  # illumos' threads are POSIX threads, and they live in libc.so.1 itself --
+  # libpthread.so.1 is joined in above only as a filter, so that an
+  # unconditional `-lpthread` resolves. `libgcc` and `libstdc++` have to be
+  # configured for the same threading model as each other, so rather than have
+  # each guess, they take it from the libc they are built against.
+  #
+  # Leaving this out is silent and expensive: `libgcc` defaults to "single",
+  # `libstdcxx` copies `gthr-single.h` to `gthr-default.h`,
+  # `GLIBCXX_CHECK_GTHREADS` then finds no gthreads and `c++config.h` comes out
+  # with `_GLIBCXX_HAS_GTHREADS` undefined -- so `<mutex>` compiles away,
+  # `std::mutex` does not exist, and every C++ consumer that wants threads
+  # fails far downstream. boost is the one that finds it first, with
+  # "Threading support unavaliable: it has been explicitly disabled with
+  # BOOST_DISABLE_THREADS", which takes nix (and hence the whole system path)
+  # with it.
+  passthru.threadModel = "posix";
+
   meta.platforms = lib.platforms.illumos;
 }
