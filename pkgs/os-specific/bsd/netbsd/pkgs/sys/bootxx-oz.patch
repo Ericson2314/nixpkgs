@@ -1,0 +1,44 @@
+Build the size-constrained primary bootstraps with `-Oz`.
+
+The i386 primary bootstraps must fit a fixed number of disk sectors, and
+under GCC 15 several no longer do:
+
+    ### bootxx_ext2fs size 8020 is larger than 7680
+    ### bootxx_ustarfs size 9196 is larger than 8192
+
+They are already compiled `-Os -ffreestanding -fomit-frame-pointer` with no
+stack protector -- I checked the actual compile line rather than assuming,
+since injected nixpkgs hardening flags would have been the cheaper
+explanation and they are not present. There is no slack to reclaim from
+flags that should not have been there; GCC 15 simply emits a few percent
+more code than the GCC 12 NetBSD builds this with. For scale, `bootxx_ffsv1`
+still fits, but with only 88 bytes to spare.
+
+`-Oz` is what NetBSD itself reaches for here: `bootxx_ustarfs` and
+`bootxx_msdos` already carry `OPT_SIZE.clang += -Oz` for exactly this
+overflow under clang. GCC grew `-Oz` in GCC 12, so add the matching line
+for gcc. `bootxx_msdos` has not been observed to overflow, but upstream has
+already identified it as living at the same margin as `ustarfs`, so it gets
+the same treatment rather than waiting to trip over it.
+
+--- a/sys/arch/i386/stand/bootxx/bootxx_ext2fs/Makefile
++++ b/sys/arch/i386/stand/bootxx/bootxx_ext2fs/Makefile
+@@ -3,3 +3,4 @@
+ FS=ext2fs
+ 
+ .include <../Makefile.bootxx>
++OPT_SIZE.gcc += -Oz
+--- a/sys/arch/i386/stand/bootxx/bootxx_ustarfs/Makefile
++++ b/sys/arch/i386/stand/bootxx/bootxx_ustarfs/Makefile
+@@ -9,3 +9,4 @@
+ 
+ .include <../Makefile.bootxx>
+ OPT_SIZE.clang += -Oz
++OPT_SIZE.gcc += -Oz
+--- a/sys/arch/i386/stand/bootxx/bootxx_msdos/Makefile
++++ b/sys/arch/i386/stand/bootxx/bootxx_msdos/Makefile
+@@ -9,3 +9,4 @@
+ 
+ .include <../Makefile.bootxx>
+ OPT_SIZE.clang += -Oz
++OPT_SIZE.gcc += -Oz

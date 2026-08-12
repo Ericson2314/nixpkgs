@@ -1,0 +1,122 @@
+Let the i386 boot programs link under binutils 2.46.
+
+Three separate problems, all of which stop `sys` from building.
+
+**The BIOS booters.** They fail at link with
+
+    ld: bootxx_ffsv1.sym: error: PHDR segment not covered by LOAD segment
+
+which binutils now treats as a hard error. They are freestanding images
+linked `-nostdlib` at a fixed text address, so a program header segment has
+no business being there; the linker emits one anyway and then rejects its own
+output. NetBSD hit this in `efiboot` and fixed it there with
+`--no-dynamic-linker --noinhibit-exec`, but the rest never got the same
+treatment. `Makefile.booters` covers `pxeboot` and friends; `boot` (biosboot)
+and `bootxx` each carry their own link rules and need it separately.
+
+**The EFI booters' linker scripts.** These already pass those flags and still
+fail, because their cause is different. Both scripts declare
+
+    PHDRS { text PT_LOAD; headers PT_PHDR FILEHDR PHDRS; }
+
+where `headers` is a PT_PHDR segment that no output section is ever assigned
+to -- nothing in either script says `:headers`. So the program headers sit
+outside every PT_LOAD, which is exactly what the new check rejects.
+
+Delete the `PHDRS` block entirely, and with it the one `:text` assignment
+that referenced it, leaving ld to lay out segments itself. That is the shape
+gnu-efi upstream settled on, and the result is a well-formed ELF with the
+headers covered. Folding `FILEHDR PHDRS` into the `text` PT_LOAD instead does
+not work here: the script starts the image at `. = 0` with `.hash` first, so
+there is no room, and ld fails with "not enough room for program headers".
+
+**The PE conversion.** With the link fixed, the `objcopy` that turns the ELF
+into the PE image firmware loads fails with
+
+    objcopy: bootx64.efi.so: file format not recognized
+
+`--target` sets the input format as well as the output format, so objcopy
+tries to read an ELF file as PE. `--output-target` says what was meant.
+--- a/sys/arch/i386/stand/efiboot/bootx64/ldscript
++++ b/sys/arch/i386/stand/efiboot/bootx64/ldscript
+@@ -4,12 +4,6 @@
+ OUTPUT_ARCH(i386:x86-64)
+ ENTRY(_start)
+ 
+-PHDRS
+-{
+-  text PT_LOAD;
+-  headers PT_PHDR FILEHDR PHDRS;
+-}
+-
+ SECTIONS
+ {
+   . = 0;
+@@ -26,7 +20,7 @@
+    *(.text)
+    *(.text.*)
+    *(.gnu.linkonce.t.*)
+-  } :text
++  }
+   . = ALIGN(4096);
+   .reloc :
+   {
+--- a/sys/arch/i386/stand/efiboot/bootia32/ldscript
++++ b/sys/arch/i386/stand/efiboot/bootia32/ldscript
+@@ -3,12 +3,6 @@
+ OUTPUT_ARCH(i386)
+ ENTRY(_start)
+ 
+-PHDRS
+-{
+-  text PT_LOAD;
+-  headers PT_PHDR FILEHDR PHDRS;
+-}
+-
+ SECTIONS
+ {
+   . = 0;
+@@ -20,7 +14,7 @@
+    *(.text)
+    *(.text.*)
+    *(.gnu.linkonce.t.*)
+-  } :text
++  }
+   . = ALIGN(4096);
+   .sdata :
+   {
+--- a/sys/arch/i386/stand/efiboot/Makefile.efiboot
++++ b/sys/arch/i386/stand/efiboot/Makefile.efiboot
+@@ -133,7 +133,7 @@
+ ${PROG}: ${PROG}.so
+ 	${OBJCOPY} -j .text -j .sdata -j .data -j .dynamic -j .dynsym	\
+ 	    -j .rel -j .rel.* -j .rela -j .rela.* -j .reloc		\
+-	    --subsystem efi-app	--target=${OBJFMT} ${PROG}.so ${.TARGET}
++	    --subsystem efi-app	--output-target=${OBJFMT} ${PROG}.so ${.TARGET}
+ 
+ .include <bsd.prog.mk>
+ 
+--- a/sys/arch/i386/stand/boot/Makefile.boot
++++ b/sys/arch/i386/stand/boot/Makefile.boot
+@@ -33,3 +33,4 @@
+ LDFLAGS+= -nostdlib -Wl,-N -Wl,-e,boot_start
++LDFLAGS+= -Wl,--no-dynamic-linker -Wl,--noinhibit-exec
+ CPPFLAGS+= -I ${.CURDIR}/..  -I ${.CURDIR}/../../lib -I ${S}/lib/libsa
+ CPPFLAGS+= -I ${.OBJDIR}
+--- a/sys/arch/i386/stand/bootxx/Makefile.bootxx
++++ b/sys/arch/i386/stand/bootxx/Makefile.bootxx
+@@ -41,3 +41,4 @@
+ LDFLAGS+= -nostdlib -Wl,-N -Wl,-e,start
++LDFLAGS+= -Wl,--no-dynamic-linker -Wl,--noinhibit-exec
+ CPPFLAGS+= -DBOOTXX
+ # CPPFLAGS+= -D__daddr_t=int32_t
+--- a/sys/arch/i386/stand/Makefile.booters
++++ b/sys/arch/i386/stand/Makefile.booters
+@@ -67,6 +67,7 @@
+ cleanlibdir:
+ 	-rm -rf lib
+ 
++LDFLAGS+=-Wl,--no-dynamic-linker -Wl,--noinhibit-exec
+ LDFLAGS+=-Wl,-z,noseparate-code -Wl,-M -Wl,-e,start 	# -N does not work properly.
+ 
+ LIBLIST=${LIBI386} ${LIBSA} ${LIBZ} ${LIBSA} ${LIBKERN} ${LIBI386} ${LIBSA}

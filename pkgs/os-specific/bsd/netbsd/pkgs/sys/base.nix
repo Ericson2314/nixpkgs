@@ -24,12 +24,19 @@
   '';
 
   patches = [
-    # Fix this error when building bootia32.efi and bootx64.efi:
-    # error: PHDR segment not covered by LOAD segment
-    ./no-dynamic-linker.patch
-
     # multiple header dirs, see above
     ./sys-headers-incsdir.patch
+
+    # `ld: bootxx_ffsv1.sym: error: PHDR segment not covered by LOAD segment`.
+    # Upstream fixed this for `efiboot`; the other i386 booters share
+    # `Makefile.booters`, which never got the same flags.
+    ./booters-no-dynamic-linker.patch
+
+    # `### bootxx_ext2fs size 8020 is larger than 7680`, and likewise for
+    # `bootxx_ustarfs`. The primary bootstraps have a fixed sector budget that
+    # GCC 15 overruns, so build them `-Oz` -- which is what NetBSD already does
+    # for these same files under clang.
+    ./bootxx-oz.patch
   ];
 
   postPatch = ''

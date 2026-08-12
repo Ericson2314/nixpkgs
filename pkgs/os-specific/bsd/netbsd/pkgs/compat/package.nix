@@ -89,6 +89,7 @@ mkDerivation (
       ./compat-cxx-safe-header.patch
       ./compat-dont-configure-twice.patch
       ./compat-no-force-native.patch
+      ./compat-host-locale-t.patch
     ];
 
     preInstall = ''
@@ -133,6 +134,19 @@ mkDerivation (
         --subst-var-by includedir "$dev/include" \
         --subst-var-by version ${version}
     '';
+    # This package exists so NetBSD's own build tools can run on a machine that
+    # is not NetBSD, and thereby cross compile NetBSD. On NetBSD itself there is
+    # nothing to be compatible with, which is why the scope only pulls it in
+    # when the host is something else:
+    #
+    #     compatIfNeeded = lib.optional (!hostPlatform.isNetBSD) self.compat;
+    #
+    # Say so in `meta` too, so that asking for it on a NetBSD host is refused up
+    # front rather than failing deep inside a build that was never meant to
+    # happen -- it dies compiling `lib/libutil` against NetBSD's own headers,
+    # which reads like a NetBSD bug and is nothing of the sort.
+    meta.platforms = lib.subtractLists lib.platforms.netbsd lib.platforms.unix;
+
     extraPaths = [
       "common"
       "include"

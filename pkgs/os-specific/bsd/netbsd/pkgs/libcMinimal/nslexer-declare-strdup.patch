@@ -1,0 +1,42 @@
+Declare _strdup in nslexer.l
+
+`nslexer.l` calls `strdup`, which `"namespace.h"` rewrites to `_strdup`. That
+works when the file's own includes are the first thing in the translation unit,
+because `<string.h>` is then read *after* the rename and declares the internal
+name.
+
+Built with flex rather than NetBSD's own lex, it is not: flex's skeleton emits
+`#include <string.h>` near the top of the generated `.c`, ahead of the `%{ %}`
+block, so `strdup` is declared under its ordinary name and the later
+`<string.h>` here is a no-op thanks to the header guard. `_strdup` is then
+never declared:
+
+    namespace.h:681:33: error: implicit declaration of function '_strdup'
+    nslexer.l:78:32: error: assignment to 'char *' from 'int' ...
+
+Both were warnings until GCC 14 made them errors. Declaring the renamed symbol
+fixes the actual defect, rather than demoting the two diagnostics across all of
+libc -- `-Wno-error=int-conversion` in particular is far too blunt to want on a
+libc build, since it would hide genuine pointer/integer confusion everywhere
+else.
+
+This is not version-specific: `nslexer.l` is byte-identical in 9.2, 10, 11 and
+-current. It depends on our flex, not on NetBSD's release.
+
+--- a/lib/libc/net/nslexer.l
++++ b/lib/libc/net/nslexer.l
+@@ -42,6 +42,14 @@
+ #include <string.h>
+ #include <syslog.h>
+ 
++/*
++ * flex's skeleton emits its own #include <string.h> above this block, so by
++ * the time "namespace.h" renames strdup to _strdup the declaration has
++ * already been pulled in under the original name, and including <string.h>
++ * again is a no-op thanks to its guard. Declare the renamed symbol.
++ */
++char *_strdup(const char *);
++
+ #include "nsparser.h"
+ 
+ %}
