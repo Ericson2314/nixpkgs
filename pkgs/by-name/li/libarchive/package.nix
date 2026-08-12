@@ -47,6 +47,19 @@ stdenv.mkDerivation (finalAttrs: {
     "dev"
   ];
 
+  # The cpio reader's private `be32dec`/`le32dec` collide with NetBSD's, which
+  # arrive via `<sys/types.h>` from `<stdlib.h>` and differ in return type.
+  #
+  # The rename is harmless everywhere, so this is scoped to NetBSD only to
+  # avoid rebuilding libarchive -- and thus cmake, and thus much of the tree --
+  # for every platform.
+  #
+  # TODO on staging, drop the `lib.optionals` and apply this unconditionally.
+  # The mass rebuild is only a problem outside staging.
+  patches = lib.optionals stdenv.hostPlatform.isNetBSD [
+    ./cpio-rename-private-endian-decoders.patch
+  ];
+
   postPatch =
     let
       skipTestPaths = [
