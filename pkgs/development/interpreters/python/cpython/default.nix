@@ -384,6 +384,12 @@ stdenv.mkDerivation (finalAttrs: {
     # since this diff, consider submitting this patch upstream!
     ./freebsd-cross.patch
   ]
+  ++ optionals (stdenv.hostPlatform != stdenv.buildPlatform && stdenv.hostPlatform.isNetBSD) [
+    # Same story as freebsd-cross.patch above: NetBSD is not on CPython's
+    # allowlist of cross targets, so configure stops at
+    # "cross build not supported for x86_64-unknown-netbsd".
+    ./netbsd-cross.patch
+  ]
   ++ optionals (pythonOlder "3.13") [
     # Make sure that the virtualenv activation scripts are
     # owner-writable, so venvs can be recreated without permission
@@ -867,7 +873,11 @@ stdenv.mkDerivation (finalAttrs: {
     license = lib.licenses.psfl;
     pkgConfigModules = [ "python3" ];
     platforms =
-      lib.platforms.linux ++ lib.platforms.darwin ++ lib.platforms.windows ++ lib.platforms.freebsd;
+      lib.platforms.linux
+      ++ lib.platforms.darwin
+      ++ lib.platforms.windows
+      ++ lib.platforms.freebsd
+      ++ lib.platforms.netbsd;
     mainProgram = executable;
     teams = [ lib.teams.python ];
     # static build on aarch64-darwin breaks with:
