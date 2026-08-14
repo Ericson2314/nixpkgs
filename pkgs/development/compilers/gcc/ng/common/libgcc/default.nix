@@ -13,6 +13,16 @@
   which,
   python3,
 
+  # A threading library that is not part of the libc, for targets where the
+  # libc alone does not offer the model we want — MinGW, whose only built-in
+  # option is `win32`, with `mcfgthreads` being the case that motivates this.
+  # `null` means "whatever the libc offers".
+  #
+  # Whatever is passed here has to be buildable without it, since it comes
+  # before the libgcc that would otherwise provide the threading; see the
+  # bootstrap chain in ../../README.md.
+  threads ? null,
+
   # Build `libgcc_s` as well as `libgcc.a`. Only ever worth turning *off*: the
   # assertion below refuses to force it on where the default says it cannot
   # work, since what follows from that is a link failure much further away.
@@ -61,9 +71,11 @@ let
   # finished libc. Everything below reads that one value.
   libc = stdenv.cc.libc or null;
 
-  # Which threading model may be used is decided by the libc, so take it from
-  # there rather than guess — and pass it on in `passthru` so that `libstdcxx`,
-  # which has to agree, reads the same answer instead of probing for its own.
+  # Which threading model may be used is decided by whatever provides the
+  # threads — usually the libc, but the separate `threads` package where one
+  # is given — so take it from there rather than guess, and pass it on in
+  # `passthru` so that `libstdcxx`, which has to agree, reads the same answer
+  # instead of probing for its own.
   #
   # A headers-only package declares no `threadModel`, and a real libc does.
   # That build exists only to get the libc built and is thrown away afterwards,
@@ -82,7 +94,10 @@ let
   # "spec files" (more powerful than CLI flags) would be be able to get the
   # compiler `-v` flag correct with respect to the libraries it happend to be
   # wrapped with.
-  threadModel = if libc == null then "single" else libc.threadModel or "single";
+  #
+  # A `threads` package wins over the libc: that is the whole point of asking
+  # for one, and it is only ever passed to the builds that come after the libc.
+  threadModel = threads.threadModel or (libc.threadModel or "single");
 in
 
 assert enableShared -> __defaultEnableShared;
@@ -110,6 +125,11 @@ stdenv.mkDerivation (finalAttrs: {
     which
     python3
   ];
+
+  # The `gthr-<model>.h` header for a non-libc threading model includes that
+  # library's own headers, and the built `libgcc_s` links against it, so it has
+  # to be on the include and library paths here.
+  buildInputs = lib.optional (threads != null) threads;
 
   patches = [
     (fetchpatch {

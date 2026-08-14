@@ -15,6 +15,7 @@
   binutils,
   buildGccPackages,
   targetGccPackages,
+  windows,
   makeScopeWithSplicing',
   otherSplices,
   ...
@@ -112,8 +113,56 @@ makeScopeWithSplicing' {
     gccPackages:
     let
       callPackage = gccPackages.newScope (args // metadata);
+
+      # Every compiler from the threaded `libgcc-libc` onwards has to be able
+      # to find the threading library's headers and import library, since that
+      # is what `gthr-default.h` includes and what libstdc++ and user code
+      # link against. As with the runtime libraries, what belongs on a
+      # compiler's search path is the *target* platform's build of it.
+      threadsPackages = lib.optional (targetGccPackages.threads != null) targetGccPackages.threads;
+
+      # `extraPackages` only reaches builds that go through a stdenv, whose
+      # setup hooks put those directories on the search paths. Running the
+      # wrapped compiler by hand gets nothing that way, and the first `#include
+      # <thread>` then fails on the `mcfgthread` header. So name the
+      # directories here as well, exactly as the runtime libraries are.
+      threadsCflags = lib.optionals (targetGccPackages.threads != null) [
+        "-B${targetGccPackages.threads}/lib"
+        "-isystem ${lib.getDev targetGccPackages.threads}/include"
+      ];
+
+      # A gcc *configured* for a threading model links that model's library
+      # through its own specs. Ours is configured independently of the
+      # runtimes (see ../README.md), so it does not, and the flag has to come
+      # from the wrapper instead — without it libstdc++ does not even link,
+      # failing on undefined `__MCF_gthr_*`.
+      #
+      # This is a whole `nixSupport` fragment, rather than just the flag list,
+      # because an empty `cc-ldflags` is not the same as none at all:
+      # `cc-wrapper` writes the file either way, so naming the attribute
+      # unconditionally would rebuild every wrapper on every platform.
+      threadsNixSupport = lib.optionalAttrs ((targetGccPackages.threads.threadModel or null) == "mcf") {
+        cc-ldflags = [ "-lmcfgthread" ];
+      };
     in
     {
+      # Where the libc's own threading is not the one we want, a separate
+      # library supplies it. MinGW is the case in point: its libc offers only
+      # the `win32` model, and `mcfgthreads` gives us `mcf`, which is what the
+      # monolithic `gcc` picks there too (see `threadsCross`).
+      #
+      # `null` means "whatever the libc offers", which is the answer
+      # everywhere else. The model itself is not written down here: the
+      # package declares it, in the same `passthru.threadModel` a libc uses.
+      #
+      # Nothing needs doing to keep this out of the bootstrap cycle:
+      # `windows.crossThreadsStdenv`, which is what this is built with, is
+      # stage 3 of the chain on `useGccNG` platforms — real libc, bootstrap
+      # single-threaded libgcc — which is exactly the compiler that goes on to
+      # build the threaded `libgcc-libc`. A threading library is plain C and
+      # needs no threading model of its own, so it does not mind.
+      threads = if stdenv.hostPlatform.isMinGW then windows.mcfgthreads else null;
+
       stdenv = overrideCC stdenv gccPackages.gcc;
 
       gcc-unwrapped = callPackage ./gcc {
@@ -135,17 +184,21 @@ makeScopeWithSplicing' {
         bintools = binutils;
         extraPackages = [
           targetGccPackages.libgcc
-        ];
-        nixSupport.cc-cflags = [
-          "-B${targetGccPackages.libgcc}/lib"
-          "-B${targetGccPackages.libssp}/lib"
-          "-B${targetGccPackages.libatomic}/lib"
         ]
-        ++ libgompCflags
-        ++ [
-          "-B${targetGccPackages.libstdcxx}/lib"
-          "-B${targetGccPackages.libgfortran}/lib/"
-        ];
+        ++ threadsPackages;
+        nixSupport = threadsNixSupport // {
+          cc-cflags = [
+            "-B${targetGccPackages.libgcc}/lib"
+            "-B${targetGccPackages.libssp}/lib"
+            "-B${targetGccPackages.libatomic}/lib"
+          ]
+          ++ libgompCflags
+          ++ [
+            "-B${targetGccPackages.libstdcxx}/lib"
+            "-B${targetGccPackages.libgfortran}/lib/"
+          ]
+          ++ threadsCflags;
+        };
       };
 
       gfortranNoLibgfortran = wrapCCWith {
@@ -154,14 +207,18 @@ makeScopeWithSplicing' {
         bintools = binutils;
         extraPackages = [
           targetGccPackages.libgcc
-        ];
-        nixSupport.cc-cflags = [
-          "-B${targetGccPackages.libgcc}/lib"
-          "-B${targetGccPackages.libssp}/lib"
-          "-B${targetGccPackages.libatomic}/lib"
         ]
-        ++ libgompCflags
-        ++ libgompIncludeCflags;
+        ++ threadsPackages;
+        nixSupport = threadsNixSupport // {
+          cc-cflags = [
+            "-B${targetGccPackages.libgcc}/lib"
+            "-B${targetGccPackages.libssp}/lib"
+            "-B${targetGccPackages.libatomic}/lib"
+          ]
+          ++ libgompCflags
+          ++ libgompIncludeCflags
+          ++ threadsCflags;
+        };
       };
 
       gcc = wrapCCWith {
@@ -170,21 +227,25 @@ makeScopeWithSplicing' {
         bintools = binutils;
         extraPackages = [
           targetGccPackages.libgcc
-        ];
-        nixSupport.cc-cflags = [
-          "-B${targetGccPackages.libgcc}/lib"
-          "-B${targetGccPackages.libssp}/lib"
-          "-B${targetGccPackages.libatomic}/lib"
         ]
-        ++ libgompCflags
-        ++ [
-          # `libcxx` above tells cc-wrapper where the C++ *headers* are; it does
-          # not put the library itself on the link path for a GNU compiler. So
-          # every C++ link failed with `cannot find -lstdc++` until this was
-          # added, in the same style as the other runtime libraries.
-          "-B${targetGccPackages.libstdcxx}/lib"
-        ]
-        ++ libgompIncludeCflags;
+        ++ threadsPackages;
+        nixSupport = threadsNixSupport // {
+          cc-cflags = [
+            "-B${targetGccPackages.libgcc}/lib"
+            "-B${targetGccPackages.libssp}/lib"
+            "-B${targetGccPackages.libatomic}/lib"
+          ]
+          ++ libgompCflags
+          ++ [
+            # `libcxx` above tells cc-wrapper where the C++ *headers* are; it does
+            # not put the library itself on the link path for a GNU compiler. So
+            # every C++ link failed with `cannot find -lstdc++` until this was
+            # added, in the same style as the other runtime libraries.
+            "-B${targetGccPackages.libstdcxx}/lib"
+          ]
+          ++ libgompIncludeCflags
+          ++ threadsCflags;
+        };
       };
 
       # Stage 1 of the bootstrap chain; see ../README.md.
@@ -207,12 +268,21 @@ makeScopeWithSplicing' {
       # follows from the compiler, never from an argument.
       libgcc-no-libc = callPackage ./libgcc {
         stdenv = overrideCC stdenv buildGccPackages.gccNoLibgcc;
+        # The bootstrap libgcc predates the threading library, so it gets no
+        # threads at all. Spelled out because `callPackage` would otherwise
+        # fill the argument in from the set's own `threads`.
+        threads = null;
       };
 
       # The real one, built against the finished libc, so it can use that
-      # libc's threads. This is what everything above the libc gets.
+      # libc's threads — or the separate threading library where we have asked
+      # for one. This is what everything above the libc gets.
       libgcc-libc = callPackage ./libgcc {
         stdenv = overrideCC stdenv buildGccPackages.gccWithLibcAndBasicLibgcc;
+        # Spelled out for the same reason as the `null` above, and so that it
+        # is this set's own answer rather than anything `callPackage` might
+        # find under that name.
+        inherit (gccPackages) threads;
       };
 
       libgcc =
@@ -280,10 +350,14 @@ makeScopeWithSplicing' {
         bintools = binutils;
         extraPackages = [
           targetGccPackages.libgcc
-        ];
-        nixSupport.cc-cflags = [
-          "-B${targetGccPackages.libgcc}/lib"
-        ];
+        ]
+        ++ threadsPackages;
+        nixSupport = threadsNixSupport // {
+          cc-cflags = [
+            "-B${targetGccPackages.libgcc}/lib"
+          ]
+          ++ threadsCflags;
+        };
       };
 
       libssp = callPackage ./libssp {
@@ -296,11 +370,15 @@ makeScopeWithSplicing' {
         bintools = binutils;
         extraPackages = [
           targetGccPackages.libgcc
-        ];
-        nixSupport.cc-cflags = [
-          "-B${targetGccPackages.libgcc}/lib"
-          "-B${targetGccPackages.libssp}/lib"
-        ];
+        ]
+        ++ threadsPackages;
+        nixSupport = threadsNixSupport // {
+          cc-cflags = [
+            "-B${targetGccPackages.libgcc}/lib"
+            "-B${targetGccPackages.libssp}/lib"
+          ]
+          ++ threadsCflags;
+        };
       };
 
       libatomic = callPackage ./libatomic {
@@ -313,12 +391,16 @@ makeScopeWithSplicing' {
         bintools = binutils;
         extraPackages = [
           targetGccPackages.libgcc
-        ];
-        nixSupport.cc-cflags = [
-          "-B${targetGccPackages.libgcc}/lib"
-          "-B${targetGccPackages.libssp}/lib"
-          "-B${targetGccPackages.libatomic}/lib"
-        ];
+        ]
+        ++ threadsPackages;
+        nixSupport = threadsNixSupport // {
+          cc-cflags = [
+            "-B${targetGccPackages.libgcc}/lib"
+            "-B${targetGccPackages.libssp}/lib"
+            "-B${targetGccPackages.libatomic}/lib"
+          ]
+          ++ threadsCflags;
+        };
       };
 
       libgfortran = callPackage ./libgfortran {
