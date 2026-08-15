@@ -62,8 +62,12 @@ patch and link `-lzonecfg` properly.
 
 Assisted-By: Claude <noreply@anthropic.com>
 ---
+ usr/src/cmd/svc/svcs/Makefile | 7 ++++++-
+ usr/src/cmd/svc/svcs/svcs.c   | 9 ++++++++-
+ 2 files changed, 14 insertions(+), 2 deletions(-)
+
 diff --git a/usr/src/cmd/svc/svcs/Makefile b/usr/src/cmd/svc/svcs/Makefile
-index 5592c76..8221cd4 100644
+index 5592c762d2..8221cd43cb 100644
 --- a/usr/src/cmd/svc/svcs/Makefile
 +++ b/usr/src/cmd/svc/svcs/Makefile
 @@ -34,7 +34,12 @@ include ../../Makefile.cmd
@@ -81,7 +85,7 @@ index 5592c76..8221cd4 100644
  
  CERRWARN += $(CNOWARN_UNINIT)
 diff --git a/usr/src/cmd/svc/svcs/svcs.c b/usr/src/cmd/svc/svcs/svcs.c
-index bae26d5..f1680ef 100644
+index bae26d50d6..f1680efe77 100644
 --- a/usr/src/cmd/svc/svcs/svcs.c
 +++ b/usr/src/cmd/svc/svcs/svcs.c
 @@ -79,7 +79,9 @@
@@ -119,5 +123,3 @@ index bae26d5..f1680ef 100644
  
  	return (ret);
  }
--- 
-2.51.0

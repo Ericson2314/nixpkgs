@@ -25,6 +25,12 @@ makeScopeWithSplicing' {
 
       # Patches are generated from commits on the illumos-gate `nix-cross`
       # branch by ./update-patches.sh; that branch is the source of truth.
+      #
+      # The whole directory is one `git format-patch` of that one branch
+      # against the revision `./pkgs/source.nix` pins, and nothing else. Do not
+      # add a patch here by hand, or take one from another branch: the script
+      # starts by deleting `patches/*.patch`, so anything not on `nix-cross`
+      # is silently lost the next time anyone regenerates.
       patchesRoot = ./patches;
 
       stdenvLibcMinimal = stdenvNoLibc.override (old: {

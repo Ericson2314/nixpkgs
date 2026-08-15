@@ -1,4 +1,4 @@
-From ede101fbf18fd5a402e2c4b01fe0039fbe454a77 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: John Ericson <John.Ericson@Obsidian.Systems>
 Date: Sun, 9 Aug 2026 20:18:58 -0400
 Subject: [PATCH] uts/rpc: guard rpcgen's appended prototypes against `_KERNEL`
@@ -64,6 +64,3 @@ index 8ae5ac2e46..073de1bcfe 100644
  
  rpc_sztypes.h: rpc_sztypes.x
  	$(RPCGEN) -C -h rpc_sztypes.x > $@
--- 
-2.54.0
-
