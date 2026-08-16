@@ -166,7 +166,7 @@ let
         # I (@Ericson2314) plan on making more obscure low-tier
         # platforms (e.g. NetBSD) use it soon, so we can dogfood GCC NG
         # and thereby iron out its bugs.
-        useGccNG = final.isCygwin;
+        useGccNG = final.isCygwin || final.isIllumos;
 
         libc =
           if final.isDarwin then
@@ -199,6 +199,8 @@ let
             "oblibc"
           else if final.isNetBSD then
             "nblibc"
+          else if final.isSunOS then
+            "slibc"
           else if final.isAvr then
             "avrlibc"
           else if final.isGhcjs then
@@ -262,6 +264,7 @@ let
               netbsd = "NetBSD";
               freebsd = "FreeBSD";
               openbsd = "OpenBSD";
+              solaris = "SunOS";
               wasip1 = "WasiP1";
               redox = "Redox";
               genode = "Genode";
