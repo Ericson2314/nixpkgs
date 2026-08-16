@@ -38,10 +38,26 @@
   autoreconfHook269,
   bintools,
   enableShared ? stdenv.hostPlatform.hasSharedLibraries,
-  # Whether the driver's specs emit `-lgcc_s`. Derived as the monolithic build
-  # derives it, Cygwin excluded: there they would also emit `-lgcc_eh`, which no
-  # stage of this package set produces.
-  enableTargetShared ? stdenv.targetPlatform.hasSharedLibraries && !stdenv.targetPlatform.isCygwin,
+  # NO `enableTargetShared`. It used to be
+  #
+  #   enableTargetShared ? stdenv.targetPlatform.hasSharedLibraries
+  #                        && !stdenv.targetPlatform.isCygwin
+  #
+  # feeding `--enable-shared`/`--disable-shared`, which decides whether the
+  # driver's specs emit `-lgcc_s`. That is a per-*target* fact, and a compiler
+  # serving many targets cannot answer it once at configure time: whichever
+  # answer it froze would be wrong for every target that disagrees, silently,
+  # in the link line.
+  #
+  # It was also the last `targetPlatform` reference in this file, and it was
+  # invisible until `mt-compare.nix` grew a Cygwin arm -- the aarch64 and NetBSD
+  # arms both take the same branch of that condition, so two arms could not see
+  # it. Three could.
+  #
+  # The answer belongs where the rest of the per-target link behaviour now
+  # lives: `target-specs/configure --with-shared-libgcc=yes|no`, which writes it
+  # into that one target's spec file, probed against that target's actual
+  # toolchain.
   # Targets this compiler serves, as a list of config triples. There is no
   # single-target build here: the compiler is always built with
   # `--enable-targets` and never with `--target`.
@@ -57,8 +73,40 @@
   # matter which platform is being built for. That equality is the test -- if a
   # target dependency remains anywhere, the paths diverge and say so.
   #
-  # Needs a GCC with `--enable-targets`. No released GCC has one.
-  enableTargets ? [ stdenv.targetPlatform.config ],
+  # `null` means "whatever list the source tree ships", read at build time from
+  # `backendsFile` below. That is the default, and it is deliberately not a list
+  # written down here.
+  #
+  # THE LIST MUST HAVE ONE AUTHORITY. The GCC tree is the authority for which
+  # back ends exist -- it is where they are, and it is where the list that every
+  # board on the branch was configured with lives. A copy of that list in
+  # nixpkgs would be a second authority for one fact, which is this project's
+  # root bug reproduced in the packaging. So nixpkgs names the *file* and reads
+  # it from `$src`, and if the file is not there the build stops rather than
+  # falling back to anything.
+  #
+  # It cannot be read at evaluation time: `src` is a fetched derivation, not a
+  # path, and reading it would be import-from-derivation. So it is read in
+  # `preConfigure` and appended to `configureFlagsArray`. The consequence is
+  # that the store path depends on `src` rather than on the list's contents,
+  # which is the correct dependency -- the list is part of the source.
+  #
+  # Needs a GCC with `--enable-targets`. No released GCC has one: measured on
+  # `releases/gcc-15.2.0`, `configure.ac` mentions `--enable-languages` 47 times
+  # and `--enable-targets` zero times. Passing it to a released tree is not an
+  # error -- autoconf accepts unrecognised `--enable-*` with a warning -- so the
+  # flag is silently inert there and the compiler comes out single-target. That
+  # is why the missing-file case below is fatal.
+  enableTargets ? null,
+  # Where the back-end list lives in the GCC source tree.
+  #
+  # `scratchpad/` is not where a shipped list belongs, and naming it here is a
+  # statement rather than an endorsement: this is the file the branch's boards
+  # actually configured with (`--enable-targets=$(paste -sd, backends-47.txt)`),
+  # so it is the authority whether or not it is in a tidy location. Promoting it
+  # to a shipped path in the GCC tree is the fix, and then only this string
+  # changes.
+  backendsFile ? "scratchpad/backends-47.txt",
 }:
 let
   inherit (stdenv) hostPlatform;
@@ -259,6 +307,31 @@ stdenv.mkDerivation (finalAttrs: {
       cp -r "$buildRoot/libiberty" "$buildRoot/build-${stdenv.hostPlatform.config}/libiberty"
 
       configureScript=../$sourceRoot/configure
+    ''
+    # Read the back-end list out of the source tree; see `backendsFile`.
+    #
+    # Every arm here is fatal, and none of them falls back to a target. A build
+    # that quietly produced a single-target compiler is exactly the failure this
+    # replaces: `--enable-targets` is accepted-and-ignored by a released GCC, so
+    # "the flag was passed" is not evidence that anything was served.
+    + lib.optionalString (enableTargets == null) ''
+      backendsFile="../$sourceRoot/${backendsFile}"
+      if [ ! -f "$backendsFile" ]; then
+        echo "gcc: $backendsFile is not in this source tree." >&2
+        echo "gcc: it is the one authority for which back ends this compiler serves," >&2
+        echo "gcc: and there is deliberately no fallback -- a default target is the" >&2
+        echo "gcc: hiding place this package set exists to remove.  Either build a" >&2
+        echo "gcc: source that ships the list, or pass \`enableTargets' explicitly." >&2
+        exit 1
+      fi
+      enableTargets=$(grep -v '^#' "$backendsFile" | grep . | paste -sd,)
+      nTargets=$(grep -v '^#' "$backendsFile" | grep -c .)
+      if [ "$nTargets" -eq 0 ]; then
+        echo "gcc: $backendsFile has no entries; an empty list is not an answer." >&2
+        exit 1
+      fi
+      echo "gcc: serving $nTargets back ends from $backendsFile"
+      configureFlagsArray+=("--enable-targets=$enableTargets")
     '';
 
   # Don't store the configure flags in the resulting executables.
@@ -285,12 +358,14 @@ stdenv.mkDerivation (finalAttrs: {
     # though nixpkgs expects one (since not all information is serialized into
     # the config attribute). The easiest way out of these problems is to always
     # set the program prefix, so gcc will conform to our expectations.
-    # Every target this compiler serves, none of them privileged.
-    "--enable-targets=${lib.concatStringsSep "," enableTargets}"
-
-    # No `--program-prefix`. The prefix existed to distinguish one target's
-    # compiler from another's; there is one compiler now.
-
+    # Every target this compiler serves, none of them privileged. When
+    # `enableTargets` is `null` this is not here at all; `preConfigure` appends
+    # it after reading the list out of the source tree. See `backendsFile`.
+    # The prefix existed to distinguish one target's compiler from another's;
+    # there is one compiler now.
+  ]
+  ++ lib.optional (enableTargets != null) "--enable-targets=${lib.concatStringsSep "," enableTargets}"
+  ++ [
     "--disable-dependency-tracking"
     "--enable-fast-install"
     "--disable-serial-configure"
@@ -300,7 +375,10 @@ stdenv.mkDerivation (finalAttrs: {
     "--disable-multilib"
     "--disable-nls"
     (lib.enableFeature enableShared "host-shared")
-    (lib.enableFeature enableTargetShared "shared")
+    # No `--enable-shared`/`--disable-shared` for the target: see the note where
+    # `enableTargetShared` used to be declared. The default is `--enable-shared`,
+    # and it is left at the default deliberately rather than pinned, so that
+    # nothing here claims an answer it cannot hold for every target.
     "--enable-default-pie"
     "--enable-languages=${
       lib.concatStrings (

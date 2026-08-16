@@ -30,6 +30,10 @@ let
   crossSets = {
     aarch64 = "aarch64-unknown-linux-gnu";
     netbsd = "x86_64-unknown-netbsd";
+    # Cygwin, because `enableTargetShared` still reads `targetPlatform` and
+    # Cygwin is the one platform its condition singles out.  Without an arm
+    # that exercises a *different* answer, that reference would go unmeasured.
+    cygwin = "x86_64-pc-cygwin";
   };
 
   compiler =
