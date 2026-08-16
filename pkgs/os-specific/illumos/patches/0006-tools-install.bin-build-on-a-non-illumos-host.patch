@@ -1,0 +1,140 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Fri, 7 Aug 2026 17:30:31 -0400
+Subject: [PATCH] tools/install.bin: build on a non-illumos host
+
+`install.bin` is the installer the rest of the build shells out to, so like
+`cw` it must build natively on the cross-build host.
+
+It uses `mkdirp()` from libgen, which is an illumos extension with no
+equivalent elsewhere. Rather than reimplement it, compile the existing
+`lib/libgen/common/mkdirp.c` directly into `install.bin` on non-illumos
+hosts, with a local `mkdirp.h` declaring it.
+
+Assisted-by: Claude Code (Claude Opus 5)
+---
+ usr/src/lib/libgen/common/mkdirp.c      |  2 +-
+ usr/src/tools/Makefile.tools            |  7 ++++---
+ usr/src/tools/install.bin/Makefile      | 12 ++++++++----
+ usr/src/tools/install.bin/install.bin.c | 12 +++++++++++-
+ usr/src/tools/install.bin/mkdirp.h      |  8 ++++++++
+ 5 files changed, 32 insertions(+), 9 deletions(-)
+ create mode 100644 usr/src/tools/install.bin/mkdirp.h
+
+diff --git a/usr/src/lib/libgen/common/mkdirp.c b/usr/src/lib/libgen/common/mkdirp.c
+index f98e31e2d3..9b00b51f9c 100644
+--- a/usr/src/lib/libgen/common/mkdirp.c
++++ b/usr/src/lib/libgen/common/mkdirp.c
+@@ -164,7 +164,7 @@ simplify(const char *str)
+ 
+ 	mbPathlen = strlen(mbPath);
+ 
+-	if ((wcPath = calloc(sizeof (wchar_t), mbPathlen+1)) == NULL) {
++	if ((wcPath = calloc(mbPathlen+1, sizeof (wchar_t))) == NULL) {
+ 		free(mbPath);
+ 		return (NULL);
+ 	}
+diff --git a/usr/src/tools/Makefile.tools b/usr/src/tools/Makefile.tools
+index cba285a3fd..0af0719eed 100644
+--- a/usr/src/tools/Makefile.tools
++++ b/usr/src/tools/Makefile.tools
+@@ -55,9 +55,10 @@ CERRWARN +=		-_gnu=-Wno-unknown-pragmas
+ CPPFLAGS=		-D_TS_ERRNO
+ ELFSIGN_O=		$(TRUE)
+ LDLIBS=
+-LDFLAGS=		$(MAPFILE.NES:%=-Wl,-M%) $(MAPFILE.NED:%=-Wl,-M%) \
+-			    $(MAPFILE.PGA:%=-Wl,-M%) \
+-			    $(BDIRECT)
++#LDFLAGS=		$(MAPFILE.NES:%=-Wl,-M%) $(MAPFILE.NED:%=-Wl,-M%) \
++#			    $(MAPFILE.PGA:%=-Wl,-M%) \
++#			    $(BDIRECT)
++LDFLAGS=
+ 
+ NATIVE_LIBS += libc.so
+ 
+diff --git a/usr/src/tools/install.bin/Makefile b/usr/src/tools/install.bin/Makefile
+index 4643068a48..cbe222e1e2 100644
+--- a/usr/src/tools/install.bin/Makefile
++++ b/usr/src/tools/install.bin/Makefile
+@@ -25,16 +25,16 @@
+ #
+ 
+ PROG=	install.bin
+-OBJS=	$(PROG).o stdusers.o
+-SRCS=	$(PROG).c ../protocmp/stdusers.c
++OBJS=	$(PROG).o stdusers.o mkdirp.o
++SRCS=	$(PROG).c ../protocmp/stdusers.c $(SRC)/lib/libgen/common/mkdirp.c
+ 
+ include ../Makefile.tools
+ 
+ CFLAGS += $(CCVERBOSE)
+ CERRWARN += -_gcc=-Wno-type-limits
+ CPPFLAGS += -I../protocmp
+-LDLIBS += -lgen
+-NATIVE_LIBS += libgen.so
++#LDLIBS += -lgen
++#NATIVE_LIBS += libgen.so
+ CLEANFILES += $(OBJS)
+ 
+ # Assume we don't have the install.bin available yet
+@@ -62,4 +62,8 @@ clean:
+ 	$(COMPILE.c) -o $@ $<
+ 	$(POST_PROCESS_O)
+ 
++%.o: $(SRC)/lib/libgen/common/%.c
++	$(COMPILE.c) -o $@ $<
++	$(POST_PROCESS_O)
++
+ include ../Makefile.targ
+diff --git a/usr/src/tools/install.bin/install.bin.c b/usr/src/tools/install.bin/install.bin.c
+index 32b4cffe57..a241c80abe 100644
+--- a/usr/src/tools/install.bin/install.bin.c
++++ b/usr/src/tools/install.bin/install.bin.c
+@@ -28,7 +28,11 @@
+ 
+ #include <stdio.h>
+ #include <stdlib.h>
++#ifdef __sun__
+ #include <strings.h>
++#else
++#include <string.h>
++#endif
+ #include <sys/param.h>
+ #include <fcntl.h>
+ #include <sys/errno.h>
+@@ -40,6 +44,10 @@
+ #include <libgen.h>
+ #include "stdusers.h"
+ 
++#ifndef __sun__
++#include "mkdirp.h"
++#endif
++
+ 
+ #define	FILE_BUFF	40960
+ 
+@@ -81,7 +89,9 @@ file_copy(char *src_file, char *dest_file)
+ 	}
+ 
+ 	while ((count = read(src_fd, file_buff, FILE_BUFF)) > 0) {
+-		(void) write(dest_fd, file_buff, count);
++		if (write(dest_fd, file_buff, count) == -1) {
++			exit(1);
++		};
+ 	}
+ 
+ 	if (count == -1) {
+diff --git a/usr/src/tools/install.bin/mkdirp.h b/usr/src/tools/install.bin/mkdirp.h
+new file mode 100644
+index 0000000000..8bf6625f0a
+--- /dev/null
++++ b/usr/src/tools/install.bin/mkdirp.h
+@@ -0,0 +1,8 @@
++/* Taken from libgen for building on other OSes
++ */
++#ifndef _MKDIRP_H
++#define	_MKDIRP_H
++
++extern int mkdirp(const char *, mode_t);
++
++#endif

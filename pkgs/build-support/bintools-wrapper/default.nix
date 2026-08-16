@@ -157,6 +157,10 @@ let
       "${sharedLibraryLoader}/libexec/ld-elf.so.1"
     else if targetPlatform.isOpenBSD then
       "${sharedLibraryLoader}/libexec/ld.so"
+    # illumos puts the 64-bit runtime linker under a `64` subdirectory, which is
+    # a symlink to `amd64` on x86.
+    else if targetPlatform.isIllumos then
+      "${sharedLibraryLoader}/lib/64/ld.so.1"
     else if hasSuffix "pc-gnu" targetPlatform.config then
       "ld.so.1"
     else

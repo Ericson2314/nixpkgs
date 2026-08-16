@@ -1,0 +1,49 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Sun, 16 Aug 2026 13:05:49 -0400
+Subject: [PATCH] mkfs: do not use `true` as a label
+
+`match()` spells its success label `true:` and jumps to it with
+`goto true;`. That was unambiguous in C99, where `true` was only ever a
+macro from `<stdbool.h>` -- which this file does not include -- but C23
+promotes `true` to a keyword, and a keyword cannot be a label:
+
+    mkfs.c:3753:30: error: expected identifier or `*` before `true`
+     3753 |                 goto true;
+    mkfs.c:3760:5: error: expected `;` before `:` token
+     3760 | true:
+
+Rename it to `matched:`, which also says what the label means rather
+than what it returns. No functional change, and nothing outside
+`match()` can see it.
+
+This is not a foreign-host concern -- the same collision will arrive on
+illumos itself the moment the gate moves to C23 -- so it belongs in the
+tool rather than in any compat shim.
+
+Assisted-by: Claude Code (Claude Opus 5)
+---
+ usr/src/cmd/fs.d/ufs/mkfs/mkfs.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/usr/src/cmd/fs.d/ufs/mkfs/mkfs.c b/usr/src/cmd/fs.d/ufs/mkfs/mkfs.c
+index 292bf1ac06..b8acb5fd51 100644
+--- a/usr/src/cmd/fs.d/ufs/mkfs/mkfs.c
++++ b/usr/src/cmd/fs.d/ufs/mkfs/mkfs.c
+@@ -3750,14 +3750,14 @@ match(char *s)
+ 	cs = string;
+ 	while (*cs++ == *s) {
+ 		if (*s++ == '\0') {
+-			goto true;
++			goto matched;
+ 		}
+ 	}
+ 	if (*s != '\0') {
+ 		return (0);
+ 	}
+ 
+-true:
++matched:
+ 	cs--;
+ 	string = cs;
+ 	return (1);

@@ -1,0 +1,67 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Fri, 7 Aug 2026 18:19:36 -0400
+Subject: [PATCH] cmd/sgs/lorder: find nm on $PATH, and report errors on stderr
+
+Two problems when running lorder outside a normal illumos install:
+
+- It invoked `/usr/bin/nm` by absolute path. Look nm up on `$PATH` instead,
+  and let `$NM` override it, which is what a cross-build needs in order to
+  point at the target's nm.
+
+- Its usage and "cannot open" messages went to stdout. lorder's stdout is
+  consumed by a pipeline -- libc builds its archive with
+  `ar q $@ \`lorder ... | tsort\`` -- so an error message got spliced into
+  the object list and passed to ar as filenames:
+
+      ar: cannot: No such file or directory
+
+  Diagnostics belong on stderr.
+
+Assisted-by: Claude Code (Claude Opus 5)
+---
+ usr/src/cmd/sgs/lorder/lorder.sh | 9 ++++-----
+ 1 file changed, 4 insertions(+), 5 deletions(-)
+
+diff --git a/usr/src/cmd/sgs/lorder/lorder.sh b/usr/src/cmd/sgs/lorder/lorder.sh
+index 152d9ba9ea..0b6b1c8b51 100644
+--- a/usr/src/cmd/sgs/lorder/lorder.sh
++++ b/usr/src/cmd/sgs/lorder/lorder.sh
+@@ -36,25 +36,24 @@ else
+ fi
+ trap "rm -f $TDIR/$$symdef $TDIR/$$symref $TDIR/$$tmp; exit"  1 2 13 15
+ PFX=
+-WHERE=/usr/bin
+ 
+ USAGE="Usage: ${PFX}lorder file ..."
+ for i in "$@"
+ do
+ 	case "$i" in
+-	-*)	echo "$USAGE";
++	-*)	echo "$USAGE" >&2;
+ 		exit 2;;
+ 	esac
+ 
+ 	if [ ! -r "$i" ]
+ 	then
+-		echo "${PFX}lorder: $i: cannot open"
++		echo "${PFX}lorder: $i: cannot open" >&2
+ 		exit 2;
+ 	fi
+ done
+ 
+ case $# in
+-0)	echo "$USAGE"
++0)	echo "$USAGE" >&2
+ 	exit 2;;
+ 1)	case $1 in
+ 	*.o)	set $1 $1
+@@ -85,7 +84,7 @@ esac
+ #	symbol referenced (symref) file.
+ #
+ #
+-${WHERE}/${PFX}nm -p $* 2>$TDIR/$$tmp | sed -e '/^[ 	]*$/d' -e '
++${NM:-${PFX}nm} -p $* 2>$TDIR/$$tmp | sed -e '/^[ 	]*$/d' -e '
+ 	/^[0-9]* R $/d
+ 	/ [[:lower:]FLS] /d
+ 	/[^]]:$/{

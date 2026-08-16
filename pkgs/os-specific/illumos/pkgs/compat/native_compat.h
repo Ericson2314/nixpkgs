@@ -1,0 +1,116 @@
+/*
+ * This file and its contents are supplied under the terms of the
+ * Common Development and Distribution License ("CDDL"), version 1.0.
+ * You may only use this file in accordance with the terms of version
+ * 1.0 of the CDDL.
+ *
+ * A full copy of the text of the CDDL should have accompanied this
+ * source.  A copy of the CDDL is also available via the Internet at
+ * http://www.illumos.org/license/CDDL.
+ */
+
+/*
+ * Compatibility shims for building the small onbld ELF tools -- elfextract,
+ * mbh_patch, vtfontcvt -- on a host whose libc is not illumos'.
+ * Force-included (via -include), so it must be safe to include before
+ * anything else.
+ *
+ * The staged headers alongside this file are illumos' own, and they expect
+ * illumos' <sys/types.h> to have already supplied the "_t" spellings of the
+ * base integer types; a foreign libc supplies none of it.  Nothing here is
+ * illumos-specific behaviour, it is purely the vocabulary those headers
+ * assume.  Compare tools/sgs/native/native_compat.h and
+ * tools/ctf/native/native_compat.h, which do the same job for the native
+ * link-editor and the CTF tools.
+ */
+
+#ifndef	_ONBLD_NATIVE_COMPAT_H
+#define	_ONBLD_NATIVE_COMPAT_H
+
+/*
+ * On illumos every sys header reaches <sys/isa_defs.h> by way of
+ * <sys/param.h>.  Here <sys/param.h> is the host's, so the staged illumos
+ * headers would never see _BIT_FIELDS_LTOH, _LP64 and friends.  Pull it in up
+ * front instead.  <sys/ccompile.h> likewise supplies __GNU_INLINE and the
+ * __sun_attr__ family, which on illumos arrive via <sys/types.h>.
+ */
+#include <sys/isa_defs.h>
+#include <sys/ccompile.h>
+
+#include <stddef.h>
+#include <stdint.h>
+#include <sys/types.h>
+/*
+ * illumos' <strings.h> pulls in <string.h>; the host's does not.
+ */
+#include <string.h>
+#include <strings.h>
+
+#ifdef	__cplusplus
+extern "C" {
+#endif
+
+#ifndef	_BOOLEAN_T
+#define	_BOOLEAN_T
+typedef enum { B_FALSE, B_TRUE } boolean_t;
+#endif
+
+typedef unsigned char		uchar_t;
+typedef unsigned short		ushort_t;
+typedef unsigned int		uint_t;
+typedef unsigned long		ulong_t;
+typedef long long		longlong_t;
+typedef unsigned long long	u_longlong_t;
+
+/*
+ * illumos' <sys/int_types.h> announces the availability of 64-bit integer
+ * types this way.  We do not stage that header -- it redefines the whole
+ * intN_t family and would collide with the host's <stdint.h> -- so state the
+ * fact directly.
+ */
+#ifndef	_INT64_TYPE
+#define	_INT64_TYPE
+#endif
+#ifndef	_LONGLONG_TYPE
+#define	_LONGLONG_TYPE
+#endif
+
+/*
+ * illumos' <sys/sysmacros.h> carries these; the host's has only the
+ * major/minor/makedev trio, so a bare #include silently loses them.
+ * mbh_patch.c uses P2ROUNDUP.
+ */
+#ifndef	MAX
+#define	MAX(a, b)	((a) < (b) ? (b) : (a))
+#endif
+#ifndef	MIN
+#define	MIN(a, b)	((a) > (b) ? (b) : (a))
+#endif
+#ifndef	howmany
+#define	howmany(x, y)	(((x) + ((y) - 1)) / (y))
+#endif
+#ifndef	roundup
+#define	roundup(x, y)	((((x) + ((y) - 1)) / (y)) * (y))
+#endif
+#ifndef	P2ROUNDUP
+#define	P2ROUNDUP(x, align)	(-(-(x) & -(align)))
+#endif
+#ifndef	P2PHASE
+#define	P2PHASE(x, align)	((x) & ((align) - 1))
+#endif
+#ifndef	P2ALIGN
+#define	P2ALIGN(x, align)	((x) & -(align))
+#endif
+#ifndef	IS_P2ALIGNED
+#define	IS_P2ALIGNED(v, a)	((((uintptr_t)(v)) & ((uintptr_t)(a) - 1)) == 0)
+#endif
+/* Used by common/lz4/lz4.c, which vtfontcvt links in. */
+#ifndef	__DECONST
+#define	__DECONST(type, var)	((type)(uintptr_t)(const void *)(var))
+#endif
+
+#ifdef	__cplusplus
+}
+#endif
+
+#endif	/* _ONBLD_NATIVE_COMPAT_H */

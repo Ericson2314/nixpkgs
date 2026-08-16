@@ -1,0 +1,896 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Sat, 8 Aug 2026 17:11:04 -0400
+Subject: [PATCH] tools: build `lex` and `yacc` on a non-illumos host
+
+`usr/src/tools/{lex,yacc}` exist to give a cross-build the gate's own
+scanner and parser generators, which `Makefile.master` then names as
+`$(ONBLD_TOOLS)/bin/$(MACH)/{lex,yacc}`. They do not build on a host
+without illumos headers, because both include `<widec.h>`.
+
+`<widec.h>` is `<wchar.h>` plus the EUC codeset machinery and the
+pre-standard "wide string" functions. lex and yacc use only five of the
+latter -- `wslen`, `wscpy`, `wscmp`, `wsprintf` and `watoi` -- and
+otherwise want nothing the host's `<wchar.h>` does not already provide.
+
+Add a `<widec.h>` shim under `cmd/sgs/include`, which both tool Makefiles
+already put on the include path as `-I$(SGSDIR)/include`, so no Makefile
+changes are needed. It maps those five onto their ISO C equivalents.
+`wsprintf` is the only one that is not a rename: it takes a *narrow*
+format string and emits wide characters, so `swprintf` is not a drop-in
+and the shim formats narrow and widens the result.
+
+Where a real `<widec.h>` exists it is used unchanged, via
+`__has_include_next`. That test, rather than `#ifdef __sun`, is what makes
+this work: `Makefile.master` passes `-D__sun` to the *native* compiles as
+well as the target ones, so `__sun` says nothing about which libc's
+headers are in front of the compiler.
+
+Assisted-By: Claude <noreply@anthropic.com>
+---
+ usr/src/cmd/sgs/include/sgs.h       | 31 +++++++++--
+ usr/src/cmd/sgs/include/widec.h     | 81 +++++++++++++++++++++++++++++
+ usr/src/cmd/sgs/lex/common/header.c |  2 +-
+ usr/src/cmd/sgs/lex/common/ldefs.h  | 13 ++---
+ usr/src/cmd/sgs/lex/common/main.c   |  7 +++
+ usr/src/cmd/sgs/lex/common/once.h   | 10 ++--
+ usr/src/cmd/sgs/lex/common/parser.y | 40 ++++++++------
+ usr/src/cmd/sgs/lex/common/sub1.c   | 12 ++---
+ usr/src/cmd/sgs/lex/common/sub2.c   |  4 +-
+ usr/src/cmd/sgs/lex/common/sub3.c   |  8 +--
+ usr/src/cmd/sgs/yacc/common/y1.c    | 14 ++---
+ usr/src/cmd/sgs/yacc/common/y2.c    | 42 +++++++--------
+ usr/src/cmd/sgs/yacc/common/y3.c    | 22 ++++----
+ usr/src/cmd/sgs/yacc/common/y4.c    |  2 +-
+ usr/src/tools/lex/Makefile          |  2 +-
+ usr/src/tools/yacc/Makefile         |  2 +-
+ 16 files changed, 207 insertions(+), 85 deletions(-)
+ create mode 100644 usr/src/cmd/sgs/include/widec.h
+
+diff --git a/usr/src/cmd/sgs/include/sgs.h b/usr/src/cmd/sgs/include/sgs.h
+index 89287a2ed7..e730582765 100644
+--- a/usr/src/cmd/sgs/include/sgs.h
++++ b/usr/src/cmd/sgs/include/sgs.h
+@@ -45,14 +45,39 @@ extern "C" {
+ #endif
+ 
+ #ifndef	_ASM
++#include <stdlib.h>
++#include <stdarg.h>
++#include <assert.h>
++/*
++ * lex and yacc include this header only for the SGU_* identification strings
++ * below, and are built for the *build* host, where illumos' ELF headers are
++ * not available. Let them opt out of the ELF vocabulary.
++ */
++#ifndef	SGS_NO_ELF
+ #include <sys/types.h>
+ #include <sys/machelf.h>
+ #include <sys/stddef.h>
+-#include <stdlib.h>
+-#include <stdarg.h>
+ #include <libelf.h>
+-#include <assert.h>
+ #include <alist.h>
++#else
++#include <stddef.h>
++#include <sys/types.h>
++/*
++ * The rest of this header is written in illumos' _t integer spellings. A
++ * host <sys/types.h> need not have them; redeclaring a typedef with the same
++ * underlying type is legal C11, so this is a no-op where they already exist.
++ */
++typedef unsigned char	uchar_t;
++typedef unsigned short	ushort_t;
++typedef unsigned int	uint_t;
++typedef unsigned long	ulong_t;
++/*
++ * From <sys/ccompile.h>, which arrives with illumos' <sys/types.h>.
++ */
++#ifndef	__NORETURN
++#define	__NORETURN	__attribute__((__noreturn__))
++#endif
++#endif	/* SGS_NO_ELF */
+ #endif	/* _ASM */
+ 
+ /*
+diff --git a/usr/src/cmd/sgs/include/widec.h b/usr/src/cmd/sgs/include/widec.h
+new file mode 100644
+index 0000000000..41f699aee0
+--- /dev/null
++++ b/usr/src/cmd/sgs/include/widec.h
+@@ -0,0 +1,81 @@
++/*
++ * This file and its contents are supplied under the terms of the
++ * Common Development and Distribution License ("CDDL"), version 1.0.
++ * You may only use this file in accordance with the terms of version
++ * 1.0 of the CDDL.
++ *
++ * A full copy of the text of the CDDL should have accompanied this
++ * source.  A copy of the CDDL is also available via the Internet at
++ * http://www.illumos.org/license/CDDL.
++ */
++
++/*
++ * Copyright 2025 the illumos project.
++ */
++
++/*
++ * A <widec.h> stand-in for building the build-host tools (lex, yacc) on a
++ * system that does not have one.
++ *
++ * illumos' <widec.h> is <wchar.h> plus the EUC codeset machinery and the
++ * pre-standard "wide string" functions -- ws*() rather than wcs*().  lex and
++ * yacc use only the latter, and only five of them, so map those onto their
++ * ISO C equivalents and leave everything else to the host's <wchar.h>.
++ *
++ * On illumos itself this header must not shadow the real one. It is reached
++ * through -I$(SGSDIR)/include, so defer to whatever <widec.h> comes later on
++ * the include path if there is one. Testing for that directly, rather than
++ * for __sun, is deliberate: Makefile.master passes -D__sun to the *native*
++ * compiles too.
++ */
++
++#ifndef	_SGS_NATIVE_WIDEC_H
++#define	_SGS_NATIVE_WIDEC_H
++
++#if defined(__has_include_next) && __has_include_next(<widec.h>)
++
++#include_next <widec.h>
++
++#else
++
++#include <ctype.h>
++#include <stdlib.h>
++#include <wchar.h>
++#include <wctype.h>
++
++#define	wslen(s)		wcslen(s)
++#define	wscpy(d, s)		wcscpy(d, s)
++#define	wscmp(a, b)		wcscmp(a, b)
++
++/*
++ * wsprintf(3) takes a *narrow* format string and writes wide characters,
++ * so swprintf() is not a drop-in.  Both callers in yacc format a short
++ * fixed-shape string, so render it narrow and widen the result.
++ */
++#define	wsprintf(buf, ...)						\
++	({								\
++		char _wsbuf[128];					\
++		int _wsn = snprintf(_wsbuf, sizeof (_wsbuf), __VA_ARGS__); \
++		(void) mbstowcs((buf), _wsbuf, sizeof (_wsbuf));	\
++		_wsn;							\
++	})
++
++/*
++ * watoi(3) is atoi(3) over a wide string.  lex uses it for the numeric
++ * argument of a %-directive, which is always plain ASCII digits.
++ */
++#define	watoi(s)		((int)wcstol((s), NULL, 10))
++
++/*
++ * wcsetno(3) returns which of the EUC codesets a wide character belongs to:
++ * 0 for the single-byte (ASCII) set, 1-3 for the supplementary ones. lex uses
++ * it for one diagnostic -- rejecting a [a-z] range whose endpoints come from
++ * different codesets. Off illumos there is no EUC partitioning to consult, so
++ * distinguish only "ASCII" from "not", which gives the identical answer for
++ * every range that stays inside ASCII and still catches one that does not.
++ */
++#define	wcsetno(c)		(((c) < 0x80) ? 0 : 1)
++
++#endif	/* __sun */
++
++#endif	/* _SGS_NATIVE_WIDEC_H */
+diff --git a/usr/src/cmd/sgs/lex/common/header.c b/usr/src/cmd/sgs/lex/common/header.c
+index 3ea0a316b1..fa490e6d03 100644
+--- a/usr/src/cmd/sgs/lex/common/header.c
++++ b/usr/src/cmd/sgs/lex/common/header.c
+@@ -170,7 +170,7 @@ chd1(void)
+ "?(yylineno++,yytchar):yytchar)==EOF?0:yytchar)");
+ 		(void) fprintf(fout, "#endif\n");
+ 		(void) fprintf(fout,
+-		"# define ECHO (void)fprintf(yyout, \"%%ws\",yytext)\n");
++		"# define ECHO (void)fprintf(yyout, \"%%ls\",yytext)\n");
+ 		(void) fprintf(fout,
+ 		"# define REJECT { nstr = yyreject_w(); goto yyfussy;}\n");
+ 		(void) fprintf(fout, "#define yyless yyless_w\n");
+diff --git a/usr/src/cmd/sgs/lex/common/ldefs.h b/usr/src/cmd/sgs/lex/common/ldefs.h
+index 18758ea191..069323be54 100644
+--- a/usr/src/cmd/sgs/lex/common/ldefs.h
++++ b/usr/src/cmd/sgs/lex/common/ldefs.h
+@@ -31,6 +31,7 @@
+ 
+ #include <stdio.h>
+ #include <stdlib.h>
++#include <stdint.h>
+ 
+ #include <widec.h>
+ #include <wctype.h>
+@@ -188,10 +189,10 @@ extern int fptr;
+ extern int prev;	/* previous input character */
+ extern int pres;	/* present input character */
+ extern int peek;	/* next input character */
+-extern int *name;
+-extern int *left;
+-extern int *right;
+-extern int *parent;
++extern intptr_t *name;
++extern intptr_t *left;
++extern intptr_t *right;
++extern intptr_t *parent;
+ extern Boolean *nullstr;
+ extern int tptr;
+ extern CHR pushc[TOKENSIZE];
+@@ -274,8 +275,8 @@ int cpyact(void);
+ int lookup(CHR *s, CHR **t);
+ int usescape(int c);
+ int alpha(int c);
+-int mn2(int a, int d, int c);
+-int mn1(int a, int d);
++int mn2(int a, intptr_t d, intptr_t c);
++int mn1(int a, intptr_t d);
+ int mn0(int a);
+ int dupl(int n);
+ 
+diff --git a/usr/src/cmd/sgs/lex/common/main.c b/usr/src/cmd/sgs/lex/common/main.c
+index 1422ec9740..b0fa5cfa55 100644
+--- a/usr/src/cmd/sgs/lex/common/main.c
++++ b/usr/src/cmd/sgs/lex/common/main.c
+@@ -33,6 +33,7 @@
+ /* Copyright 1976, Bell Telephone Laboratories, Inc. */
+ 
+ #include <string.h>
++#include <unistd.h>
+ #include "once.h"
+ #include "sgs.h"
+ #include <locale.h>
+@@ -75,6 +76,12 @@ main(int argc, char **argv)
+ 	char *ypath;
+ 	Boolean eoption = 0, woption = 0;
+ 
++	/*
++	 * Not a static initialiser: stderr is not a constant expression in
++	 * every libc.
++	 */
++	errorf = stderr;
++
+ 	sargv = argv;
+ 	sargc = argc;
+ 	(void) setlocale(LC_ALL, "");
+diff --git a/usr/src/cmd/sgs/lex/common/once.h b/usr/src/cmd/sgs/lex/common/once.h
+index 251996f3c9..ab15a08f28 100644
+--- a/usr/src/cmd/sgs/lex/common/once.h
++++ b/usr/src/cmd/sgs/lex/common/once.h
+@@ -63,7 +63,7 @@ int	ctable[2*NCH] = {
+ };
+ 
+ int	ZCH = NCH;
+-FILE	*fout = NULL, *errorf = {stderr};
++FILE	*fout = NULL, *errorf = NULL;
+ int	sect = DEFSECTION;
+ int	prev = '\n';	/* previous input character */
+ int	pres = '\n';	/* present input character */
+@@ -106,10 +106,10 @@ int pflag;
+ int chset;	/* 1 = char set modified */
+ FILE *fin, *fother;
+ int fptr;
+-int *name;
+-int *left;
+-int *right;
+-int *parent;
++intptr_t *name;
++intptr_t *left;
++intptr_t *right;
++intptr_t *parent;
+ Boolean *nullstr;
+ int tptr;
+ CHR pushc[TOKENSIZE];
+diff --git a/usr/src/cmd/sgs/lex/common/parser.y b/usr/src/cmd/sgs/lex/common/parser.y
+index da5d4e94b4..9cbb8d42d5 100644
+--- a/usr/src/cmd/sgs/lex/common/parser.y
++++ b/usr/src/cmd/sgs/lex/common/parser.y
+@@ -35,7 +35,7 @@
+ #define YYSTYPE union _yystype_
+ union _yystype_
+ {
+-	int	i;
++	intptr_t	i;
+ 	CHR	*cp;
+ };
+ int	peekon = 0; /* need this to check if "^" came in a definition section */
+@@ -313,20 +313,28 @@ yylex(void)
+ 						sectbegin = TRUE;
+ 						i = treesize*(sizeof(*name)+sizeof(*left)+
+ 							sizeof(*right)+sizeof(*nullstr)+sizeof(*parent))+ALITTLEEXTRA;
+-						c = (int)myalloc(i,1);
+-						if(c == 0)
++						/*
++						 * Probe that there is enough memory for the
++						 * parse tree, then hand it straight back.
++						 * This used to round-trip the pointer through
++						 * an int, which truncates it in a 64-bit
++						 * build and makes the free() below corrupt
++						 * the heap -- lex then dies in a later
++						 * allocation, and yacc reports a double free.
++						 */
++						p = (CHR *)myalloc(i,1);
++						if(p == NULL)
+ 							error("Too little core for parse tree");
+-						p = (CHR *)c;
+ 						free(p);
+ 						/*LINTED: E_BAD_PTR_CAST_ALIGN*/
+-						name = (int *)myalloc(treesize,sizeof(*name));
++						name = (intptr_t *)myalloc(treesize,sizeof(*name));
+ 						/*LINTED: E_BAD_PTR_CAST_ALIGN*/
+-						left = (int *)myalloc(treesize,sizeof(*left));
++						left = (intptr_t *)myalloc(treesize,sizeof(*left));
+ 						/*LINTED: E_BAD_PTR_CAST_ALIGN*/
+-						right = (int *)myalloc(treesize,sizeof(*right));
++						right = (intptr_t *)myalloc(treesize,sizeof(*right));
+ 						nullstr = myalloc(treesize,sizeof(*nullstr));
+ 						/*LINTED: E_BAD_PTR_CAST_ALIGN*/
+-						parent = (int *)myalloc(treesize,sizeof(*parent));
++						parent = (intptr_t *)myalloc(treesize,sizeof(*parent));
+ 						if(name == 0 || left == 0 || right == 0 || parent == 0 || nullstr == 0)
+ 							error("Too little core for parse tree");
+ 						return(freturn(DELIM));
+@@ -470,7 +478,7 @@ Character table (%t) is supported only in ASCII compatibility mode.\n");
+ 							if(p[0]=='/' && p[1]=='*')
+ 								cpycom(p);
+ 							else
+-								(void) fprintf(fout, "%ws\n", p);
++								(void) fprintf(fout, "%ls\n", p);
+ 						if(p[0] == '%') continue;
+ 						if (*p) error("EOF before %%%%");
+ 						else error("EOF before %%}");
+@@ -500,7 +508,7 @@ start:
+ 							if (*t == 0) continue;
+ 							i = sptr*2;
+ 							if(!ratfor)(void) fprintf(fout,"# ");
+-							(void) fprintf(fout, "define %ws %d\n", t, i);
++							(void) fprintf(fout, "define %ls %d\n", t, i);
+ 							scopy(t,sp);
+ 							sname[sptr] = sp;
+ 							/* XCU4: save exclusive flag with start name */
+@@ -521,7 +529,7 @@ start:
+ 				case ' ': case '\t':		/* must be code */
+ 					lgate();
+ 					if( p[1]=='/' && p[2]=='*' ) cpycom(p);
+-					else (void) fprintf(fout, "%ws\n", p);
++					else (void) fprintf(fout, "%ls\n", p);
+ 					continue;
+ 				case '/':	/* look for comments */
+ 					lgate();
+@@ -619,7 +627,7 @@ start:
+ 						if(buf[0]=='/' && buf[1]=='*')
+ 							cpycom(buf);
+ 						else
+-							(void) fprintf(fout, "%ws\n", buf);
++							(void) fprintf(fout, "%ls\n", buf);
+ 					continue;
+ 					}
+ 				if(peek == '%'){
+@@ -706,7 +714,7 @@ start:
+ 					token[i] = 0;
+ 					i = lookup(token,def);
+ 					if(i < 0)
+-						error("definition %ws not found",token);
++						error("definition %ls not found",token);
+ 					else
+ 						munput('s',(CHR *)(subs[i]));
+ 					if (peek == '^')
+@@ -736,7 +744,7 @@ start:
+ 					if(i < 0) {
+ 						fatal = 0;
+ 						n_error++;
+-						error("undefined start condition %ws",token);
++						error("undefined start condition %ls",token);
+ 						fatal = 1;
+ 						continue;
+ 						}
+@@ -932,9 +940,9 @@ Character range specified between different codesets.");
+ 		else
+ 			(void) fprintf(fout,
+ 				"\n# line %d \"%s\"\n", yyline-1, sargv[optind]);
+-		(void) fprintf(fout, "%ws\n", buf);
++		(void) fprintf(fout, "%ls\n", buf);
+ 		while(getl(buf) && !eof)
+-			(void) fprintf(fout, "%ws\n", buf);
++			(void) fprintf(fout, "%ls\n", buf);
+         }
+ 
+ 	return(freturn(0));
+diff --git a/usr/src/cmd/sgs/lex/common/sub1.c b/usr/src/cmd/sgs/lex/common/sub1.c
+index e63a55e34b..17ca8ed078 100644
+--- a/usr/src/cmd/sgs/lex/common/sub1.c
++++ b/usr/src/cmd/sgs/lex/common/sub1.c
+@@ -673,7 +673,7 @@ gch(void)
+ }
+ 
+ int
+-mn2(int a, int d, int c)
++mn2(int a, intptr_t d, intptr_t c)
+ {
+ 	if (tptr >= treesize) {
+ 		tptr++;
+@@ -720,7 +720,7 @@ mn2(int a, int d, int c)
+ }
+ 
+ int
+-mn1(int a, int d)
++mn1(int a, intptr_t d)
+ {
+ 	if (tptr >= treesize) {
+ 		tptr++;
+@@ -889,13 +889,13 @@ sect1dump(void)
+ 		(void) printf("str	trans\n");
+ 		i = -1;
+ 		while (def[++i])
+-			(void) printf("%ws\t%ws\n", def[i], subs[i]);
++			(void) printf("%ls\t%ls\n", def[i], subs[i]);
+ 	}
+ 	if (sname[0]) {
+ 		(void) printf("start names\n");
+ 		i = -1;
+ 		while (sname[++i])
+-			(void) printf("%ws\n", sname[i]);
++			(void) printf("%ls\n", sname[i]);
+ 	}
+ 	if (chset == TRUE) {
+ 		(void) printf("char set changed\n");
+@@ -988,14 +988,14 @@ treedump(void)
+ 				p = (CHR *)right[t];
+ 				(void) printf("exstart %s", sname[*p++-1]);
+ 				while (*p)
+-					(void) printf(", %ws", sname[*p++-1]);
++					(void) printf(", %ls", sname[*p++-1]);
+ 				(void) printf(" %d", left[t]);
+ 				break;
+ 			case RSCON:
+ 				p = (CHR *)right[t];
+ 				(void) printf("start %s", sname[*p++-1]);
+ 				while (*p)
+-					(void) printf(", %ws", sname[*p++-1]);
++					(void) printf(", %ls", sname[*p++-1]);
+ 				(void) printf(" %d", left[t]);
+ 				break;
+ 			case DOT:
+diff --git a/usr/src/cmd/sgs/lex/common/sub2.c b/usr/src/cmd/sgs/lex/common/sub2.c
+index 399503d7d9..c0fe834178 100644
+--- a/usr/src/cmd/sgs/lex/common/sub2.c
++++ b/usr/src/cmd/sgs/lex/common/sub2.c
+@@ -86,7 +86,7 @@ cfoll(int v)
+ 				if (pcptr > pchar + pchlen)
+ 					error(
+ 					"Too many packed character classes");
+-				left[v] = (int)p;
++				left[v] = (intptr_t)p;
+ 				name[v] = RCCL;	/* RNCCL eliminated */
+ #ifdef DEBUG
+ 				if (debug && *p) {
+@@ -335,7 +335,7 @@ cgoto(void)
+ #ifdef DEBUG
+ 		if (debug) {
+ 			if (stnum > 1)
+-				(void) printf("%ws:\n", sname[stnum/2]);
++				(void) printf("%ls:\n", sname[stnum/2]);
+ 			pstate(stnum);
+ 		}
+ #endif
+diff --git a/usr/src/cmd/sgs/lex/common/sub3.c b/usr/src/cmd/sgs/lex/common/sub3.c
+index 4b9cea94ab..20c4572d0d 100644
+--- a/usr/src/cmd/sgs/lex/common/sub3.c
++++ b/usr/src/cmd/sgs/lex/common/sub3.c
+@@ -137,7 +137,7 @@ remch(wchar_t c)
+ 		if (!isascii(c)) {
+ 			if (iswprint(c))
+ 				warning(
+-"Non-ASCII character '%wc' in pattern; use -w or -e lex option.", c);
++"Non-ASCII character '%lc' in pattern; use -w or -e lex option.", c);
+ 			else warning(
+ "Non-ASCII character of value %#x in pattern; use -w or -e lex option.", c);
+ 		}
+@@ -340,9 +340,9 @@ repbycgid(void)
+ 			while (ccp < ccptr && scomp(ccltoken, ccp) != 0)
+ 				ccp++;
+ 			if (ccp < ccptr) {  /* character class found in ccl */
+-				left[i] = (int)ccp;
++				left[i] = (intptr_t)ccp;
+ 			} else { /* not in ccl, add it */
+-				left[i] = (int)ccptr;
++				left[i] = (intptr_t)ccptr;
+ 				scopy(ccltoken, ccptr);
+ 				ccptr += slength(ccltoken) + 1;
+ 				if (ccptr > ccl + CCLSIZE)
+@@ -374,7 +374,7 @@ repbycgid(void)
+ 			}
+ 			/* Mimic mn1(RCCL,psave)... */
+ 			name[i] = RCCL;
+-			left[i] = (int)psave;
++			left[i] = (intptr_t)psave;
+ 			cclinter(1);
+ 		}
+ 	}
+diff --git a/usr/src/cmd/sgs/yacc/common/y1.c b/usr/src/cmd/sgs/yacc/common/y1.c
+index 0c5d9ba324..5c58a0ae95 100644
+--- a/usr/src/cmd/sgs/yacc/common/y1.c
++++ b/usr/src/cmd/sgs/yacc/common/y1.c
+@@ -592,7 +592,7 @@ prlook(LOOKSETS *p)
+ 		(void) fprintf(foutput, " { ");
+ 		TLOOP(j) {
+ 			if (BIT(pp, j))
+-				(void) fprintf(foutput, "%ws ", symnam(j));
++				(void) fprintf(foutput, "%ls ", symnam(j));
+ 		}
+ 		(void) fprintf(foutput,  "}");
+ 	}
+@@ -652,7 +652,7 @@ cpres(void)
+  *	look at translated yacc document.
+  */
+ 			error(gettext(
+-			"undefined nonterminal: %ws"),
++			"undefined nonterminal: %ls"),
+ 			    nontrst[i].name);
+ 		}
+ 	}
+@@ -725,7 +725,7 @@ cpfir(void)
+ 		return;
+ 	if ((foutput != NULL)) {
+ 		NTLOOP(i) {
+-			(void) fprintf(foutput, "\n%ws: ", nontrst[i].name);
++			(void) fprintf(foutput, "\n%ls: ", nontrst[i].name);
+ 			prlook(pfirst[i]);
+ 			(void) fprintf(foutput, " %d\n", pempty[i]);
+ 		}
+@@ -825,7 +825,7 @@ putitem(int *ptr, LOOKSETS *lptr)
+ 
+ 	if (pidebug && (foutput != NULL))
+ 		(void) fprintf(foutput,
+-		    "putitem(%ws), state %d\n", writem(ptr), nstate);
++		    "putitem(%ls), state %d\n", writem(ptr), nstate);
+ 	j = pstate[nstate+1];
+ 	j->pitem = ptr;
+ 	if (!nolook)
+@@ -895,7 +895,7 @@ cempty(void)
+  *	translated in these documents also.
+  */
+ 			error(gettext(
+-			"nonterminal %ws never derives any token string"),
++			"nonterminal %ls never derives any token string"),
+ 			    nontrst[i].name);
+ 		}
+ 	}
+@@ -991,7 +991,7 @@ stagen(void)
+ 			NTLOOP(j) {
+ 				if (temp1[j])
+ 					(void) fprintf(foutput,
+-					    "%ws %d, ", nontrst[j].name,
++					    "%ls %d, ", nontrst[j].name,
+ 					    temp1[j]);
+ 			}
+ 			(void) fprintf(foutput, "\n");
+@@ -1125,7 +1125,7 @@ closure(int i)
+ 			if (u->flag)
+ 				(void) fprintf(foutput, "flag set!\n");
+ 			u->flag = 0;
+-			(void) fprintf(foutput, "\t%ws", writem(u->pitem));
++			(void) fprintf(foutput, "\t%ls", writem(u->pitem));
+ 			prlook(&u->ws);
+ 			(void) fprintf(foutput,  "\n");
+ 		}
+diff --git a/usr/src/cmd/sgs/yacc/common/y2.c b/usr/src/cmd/sgs/yacc/common/y2.c
+index 17b1f9a424..a9a2c64955 100644
+--- a/usr/src/cmd/sgs/yacc/common/y2.c
++++ b/usr/src/cmd/sgs/yacc/common/y2.c
+@@ -395,7 +395,7 @@ setup(int argc, char *argv[])
+  *	This message is passed to error() function.
+  */
+ 					error(gettext(
+-					    "type redeclaration of token %ws"),
++					    "type redeclaration of token %ls"),
+ 					    tokset[t].name);
+ 					}
+ 				else
+@@ -410,7 +410,7 @@ setup(int argc, char *argv[])
+  *	yacc man page or yacc user's document.
+  */
+ 					error(gettext(
+-				"type redeclaration of nonterminal %ws"),
++				"type redeclaration of nonterminal %ls"),
+ 					    nontrst[t-NTBASE].name);
+ 					}
+ 				else
+@@ -486,7 +486,7 @@ setup(int argc, char *argv[])
+  *	This message is passed to error() function.
+  */
+ 						error(gettext(
+-				"%ws is not a token."),
++				"%ls is not a token."),
+ 						    tokname);
+ 					}
+ 					if (lev & ~04) {
+@@ -496,7 +496,7 @@ setup(int argc, char *argv[])
+  *	This message is passed to error() function.
+  */
+ 							error(gettext(
+-				"redeclaration of precedence of %ws"),
++				"redeclaration of precedence of %ls"),
+ 							    tokname);
+ 						SETASC(toklev[j], lev);
+ 						SETPLEV(toklev[j], i);
+@@ -504,7 +504,7 @@ setup(int argc, char *argv[])
+ 						if (ASSOC(toklev[j]))
+ 							(void) warning(1,
+ 							    gettext(
+-				"redeclaration of precedence of %ws."),
++				"redeclaration of precedence of %ls."),
+ 							    tokname);
+ 						SETASC(toklev[j], lev);
+ 						}
+@@ -515,7 +515,7 @@ setup(int argc, char *argv[])
+  * TRANSLATION_NOTE  -- This is a message from yacc.
+  *	This message is passed to error() function.
+  */
+-						"redeclaration of type of %ws"),
++						"redeclaration of type of %ls"),
+ 							    tokname);
+ 						SETTYPE(toklev[j], ty);
+ 						}
+@@ -527,7 +527,7 @@ setup(int argc, char *argv[])
+  *	This message is passed to error() function.
+  */
+ 							error(gettext(
+-				"type number of %ws should be defined earlier"),
++				"type number of %ls should be defined earlier"),
+ 							    tokset[j].name);
+ 							}
+ 						if (numbval >= -YYFLAG1) {
+@@ -691,7 +691,7 @@ setup(int argc, char *argv[])
+  *	Do not translate %%prec.
+  */
+ 				error(gettext(
+-				    "nonterminal %ws illegal after %%prec"),
++				    "nonterminal %ls illegal after %%prec"),
+ 				    nontrst[j-NTBASE].name);
+ 			levprd[nprod] = toklev[j] & ~04;
+ 			t = gettok();
+@@ -1031,7 +1031,7 @@ defout(void)
+ 		cp = tokset[i].name;
+ 		if (*cp == L' ')	/* literals */
+ 		{
+-			(void) fprintf(fdebug, "\t\"%ws\",\t%d,\n",
++			(void) fprintf(fdebug, "\t\"%ls\",\t%d,\n",
+ 			    tokset[i].name + 1, tokset[i].value);
+ 			continue;	/* was cp++ */
+ 		}
+@@ -1045,14 +1045,14 @@ defout(void)
+ 		}
+ 
+ 		(void) fprintf(fdebug,
+-		    "\t\"%ws\",\t%d,\n", tokset[i].name,
++		    "\t\"%ls\",\t%d,\n", tokset[i].name,
+ 		    tokset[i].value);
+ 		(void) fprintf(ftable,
+-		    "# define %ws %d\n", tokset[i].name,
++		    "# define %ls %d\n", tokset[i].name,
+ 		    tokset[i].value);
+ 		if (fdefine != NULL)
+ 			(void) fprintf(fdefine,
+-			    "# define %ws %d\n",
++			    "# define %ls %d\n",
+ 			    tokset[i].name,
+ 			    tokset[i].value);
+ 
+@@ -1210,7 +1210,7 @@ begin:
+ 		if (!wscmp(tokname, L"union"))
+ 			return (UNION);
+ 		error(gettext(
+-		    "invalid escape, or illegal reserved word: %ws"),
++		    "invalid escape, or illegal reserved word: %ls"),
+ 		    tokname);
+ 		}
+ 
+@@ -1246,7 +1246,7 @@ fdtype(int t)
+ 		v = TYPE(toklev[t]);
+ 	if (v <= 0)
+ 		error(gettext(
+-		    "must specify type for %ws"),
++		    "must specify type for %ls"),
+ 		    (t >= NTBASE) ? nontrst[t-NTBASE].name:
+ 		    tokset[t].name);
+ 	return (v);
+@@ -1272,7 +1272,7 @@ chfind(int t, wchar_t *s)
+ 	/* cannot find name */
+ 	if (t > 1)
+ 		error(gettext(
+-		"%ws should have been defined earlier"), s);
++		"%ls should have been defined earlier"), s);
+ 	return (defin(t, s));
+ }
+ 
+@@ -1455,7 +1455,7 @@ swt:
+ 				if (tok < 0)
+ 					tok = fdtype(*prdptr[nprod]);
+ 				(void) fprintf(faction,
+-				    ".%ws", typeset[tok]);
++				    ".%ls", typeset[tok]);
+ 			}
+ 			goto loop;
+ 		}
+@@ -1520,7 +1520,7 @@ swt:
+ 								/* CSTYLED */
+ 								fdtype(prdptr[nprod][i]);
+ 							(void) fprintf(faction,
+-							    ".%ws",
++							    ".%ls",
+ 							    typeset[tok]);
+ 						}
+ 						goto swt;
+@@ -1531,14 +1531,14 @@ swt:
+ 			 * (Likely id with $ in.)
+ 			 * If non-terminal is added, remove it from the list.
+ 			 */
+-			(void) fprintf(faction, "$%ws", tokname);
++			(void) fprintf(faction, "$%ls", tokname);
+ /*
+  * TRANSLATION_NOTE  -- This is a message from yacc.
+  *	This message is passed to warning() function.
+  *	Do not translate Ansi C.
+  */
+ 			warning(1, gettext(
+-	"Illegal character '$' in Ansi C symbol: %ws$%ws."),
++	"Illegal character '$' in Ansi C symbol: %ls$%ls."),
+ 			    id_name, tokname);
+ 
+ 			if (id_sw == 1)
+@@ -1580,7 +1580,7 @@ swt:
+ 				if (tok < 0)
+ 					tok = fdtype(prdptr[nprod][j+offset]);
+ 				(void) fprintf(faction,
+-				    ".%ws", typeset[tok]);
++				    ".%ls", typeset[tok]);
+ 			}
+ 			goto swt;
+ 		}
+@@ -1823,7 +1823,7 @@ lrprnt(void)	/* print out the left and right hand sides */
+ 		else
+ 			rhs = m_rhs;
+ 	}
+-	(void) fprintf(fdebug, "\t\"%ws :%ws\",\n", lhstext, rhs);
++	(void) fprintf(fdebug, "\t\"%ls :%ls\",\n", lhstext, rhs);
+ 	if (m_rhs)
+ 		free(m_rhs);
+ }
+diff --git a/usr/src/cmd/sgs/yacc/common/y3.c b/usr/src/cmd/sgs/yacc/common/y3.c
+index ddefb6359d..33bbac8363 100644
+--- a/usr/src/cmd/sgs/yacc/common/y3.c
++++ b/usr/src/cmd/sgs/yacc/common/y3.c
+@@ -90,7 +90,7 @@ output(void)
+ 							if (foutput != NULL)
+ 					(void) fprintf(foutput,
+ 				"\n%d: reduce/reduce conflict"
+-				" (red'ns %d and %d ) on %ws",
++				" (red'ns %d and %d ) on %ls",
+ 							i, -temp1[k],
+ 							lastred, symnam(k));
+ 							if (-temp1[k] > lastred)
+@@ -279,10 +279,10 @@ go2gen(int c)
+ 	/* now, we have temp1[c] = 1 if a goto on c in closure of cc */
+ 
+ 	if (g2debug && foutput != NULL) {
+-		(void) fprintf(foutput, "%ws: gotos on ",
++		(void) fprintf(foutput, "%ls: gotos on ",
+ 		    nontrst[c].name);
+ 		NTLOOP(i) if (temp1[i])
+-			(void) fprintf(foutput, "%ws ", nontrst[i].name);
++			(void) fprintf(foutput, "%ls ", nontrst[i].name);
+ 		(void) fprintf(foutput, "\n");
+ 	}
+ 
+@@ -321,7 +321,7 @@ precftn(int r, int t, int s)
+ 		if (foutput != NULL)
+ 			(void) fprintf(foutput,
+ 			    "\n%d: shift/reduce conflict"
+-			    " (shift %d, red'n %d) on %ws",
++			    " (shift %d, red'n %d) on %ls",
+ 			    s, temp1[t], r, symnam(t));
+ 		++zzsrconf;
+ 		return;
+@@ -435,20 +435,20 @@ wrstate(int i)
+ 		return;
+ 	(void) fprintf(foutput, "\nstate %d\n", i);
+ 	ITMLOOP(i, pp, qq) {
+-		(void) fprintf(foutput, "\t%ws\n", writem(pp->pitem));
++		(void) fprintf(foutput, "\t%ls\n", writem(pp->pitem));
+ 	}
+ 	if (tystate[i] == MUSTLOOKAHEAD) {
+ 		/* print out empty productions in closure */
+ 		WSLOOP(wsets + (pstate[i + 1] - pstate[i]), u) {
+ 			if (*(u->pitem) < 0)
+ 				(void) fprintf(foutput,
+-				    "\t%ws\n", writem(u->pitem));
++				    "\t%ls\n", writem(u->pitem));
+ 		}
+ 	}
+ 
+ 	/* check for state equal to another */
+ 	TLOOP(j0) if ((j1 = temp1[j0]) != 0) {
+-		(void) fprintf(foutput, "\n\t%ws  ", symnam(j0));
++		(void) fprintf(foutput, "\n\t%ls  ", symnam(j0));
+ 		if (j1 > 0) { /* shift, error, or accept */
+ 			if (j1 == ACCEPTCODE)
+ 				(void) fprintf(foutput,  "accept");
+@@ -472,7 +472,7 @@ wrstate(int i)
+ 	for (j0 = 1; j0 <= nnonter; ++j0) {
+ 		if (temp1[++j1])
+ 			(void) fprintf(foutput,
+-			    "\t%ws  goto %d\n",
++			    "\t%ls  goto %d\n",
+ 			    symnam(j0 + NTBASE), temp1[j1]);
+ 	}
+ }
+@@ -481,14 +481,14 @@ static void
+ wdef(wchar_t *s, int n)
+ {
+ 	/* output a definition of s to the value n */
+-	(void) fprintf(ftable, "# define %ws %d\n", s, n);
++	(void) fprintf(ftable, "# define %ls %d\n", s, n);
+ }
+ 
+ void
+ warray(wchar_t *s, int *v, int n)
+ {
+ 	int i;
+-	(void) fprintf(ftable, "static const yytabelem %ws[]={\n", s);
++	(void) fprintf(ftable, "static const yytabelem %ls[]={\n", s);
+ 	for (i = 0; i < n; ) {
+ 		if (i % 10 == 0)
+ 			(void) fprintf(ftable, "\n");
+@@ -519,7 +519,7 @@ hideprod(void)
+ 			++j;
+ 			if (foutput != NULL) {
+ 				(void) fprintf(foutput,
+-				    "Rule not reduced:   %ws\n",
++				    "Rule not reduced:   %ls\n",
+ 				    writem(prdptr[i]));
+ 			}
+ 		}
+diff --git a/usr/src/cmd/sgs/yacc/common/y4.c b/usr/src/cmd/sgs/yacc/common/y4.c
+index 482af5628d..8b1c2908bf 100644
+--- a/usr/src/cmd/sgs/yacc/common/y4.c
++++ b/usr/src/cmd/sgs/yacc/common/y4.c
+@@ -433,7 +433,7 @@ arout(wchar_t *s, int *v, int n)
+ {
+ 	int i;
+ 
+-	(void) fprintf(ftable, "static const yytabelem %ws[]={\n", s);
++	(void) fprintf(ftable, "static const yytabelem %ls[]={\n", s);
+ 	for (i = 0; i < n; ) {
+ 		if (i % 10 == 0)
+ 			(void) fprintf(ftable, "\n");
+diff --git a/usr/src/tools/lex/Makefile b/usr/src/tools/lex/Makefile
+index a65b3d6489..a6e6457ea2 100644
+--- a/usr/src/tools/lex/Makefile
++++ b/usr/src/tools/lex/Makefile
+@@ -22,7 +22,7 @@ OBJS =		main.o sub1.o sub2.o sub3.o header.o parser.o
+ 
+ include ../Makefile.tools
+ 
+-CPPFLAGS =	-I$(SGSDIR)/include
++CPPFLAGS =	-I$(SGSDIR)/include -DSGS_NO_ELF
+ CSTD=		$(CSTD_GNU99)
+ 
+ # unused labels in yaccpar
+diff --git a/usr/src/tools/yacc/Makefile b/usr/src/tools/yacc/Makefile
+index af6282f033..e22f0d4f1b 100644
+--- a/usr/src/tools/yacc/Makefile
++++ b/usr/src/tools/yacc/Makefile
+@@ -24,7 +24,7 @@ YACCPAR =	yaccpar
+ 
+ include ../Makefile.tools
+ 
+-CPPFLAGS =	-I$(SGSDIR)/include
++CPPFLAGS =	-I$(SGSDIR)/include -DSGS_NO_ELF
+ CSTD =		$(CSTD_GNU99)
+ 
+ ROOTYACCPAR =	$(YACCPAR:%=$(ROOTONBLDSHLIBCCS)/%)
