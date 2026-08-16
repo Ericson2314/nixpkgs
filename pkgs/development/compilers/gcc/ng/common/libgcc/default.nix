@@ -132,36 +132,14 @@ stdenv.mkDerivation (finalAttrs: {
   buildInputs = lib.optional (threads != null) threads;
 
   patches = [
-    (fetchpatch {
-      name = "delete-MACHMODE_H.patch";
-      url = "https://github.com/gcc-mirror/gcc/commit/493aae4b034d62054d5e7e54dc06cd9a8be54e29.diff";
-      hash = "sha256-oEk0lnI96RlpALWpb7J+GnrtgQsFVqDO57I/zjiqqTk=";
-    })
-    (fetchpatch {
-      name = "custom-threading-model.patch";
-      url = "https://github.com/gcc-mirror/gcc/commit/e5d853bbe9b05d6a00d98ad236f01937303e40c4.diff";
-      hash = "sha256-92LIttIXdh12/lRhivb2JTPpqUmGBRn+uKmR5pzuveo=";
-      includes = [
-        "config/*"
-        "libgcc/configure.ac"
-      ];
-    })
-    (fetchpatch {
-      name = "no-pie-cflags.patch";
-      url = "https://github.com/gcc-mirror/gcc/commit/77144dd3b6736e0166156bb509590d924375a4f1.diff";
-      hash = "sha256-QlxlTkWAK1dB7JiU5wz2iOW24gj3bFaeBpwb90oWwns=";
-      includes = [
-        "gcc/Makefile.in"
-        "gcc/configure.ac"
-        "libgcc/Makefile.in"
-        "libgcc/configure.ac"
-      ];
-    })
-    (fetchpatch {
-      name = "no-target-system-root.patch";
-      url = "https://github.com/gcc-mirror/gcc/commit/9947930b7ae923010c5061fd8fa6b1ec4f22f161.diff";
-      hash = "sha256-BZmpHpJuuyDmQMwpQhSgCZO0Rg7kXt8rTiJAT+e0sUw=";
-    })
+    # FOUR BACKPORTS REMOVED, for the same reason as the seven in `../gcc`:
+    # each is an ancestor of `multi-target-0`, measured with
+    # `git merge-base --is-ancestor <sha> HEAD`, four for four.
+    #
+    #   493aae4b034d  delete MACHMODE_H
+    #   e5d853bbe9b0  custom threading model
+    #   77144dd3b673  no PIE cflags
+    #   9947930b7ae9  no target system root
     (fetchpatch {
       name = "regular-libdir-includedir.patch";
       url = "https://inbox.sourceware.org/gcc-patches/20250717174911.1536129-1-git@JohnEricson.me/raw";

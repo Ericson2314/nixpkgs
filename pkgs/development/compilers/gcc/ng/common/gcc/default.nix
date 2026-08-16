@@ -58,9 +58,30 @@
   # lives: `target-specs/configure --with-shared-libgcc=yes|no`, which writes it
   # into that one target's spec file, probed against that target's actual
   # toolchain.
-  # Targets this compiler serves, as a list of config triples. There is no
-  # single-target build here: the compiler is always built with
-  # `--enable-targets` and never with `--target`.
+  # Back ends this compiler serves, as a list of config triples, passed to
+  # `gcc/configure` as `--enable-backends`.
+  #
+  # `null` -- THE DEFAULT -- MEANS NIXPKGS NAMES NOTHING AT ALL, and that is
+  # the whole point of the argument. `gcc/configure` defaults the flag to the
+  # tree's own `gcc/default-backends`, so the compiler serves every back end the
+  # source ships and the packaging is not an authority for the list.
+  #
+  # The previous shape read `gcc/default-backends` out of `$src` in
+  # `preConfigure` and passed the 47 triples back in. That removed the
+  # `targetPlatform` reference but left nixpkgs holding the list, so the store
+  # path depended on a value the packaging computed -- target-dependence
+  # returning by the front door. The fix went into `gcc/configure`
+  # (`configure.ac`, the `no | ""` arm of the `enable_backends` case).
+  #
+  # A non-null value is still accepted, for exactly one purpose: the `differ`
+  # arm of `mt-compare.nix`, which must be able to produce a deliberately
+  # different compiler so that the instrument can be shown capable of failing.
+  #
+  # `--enable-targets` IS NOT USED HERE AND MUST NOT BE. That is the *top
+  # level's* flag, and the top level is a distro layer -- it decides which
+  # components exist, instantiates a tree per target and drives them in order.
+  # This package set is already the distro. See the boundary note in
+  # `preConfigure`.
   #
   # A configure-time default target is a hiding place. Anything still tied to one
   # machine keeps working as long as that machine is the default, so the
@@ -73,40 +94,18 @@
   # matter which platform is being built for. That equality is the test -- if a
   # target dependency remains anywhere, the paths diverge and say so.
   #
-  # `null` means "whatever list the source tree ships", read at build time from
-  # `backendsFile` below. That is the default, and it is deliberately not a list
-  # written down here.
-  #
-  # THE LIST MUST HAVE ONE AUTHORITY. The GCC tree is the authority for which
-  # back ends exist -- it is where they are, and it is where the list that every
-  # board on the branch was configured with lives. A copy of that list in
-  # nixpkgs would be a second authority for one fact, which is this project's
-  # root bug reproduced in the packaging. So nixpkgs names the *file* and reads
-  # it from `$src`, and if the file is not there the build stops rather than
-  # falling back to anything.
-  #
-  # It cannot be read at evaluation time: `src` is a fetched derivation, not a
-  # path, and reading it would be import-from-derivation. So it is read in
-  # `preConfigure` and appended to `configureFlagsArray`. The consequence is
-  # that the store path depends on `src` rather than on the list's contents,
-  # which is the correct dependency -- the list is part of the source.
-  #
-  # Needs a GCC with `--enable-targets`. No released GCC has one: measured on
-  # `releases/gcc-15.2.0`, `configure.ac` mentions `--enable-languages` 47 times
-  # and `--enable-targets` zero times. Passing it to a released tree is not an
-  # error -- autoconf accepts unrecognised `--enable-*` with a warning -- so the
-  # flag is silently inert there and the compiler comes out single-target. That
-  # is why the missing-file case below is fatal.
-  enableTargets ? null,
-  # Where the back-end list lives in the GCC source tree.
-  #
-  # `scratchpad/` is not where a shipped list belongs, and naming it here is a
-  # statement rather than an endorsement: this is the file the branch's boards
-  # actually configured with (`--enable-targets=$(paste -sd, backends-47.txt)`),
-  # so it is the authority whether or not it is in a tidy location. Promoting it
-  # to a shipped path in the GCC tree is the fix, and then only this string
-  # changes.
-  backendsFile ? "scratchpad/backends-47.txt",
+  # Needs a GCC that has `--enable-backends` at all, i.e. `multi-target-0`. No
+  # released GCC does, and autoconf accepts an unrecognised `--enable-*` with a
+  # warning rather than an error -- so against a tarball this flag was silently
+  # inert and the compiler came out single-target. That is why this package set
+  # builds the branch and has no tarball arm; see `../../default.nix`.
+  enableBackends ? null,
+  # The four static libraries `gcc/` links out of sibling build directories.
+  # Named as arguments so the boundary is visible at the top of the file rather
+  # than buried in a shell fragment.
+  libcpp,
+  libdecnumber,
+  libcody,
 }:
 let
   inherit (stdenv) hostPlatform;
@@ -128,75 +127,65 @@ stdenv.mkDerivation (finalAttrs: {
   ];
 
   patches = [
-    (fetchpatch {
-      name = "for_each_path-functional-programming.patch";
-      url = "https://github.com/gcc-mirror/gcc/commit/f23bac62f46fc296a4d0526ef54824d406c3756c.diff";
-      hash = "sha256-J7SrypmVSbvYUzxWWvK2EwEbRsfGGLg4vNZuLEe6Xe0=";
-    })
-    (fetchpatch {
-      name = "find_a_program-separate-from-find_a_file.patch";
-      url = "https://github.com/gcc-mirror/gcc/commit/948eb02800777d0318ee2a38bf32076afee739f2.diff";
-      hash = "sha256-doXak3VfdWR/BP9XiJaU7uJz7rex78N1oaW6CqYwKaQ=";
-    })
-    (fetchpatch {
-      name = "simplify-find_a_program-and-find_a_file.patch";
-      url = "https://github.com/gcc-mirror/gcc/commit/073b4656d07e40f83a1db7f4462ab2d68b1875a2.diff";
-      hash = "sha256-kW6ZHyMzsn7snUBuDx4XLriaFGWZ1fixNc9UH8O5els=";
-    })
-    (fetchpatch {
-      name = "for_each_path-fix-uninitialized-ret-PR121806.patch";
-      url = "https://github.com/gcc-mirror/gcc/commit/6b008944e7bc3a342a734c4fcf1001d63fd0a6f8.diff";
-      hash = "sha256-preG5DdRX+a0NIebsapAVnqiLYtPjsR4H5BkAXL/65g=";
-    })
-    (fetchpatch {
-      name = "for_each_path-pass-machine-specific.patch";
-      url = "https://github.com/gcc-mirror/gcc/commit/f62f68e7c4bde0385fbd2dba3e926586dd2f1281.diff";
-      hash = "sha256-NsgGnTMQTnz1c4urr6jeoGOzQ4xeJ/p+F53osNDYDCA=";
-    })
-    (fetchpatch {
-      name = "find_a_program-search-with-machine-prefix.patch";
-      url = "https://github.com/gcc-mirror/gcc/commit/a514707ffd7d58b140686036c2dece43ecb7d33c.diff";
-      hash = "sha256-54/HzM+aeWq8CTkQu8Pualqc/LgRLS0+8EY8uPUsD+s=";
-    })
+    # THE SEVEN BACKPORTS THAT USED TO BE HERE ARE GONE.
+    #
+    # They were `fetchpatch`es of upstream commits a GCC 15 tarball lacked.
+    # This set now builds `multi-target-0`, which is cut from trunk, and all
+    # seven are ancestors of it -- measured, seven for seven, with
+    # `git merge-base --is-ancestor <sha> HEAD`. Left in place the first one
+    # stopped the build with "Reversed (or previously applied) patch detected",
+    # which is the good failure; a fuzzier hunk would have applied something
+    # twice in silence.
+    #
+    # Recorded by sha so a bisect can find them again:
+    #   f23bac62f46f  for_each_path: functional programming
+    #   948eb0280077  find_a_program: separate from find_a_file
+    #   073b4656d07e  simplify find_a_program and find_a_file
+    #   6b008944e7bc  for_each_path: fix uninitialized ret (PR121806)
+    #   f62f68e7c4bd  for_each_path: pass machine-specific
+    #   a514707ffd7d  find_a_program: search with machine prefix
+    #   7fb73dd7bb8a  mingw: drop obsolete STMP_FIXINC override
 
-    # Make --disable-fixinclude compatible with Cygwin
-    (fetchpatch {
-      name = "mingw-drop-obsolete-STMP_FIXINC-override.patch";
-      url = "https://github.com/gcc-mirror/gcc/commit/7fb73dd7bb8aabab1416f0b28e6df45131a8e8ab.diff";
-      hash = "sha256-FmFJISfXt+/TCRcd4rYfwacBiTqu+/OKw0VvLh46Hz0=";
-    })
+    # THE THREE POSTED-BUT-UNMERGED DRIVER PATCHES ARE ALSO GONE, AND THE WAY
+    # THEY FAILED IS WORTH RECORDING.
+    #
+    # They extended the `<target>-as` preference to `PATH`. The branch already
+    # carries them: `gcc/gcc.cc` defines `for_each_env_path` and calls it on
+    # `env.get ("PATH")` in `find_a_program`, which is patch 2's whole point.
+    #
+    # But patch 1 did not fail cleanly. Its hunk 1 -- the one that *adds*
+    # `for_each_env_path` -- reported "succeeded at 3100 (offset 117 lines)",
+    # i.e. `patch` happily inserted a SECOND definition of a function already
+    # present at line 3063, because an addition has no context to contradict.
+    # Only hunk 2, which rewrites existing code, could see the conflict and
+    # fail. Had the file been laid out slightly differently the build would
+    # have gone on to a duplicate-definition error hundreds of lines from the
+    # cause -- or, for a patch that only added, to no error at all.
+    #
+    # `git merge-base --is-ancestor` is the check that actually decides this,
+    # and it cannot be run on a patch that was posted rather than committed.
+    # So for these three the evidence is the source: `for_each_env_path` and
+    # its `PATH` call site are in the tree.
 
-    # Not upstream yet; a follow-up to the series above (drop the `/raw` to
-    # read them). They extend that series' `<target>-as` preference to `PATH`,
-    # where we put the cross toolchain, so a cross compiler finds its tools
-    # the way a native one does. See below for the problems `--with-as` and
-    # `--with-ld` cause, and thus why we want to avoid them.
-    (fetchpatch {
-      name = "driver-factor-out-env-path-parsing.patch";
-      url = "https://inbox.sourceware.org/gcc-patches/20260810065714.2215299-1-git@JohnEricson.me/raw";
-      hash = "sha256-2qUUMWuyxX4mVaBPeNnHIiMl/aN7ejWM5stTSFWxD7g=";
-    })
-    (fetchpatch {
-      name = "driver-search-PATH-ourselves.patch";
-      url = "https://inbox.sourceware.org/gcc-patches/20260810065714.2215299-2-git@JohnEricson.me/raw";
-      # The posted patch is against trunk, which spells this cast with the C++
-      # operator.  GCC 15 still uses the CONST_CAST macro, and the line is
-      # context rather than a change, so it cannot fuzz-match.  Rewrite it
-      # here rather than keeping a forked copy of the whole patch.
-      postFetch = ''
-        substituteInPlace "$out" \
-          --replace-fail 'string, const_cast<char **> (commands[i].argv),' \
-                         'string, CONST_CAST (char **, commands[i].argv),'
-      '';
-      hash = "sha256-uD8xJxQus2qyNgNDN/63WnURNuUJFDkhaXPph7g/DIk=";
-    })
-    (fetchpatch {
-      name = "driver-search-PATH-machine-prefix.patch";
-      url = "https://inbox.sourceware.org/gcc-patches/20260810065714.2215299-3-git@JohnEricson.me/raw";
-      hash = "sha256-Q5CJpJKD11kadIKselQdHgNe26GqojpyAAmlAyHnsB0=";
-    })
-
-    (getVersionFile "gcc/fix-collect2-paths.diff")
+    # `gcc/fix-collect2-paths.diff` IS ALSO GONE, AND THIS ONE IS NOT A
+    # DUPLICATE -- IT IS SUPERSEDED, WHICH LOOKS THE SAME AND IS NOT.
+    #
+    # It threaded an `is_cross_compiler` flag through `collect2.cc` so that a
+    # cross build would look for target-prefixed tools; 12 of its 18 hunks
+    # applied to the branch and 6 failed, which is the worst possible outcome
+    # and the reason it is removed rather than rebased.
+    #
+    # The branch answers the same question differently, and says so in the
+    # source: `gcc/collect2.cc:62` ("THE FIXME THAT WAS HERE IS RESOLVED"),
+    # `:106`, `:1246`. `CROSS_DIRECTORY_STRUCTURE` is never defined, so the
+    # block the patch was working around was dead code; and "am I a cross
+    # compiler" has no compile-time answer in a compiler with no single target,
+    # so `REAL_{LD,NM,STRIP}_FILE_NAME` became per-target capabilities read
+    # from the `-ftarget-config=` file instead. Rebasing the patch onto that
+    # would reintroduce the compile-time answer the branch removed.
+    #
+    # The file stays in `../../15/gcc/` for the monolithic-set history; nothing
+    # here references it any more.
 
     # From the posting to gcc-patches, which covers every component that links
     # libbacktrace. Take only this component's non-generated files: the
@@ -286,100 +275,137 @@ stdenv.mkDerivation (finalAttrs: {
       --replace 'if (stdinc)' 'if (0)'
   '';
 
-  preConfigure =
-    # Don't built target libraries, because we want to build separately
-    ''
-      substituteInPlace configure \
-        --replace 'noconfigdirs=""' 'noconfigdirs="$noconfigdirs $target_libraries"'
-    ''
-    # Cannot configure from src dir
-    + ''
-      cd "$buildRoot"
+  # THE TOP LEVEL IS NOT RUN. THIS BUILDS `gcc/` AND NOTHING ELSE.
+  #
+  # GCC's top-level build system is a distro: it decides which components
+  # exist, instantiates a tree per target, orders them by dependency, drives
+  # their configures and makes, and installs them into one prefix. That is what
+  # a nixpkgs package set does, so running it from inside one puts a distro
+  # inside a distro -- and every piece of jank this expression used to carry was
+  # an artefact of the two disagreeing about who was in charge:
+  #
+  #   * `noconfigdirs="$noconfigdirs $target_libraries"`, a `substituteInPlace`
+  #     on `configure` to stop the top level building the runtime libraries this
+  #     set packages separately;
+  #   * a fake `libiberty` build directory, three `touch`ed stamp files
+  #     (`stamp-h`, `stamp-noasandir`, `stamp-picdir`) and a copy of the whole
+  #     thing into `build-<config>/`, all to convince the top level that a
+  #     sibling it wanted to build was already built;
+  #   * `--enable-targets`, which only the top level takes.
+  #
+  # All of it is gone. `configureScript` is `gcc/configure`, and what the top
+  # level would have built as siblings are derivations.
+  #
+  # THE BOUNDARY, ENUMERATED, because "it needs the top level" is not a
+  # measurement. Building `gcc/` alone with nothing else present fails, in this
+  # order, on exactly these files -- each one named by `make` itself:
+  #
+  #   ../build-<build>/libiberty/libiberty.a   build/genmodes
+  #   ../build-<build>/libcpp/libcpp.a         build/genmatch
+  #   ../libiberty/libiberty.a                 cc1
+  #   ../libcpp/libcpp.a                       cc1
+  #   ../libdecnumber/libdecnumber.a           cc1
+  #   ../libcody/libcody.a                     cc1
+  #   ../libbacktrace/.libs/libbacktrace.a     cc1-checksum.cc
+  #
+  # The last one does not appear here: `--with-system-libbacktrace` (see the
+  # patch above) makes it a normal `buildInputs` dependency, which is what it
+  # should have been all along. The rest are the four static libraries below.
+  # `-I../libdecnumber` is a build-directory include (`gcc/Makefile.in:473`), so
+  # that one contributes a generated header as well as an archive.
+  #
+  # The `build-<build>` copies are the *build machine's* builds of the same
+  # libraries, which the generator programs link against. They come from
+  # `buildGccPackages`, which is what that splice is for; in a native build the
+  # two sides are the same derivation and nix shares it.
+  preConfigure = ''
+    cd "$buildRoot"
 
-      mkdir -p "$buildRoot/libiberty/pic"
-      cp ${buildGccPackages.libiberty}/lib/libiberty.a "$buildRoot/libiberty"
-      cp ${buildGccPackages.libiberty}/lib/libiberty_pic.a "$buildRoot/libiberty/pic/libiberty.a"
-      touch "$buildRoot/libiberty/stamp-noasandir"
-      touch "$buildRoot/libiberty/stamp-h"
-      touch "$buildRoot/libiberty/stamp-picdir"
+    sibling() {
+      local dir="$1" lib="$2" a="$3"
+      mkdir -p "$buildRoot/$dir"
+      # `install -m` rather than `ln -s`: the archives are written into by
+      # nothing here, but a read-only symlink into the store has produced
+      # confusing failures in this tree before, and a copy costs nothing.
+      install -m644 "$a" "$buildRoot/$dir/$lib"
+    }
 
-      mkdir -p "$buildRoot/build-${stdenv.hostPlatform.config}"
-      cp -r "$buildRoot/libiberty" "$buildRoot/build-${stdenv.hostPlatform.config}/libiberty"
+    sibling libiberty    libiberty.a    "${buildGccPackages.libiberty}/lib/libiberty.a"
+    sibling libcpp       libcpp.a       "${libcpp}/lib/libcpp.a"
+    sibling libdecnumber libdecnumber.a "${libdecnumber}/lib/libdecnumber.a"
+    sibling libcody      libcody.a      "${libcody}/lib/libcody.a"
+    install -m644 "${libdecnumber}/include/config.h" "$buildRoot/libdecnumber/config.h"
+    install -m644 "${libdecnumber}/include/gstdint.h" "$buildRoot/libdecnumber/gstdint.h"
 
-      configureScript=../$sourceRoot/configure
-    ''
-    # Read the back-end list out of the source tree; see `backendsFile`.
-    #
-    # Every arm here is fatal, and none of them falls back to a target. A build
-    # that quietly produced a single-target compiler is exactly the failure this
-    # replaces: `--enable-targets` is accepted-and-ignored by a released GCC, so
-    # "the flag was passed" is not evidence that anything was served.
-    + lib.optionalString (enableTargets == null) ''
-      backendsFile="../$sourceRoot/${backendsFile}"
-      if [ ! -f "$backendsFile" ]; then
-        echo "gcc: $backendsFile is not in this source tree." >&2
-        echo "gcc: it is the one authority for which back ends this compiler serves," >&2
-        echo "gcc: and there is deliberately no fallback -- a default target is the" >&2
-        echo "gcc: hiding place this package set exists to remove.  Either build a" >&2
-        echo "gcc: source that ships the list, or pass \`enableTargets' explicitly." >&2
-        exit 1
-      fi
-      enableTargets=$(grep -v '^#' "$backendsFile" | grep . | paste -sd,)
-      nTargets=$(grep -v '^#' "$backendsFile" | grep -c .)
-      if [ "$nTargets" -eq 0 ]; then
-        echo "gcc: $backendsFile has no entries; an empty list is not an answer." >&2
-        exit 1
-      fi
-      echo "gcc: serving $nTargets back ends from $backendsFile"
-      configureFlagsArray+=("--enable-targets=$enableTargets")
-    '';
+    sibling build-${stdenv.buildPlatform.config}/libiberty libiberty.a \
+      "${buildGccPackages.libiberty}/lib/libiberty.a"
+    sibling build-${stdenv.buildPlatform.config}/libcpp libcpp.a \
+      "${buildGccPackages.libcpp}/lib/libcpp.a"
+    sibling build-${stdenv.buildPlatform.config}/libdecnumber libdecnumber.a \
+      "${buildGccPackages.libdecnumber}/lib/libdecnumber.a"
+    sibling build-${stdenv.buildPlatform.config}/libcody libcody.a \
+      "${buildGccPackages.libcody}/lib/libcody.a"
 
-  # Don't store the configure flags in the resulting executables.
-  postConfigure = ''
-    sed -e '/TOPLEVEL_CONFIGURE_ARGUMENTS=/d' -i Makefile
+    mkdir -p "$buildRoot/gcc"
+    cd "$buildRoot/gcc"
+    configureScript=../../$sourceRoot/gcc/configure
+
+    configureFlagsArray+=("GMPLIBS=-lmpc -lmpfr -lgmp")
   '';
 
   dontDisableStatic = true;
 
-  # No `target`. `--target` is not redundant here, it is the thing being
-  # removed: passing it would give one machine a privileged position again and
-  # hide anything still tied to it.
   configurePlatforms = [
     "build"
     "host"
   ];
 
+  # FOURTEEN FLAGS WERE REMOVED FROM THIS LIST BECAUSE `gcc/configure` DOES NOT
+  # HAVE THEM -- they were the top level's, and they were being accepted and
+  # ignored.
+  #
+  # Measured by running `gcc/configure` with the old list and reading what it
+  # said:
+  #
+  #   configure: WARNING: unrecognized options: --disable-dependency-tracking,
+  #   --disable-serial-configure, --disable-bootstrap, --disable-decimal-float,
+  #   --disable-install-libiberty, --disable-multilib, --enable-host-shared,
+  #   --enable-default-pie, --without-included-gettext, --disable-fixincludes,
+  #   --enable-linker-build-id, --enable-plugins, --with-gnu-as,
+  #   --without-headers
+  #
+  # A warning is all autoconf gives, which is the same silence that made
+  # `--enable-targets` inert against a release tarball. Several of these were
+  # load-bearing when the top level was doing the driving -- `--disable-multilib`
+  # and `--disable-bootstrap` in particular -- and the corresponding behaviour
+  # now either has no top level to configure or belongs to another component's
+  # derivation. Anything found missing later should come back as a flag
+  # `gcc/configure` actually reads, not as one it merely tolerates.
+  #
+  # `--enable-shared` for the host is likewise gone with `--enable-host-shared`;
+  # `enableShared` is left as an argument because the surrounding set passes it,
+  # and it now feeds nothing here rather than feeding something ignored.
   configureFlags = [
-    # Force target prefix. The behavior if `--target` and `--host` are
-    # specified is inconsistent: Sometimes specifying `--target` always causes
-    # a prefix to be generated, sometimes it's only added if the `--host` and
-    # `--target` differ. This means that sometimes there may be a prefix even
-    # though nixpkgs doesn't expect one and sometimes there may be none even
-    # though nixpkgs expects one (since not all information is serialized into
-    # the config attribute). The easiest way out of these problems is to always
-    # set the program prefix, so gcc will conform to our expectations.
-    # Every target this compiler serves, none of them privileged. When
-    # `enableTargets` is `null` this is not here at all; `preConfigure` appends
-    # it after reading the list out of the source tree. See `backendsFile`.
-    # The prefix existed to distinguish one target's compiler from another's;
-    # there is one compiler now.
+    # `--target` IS PASSED, AND IT IS NOT A PRIVILEGED TARGET.
+    #
+    # `gcc/configure` requires one: with `--build` and `--host` only, `${target}`
+    # comes out empty and `config.gcc` stops with `*** Configuration  not
+    # supported` -- measured, note the doubled space where the triple should be.
+    # It is the HOST's triple, so it says "this compiler runs here", and the
+    # back-end list comes from `--enable-backends`, defaulted by the tree.
+    #
+    # The store path therefore depends on the host, which is correct and is
+    # exactly what `mt-compare.nix` measures: it asks three different cross
+    # package sets for the *build* machine's compiler, so the host is the same
+    # on all three arms and the paths must be equal.
+    "--target=${stdenv.hostPlatform.config}"
   ]
-  ++ lib.optional (enableTargets != null) "--enable-targets=${lib.concatStringsSep "," enableTargets}"
+  ++ lib.optional (
+    enableBackends != null
+  ) "--enable-backends=${lib.concatStringsSep "," enableBackends}"
   ++ [
-    "--disable-dependency-tracking"
     "--enable-fast-install"
-    "--disable-serial-configure"
-    "--disable-bootstrap"
-    "--disable-decimal-float"
-    "--disable-install-libiberty"
-    "--disable-multilib"
     "--disable-nls"
-    (lib.enableFeature enableShared "host-shared")
-    # No `--enable-shared`/`--disable-shared` for the target: see the note where
-    # `enableTargetShared` used to be declared. The default is `--enable-shared`,
-    # and it is left at the default deliberately rather than pinned, so that
-    # nothing here claims an answer it cannot hold for every target.
-    "--enable-default-pie"
     "--enable-languages=${
       lib.concatStrings (
         lib.intersperse "," (
@@ -395,9 +421,6 @@ stdenv.mkDerivation (finalAttrs: {
         )
       )
     }"
-    (lib.withFeature (isl != null) "isl")
-    "--without-headers"
-    "--with-gnu-as"
     "--with-gnu-ld"
     # No `--with-as` / `--with-ld`: those bake `DEFAULT_ASSEMBLER` and
     # `DEFAULT_LINKER` as absolute store paths, and the driver then runs exactly
@@ -409,7 +432,19 @@ stdenv.mkDerivation (finalAttrs: {
     # `find_a_program` patches above.
     "--with-system-zlib"
     "--with-system-libbacktrace"
-    "--without-included-gettext"
+
+    # GMPLIBS/GMPINC ARE NORMALLY HANDED DOWN BY THE TOP LEVEL, and `gcc/`
+    # simply uses whatever it is given -- `AC_SUBST`ed, not probed. Building the
+    # component alone, they are empty, and the failure is a link error 27,000
+    # lines in: `undefined reference to mpfr_free_cache' from `context.cc`.
+    # nixpkgs supplies the libraries through `buildInputs`, so only the `-l`
+    # flags are needed; the same three the branch's own component-build script
+    # passes.
+    # (`GMPLIBS` contains spaces, so it is appended to `configureFlagsArray` in
+    # `preConfigure` rather than written here, where the list is word-split.)
+    "GMPINC="
+    "ISLLIBS="
+    "ISLINC="
 
     # No host platform headers are exposed to gcc, whatever the relationship
     # between build, host and target. cc-wrapper supplies the target libc
@@ -420,20 +455,16 @@ stdenv.mkDerivation (finalAttrs: {
     # libc change rebuild the compiler, precisely the coupling this split
     # package set exists to remove.
     #
-    # So `fixincludes` has nothing to do either: it exists to copy the headers
-    # gcc found and rewrite the ones it knows to be broken. Left on, it falls
-    # back to `/usr/include` and stops the build outright when that is missing.
-    # `limits.h` and `syslimits.h` come from a separate prerequisite and are
-    # unaffected.
-    "--disable-fixincludes"
-
-    "--enable-linker-build-id"
+    # `fixincludes` likewise has nothing to do: it exists to copy the headers
+    # gcc found and rewrite the ones it knows to be broken, and there are none
+    # here. `--disable-fixincludes` USED TO BE PASSED AND IS NOT A
+    # `gcc/configure` option (it is the top level's), so it was never doing
+    # anything; what actually keeps `fixincludes` out of this build is that the
+    # `make` target below is `all-gcc`-shaped and the component has no libc to
+    # fix headers from. Per-target fixed headers belong to a `fixincludes`
+    # component and to the wrapper that composes a target.
   ]
-  ++ lib.optionals enablePlugin [
-    "--enable-plugin"
-    "--enable-plugins"
-  ]
-  ;
+  ++ lib.optional enablePlugin "--enable-plugin";
 
   # `LIMITS_H_TEST` decides whether gcc's generated `syslimits.h` chains to the
   # target libc's `limits.h` (`#include_next`) or is emitted self-contained. It

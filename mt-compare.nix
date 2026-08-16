@@ -39,7 +39,7 @@ let
   compiler =
     crossConfig: args:
     let
-      c = (pkgsFor crossConfig).buildPackages.gccNGPackages_15.gcc-unwrapped;
+      c = (pkgsFor crossConfig).buildPackages.gccNGPackages_17.gcc-unwrapped;
     in
     if args == null then c else c.override args;
 in
@@ -51,10 +51,10 @@ in
   # not, `same' above is not measuring anything.
   differ = {
     aarch64 = compiler crossSets.aarch64 {
-      enableTargets = [ "aarch64-unknown-linux-gnu" ];
+      enableBackends = [ "aarch64-unknown-linux-gnu" ];
     };
     netbsd = compiler crossSets.netbsd {
-      enableTargets = [ "x86_64-pc-linux-gnu" ];
+      enableBackends = [ "x86_64-pc-linux-gnu" ];
     };
   };
 }

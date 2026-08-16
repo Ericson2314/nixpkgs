@@ -53,6 +53,12 @@ let
       releaseInfo
       ;
     inherit (releaseInfo) release_version version;
+    # A VCS checkout ships none of the generated sources (`gengtype-lex.cc` and
+    # friends) that a release tarball does, so the components that need them
+    # take `fromVCS` and add `flex`/`bison`. It follows from `gitRelease`
+    # rather than being an argument of its own, so it cannot disagree with the
+    # source it describes.
+    fromVCS = gitRelease != null;
     inherit
       (import ./common-let.nix {
         inherit
@@ -168,6 +174,12 @@ makeScopeWithSplicing' {
       gcc-unwrapped = callPackage ./gcc { };
 
       libiberty = callPackage ./libiberty { };
+      # The other three static libraries `gcc/` links out of sibling build
+      # directories. They are packages because the `gcc` component is built
+      # without GCC's top level: see the boundary note in `./gcc`.
+      libcpp = callPackage ./libcpp { };
+      libdecnumber = callPackage ./libdecnumber { };
+      libcody = callPackage ./libcody { };
       libsanitizer = callPackage ./libsanitizer { };
       libquadmath = callPackage ./libquadmath { };
 

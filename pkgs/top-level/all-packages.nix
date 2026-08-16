@@ -3249,11 +3249,18 @@ with pkgs;
     (rec {
       # NOTE: keep this with the "NG" label until we're ready to drop the monolithic GCC
       gccNGPackagesSet = recurseIntoAttrs (callPackages ../development/compilers/gcc/ng { });
-      gccNGPackages_15 = gccNGPackagesSet."15";
-      gccNGPackages = gccNGPackagesSet.${toString default-gcc-version};
+      # The NG set builds the `multi-target-0` branch, which is cut from trunk
+      # (`gcc/BASE-VER` = 17.0.0). It therefore no longer tracks
+      # `default-gcc-version`: the monolithic set packages releases and this one
+      # packages a branch, and there is no release with the multi-target flags
+      # to track. Naming the branch's own version is the honest spelling; an
+      # index into `default-gcc-version` would claim a correspondence that does
+      # not exist.
+      gccNGPackages_17 = gccNGPackagesSet."17";
+      gccNGPackages = gccNGPackagesSet."17";
       mkGCCNGPackages = gccNGPackagesSet.mkPackage;
     })
-    gccNGPackages_15
+    gccNGPackages_17
     gccNGPackages
     mkGCCNGPackages
     ;
