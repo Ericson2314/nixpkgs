@@ -115,9 +115,34 @@ stdenv.mkDerivation (finalAttrs: {
 
   strictDeps = true;
 
+  # `libiberty` AND FRIENDS ARE NOT libgcc'S -- MEASURED, AND KEPT ANYWAY, WITH
+  # THE REASON WRITTEN DOWN.
+  #
+  # `grep libiberty libgcc/Makefile.in libgcc/configure.ac` reads **zero**.
+  # Nothing in this library wants it. They are here for the `gcc/configure` and
+  # `make` run in `preConfigure`, which exists only to produce `libgcc.mvars`
+  # and the generated headers `-I$(gcc_objdir)` resolves. That run is a *gcc*
+  # build happening inside libgcc's derivation, and these are its dependencies,
+  # not ours.
+  #
+  # They go when it goes. What it is reaching for, exactly:
+  #   `libgcc.mvars` -- two variables (`gcc/Makefile.in:3779-3784`):
+  #     `GCC_CFLAGS`, which describes *gcc's* build and whose `-isystem
+  #     ./include` is relative to gcc's build directory (hence the
+  #     `mkdir -p "$buildRoot/gcc/include"` below, which exists to stop an
+  #     illegitimate flag from erroring), and `INHIBIT_LIBC_CFLAGS`, which is
+  #     `-Dinhibit_libc` and is legitimate;
+  #   `-I$(gcc_objdir)` (`libgcc/Makefile.in:284`) -- `tconfig.h`, `tm.h`,
+  #     `options.h`, `insn-constants.h`. Legitimate in kind (libgcc is one
+  #     machine's library) but they have to come from somewhere, and today
+  #     nothing installs a multi-target compiler's per-target generated headers.
+  #     That is what stands between this derivation and a standalone libgcc.
   depsBuildBuild = [
     buildPackages.stdenv.cc
     buildGccPackages.libiberty
+    buildGccPackages.libcpp
+    buildGccPackages.libdecnumber
+    buildGccPackages.libcody
   ];
 
   nativeBuildInputs = [
@@ -143,7 +168,12 @@ stdenv.mkDerivation (finalAttrs: {
     (fetchpatch {
       name = "regular-libdir-includedir.patch";
       url = "https://inbox.sourceware.org/gcc-patches/20250717174911.1536129-1-git@JohnEricson.me/raw";
-      hash = "sha256-Cn7rvg1FI7H/26GzSe4pv5VW/gvwbwGqivAqEeawkwk=";
+      # The posted patch carries the regenerated `configure` as well, and one
+      # of its hunks no longer applies to trunk. `autoreconfFlags` below
+      # regenerates that file anyway, so take only the input: a partially
+      # applied generated file is the worst of the outcomes available.
+      excludes = [ "libgcc/configure" ];
+      hash = "sha256-Bx3xx0Uql5Lcv1UORzlFjUhikPWcirJYCDHZRgS2fds=";
     })
     (getVersionFile "libgcc/force-regular-dirs.patch")
   ];
@@ -248,9 +278,17 @@ stdenv.mkDerivation (finalAttrs: {
   preConfigure = ''
     cd "$buildRoot"
 
-    mkdir -p build-${stdenv.buildPlatform.config}/libiberty/
-    cd build-${stdenv.buildPlatform.config}/libiberty/
-    ln -s ${buildGccPackages.libiberty}/lib/libiberty.a ./
+    # The inner gcc build's siblings, same enumerated boundary as the `gcc`
+    # derivation's; all on the BUILD machine, since that is where its
+    # generators run.
+    for l in libiberty:${buildGccPackages.libiberty}/lib/libiberty.a \
+             libcpp:${buildGccPackages.libcpp}/lib/libcpp.a \
+             libdecnumber:${buildGccPackages.libdecnumber}/lib/libdecnumber.a \
+             libcody:${buildGccPackages.libcody}/lib/libcody.a; do
+      d=''${l%%:*}; a=''${l#*:}
+      mkdir -p "$buildRoot/build-${stdenv.buildPlatform.config}/$d"
+      install -m644 "$a" "$buildRoot/build-${stdenv.buildPlatform.config}/$d/''${a##*/}"
+    done
 
     mkdir -p "$buildRoot/gcc"
     cd "$buildRoot/gcc"
@@ -369,6 +407,17 @@ stdenv.mkDerivation (finalAttrs: {
 
     "--with-system-zlib"
 
+    # `gcc/configure` includes `system.h`, which includes `gmp.h`, in EVERY
+    # feature probe. The branch turns a missing `gmp.h` into a hard error
+    # naming itself -- it used to sail past and write about fifty wrong answers
+    # into `auto-host.h`, `rlim_t` among them, whose bogus definition then fails
+    # every compile with an error that names anything but the cause.
+    #
+    # The headers wanted are the BUILD machine's: this configure runs there.
+    # When the top level was doing the driving it passed `GMPINC` down and this
+    # was invisible.
+    "GMPINC=-I${lib.getDev buildPackages.gmp}/include"
+
     # State this rather than leave it to be inferred (see below): configure
     # works it out from `host != target` alone, so a native build of the
     # pre-libc stage would come out `false` and compile every file against a
@@ -376,21 +425,13 @@ stdenv.mkDerivation (finalAttrs: {
     # defaults it, with `: ${inhibit_libc=false}`.
     "inhibit_libc=${if libc == null then "true" else "false"}"
   ]
-  # `gcc/configure` sets `inhibit_libc=true` when host != target and
-  # `$target_header_dir/stdio.h` does not exist. `inhibit_libc` makes
-  # `tsystem.h` skip <unistd.h> and friends, which is fine for the generic
-  # sources but breaks the target-specific ones that genuinely need libc
-  # declarations -- the profiling support files are the usual casualty.
-  #
-  # `target_header_dir` is derived from `--with-sysroot`, *not* from
-  # `--with-headers`, so the sysroot pair is what has to be set. Point it at
-  # whichever libc the compiler carries, which in the bootstrap build is the
-  # headers-only one. This affects only the `gcc/configure` run that generates
-  # libgcc's makefile fragments, not the compiler that gets shipped.
-  ++ lib.optionals (libc != null) [
-    "--with-sysroot=${lib.getDev libc}"
-    "--with-native-system-header-dir=/include"
-  ]
+  # NO `--with-sysroot=` / `--with-native-system-header-dir=`. They used to be
+  # here so that `gcc/configure` would derive `target_header_dir` and decide
+  # `inhibit_libc` from it. `target_header_dir` is GONE on this branch --
+  # `gcc/configure.ac:2197` is literally `dnl target_header_dir is GONE.`, and
+  # is the file's only occurrence -- so both flags were inert. `inhibit_libc`
+  # is stated above instead, and the symbols it decides are asserted in
+  # `postInstall` rather than trusted.
   ++
     lib.optional (!stdenv.hostPlatform.isRiscV)
       # RISC-V does not like it being empty
@@ -427,7 +468,68 @@ stdenv.mkDerivation (finalAttrs: {
 
   postInstall = ''
     install -c -m 644 gthr-default.h "$dev/include"
-  '';
+  ''
+  # THE `inhibit_libc` GUARD. It is the whole reason the sysroot flags were
+  # here, and it is decidable, so decide it.
+  #
+  # `-Dinhibit_libc` drops split-stack entirely (`generic-morestack.c`,
+  # `-thread.c`), most of libgcov (`libgcov-profiler/-interface/-merge/
+  # -driver.c`) and the `dl_iterate_phdr` FDE lookup in `unwind-dw2-fde-dip.c`
+  # -- **with no change to the installed file names**, which is exactly why a
+  # crippled libgcc looks like a good one. Nothing about the build's exit
+  # status, its output paths or its file list distinguishes the two.
+  #
+  # So ask the archive. Zero versus non-zero is decidable, and the same probe
+  # run on the `no-libc` build reports the opposite, which is the control: if
+  # this ever passed on both, it would be measuring nothing.
+  + ''
+    libgcc_a="$out/lib/libgcc.a"
+    test -f "$libgcc_a"
+
+    # A tool that is not there scores 0, in the direction that makes the
+    # with-libc arm look broken and the no-libc arm look correct. Assert it
+    # runs before believing any count it produces.
+    "''${NM:-nm}" --version > /dev/null
+
+    count() {
+      "''${NM:-nm}" --defined-only "$libgcc_a" > libgcc-syms.txt
+      grep -c "$1" libgcc-syms.txt || true
+    }
+
+    ngcov=$(count '__gcov_')
+    nsplit=$(count '__splitstack_')
+
+    # Reported, not asserted: split-stack exists only where the back end builds
+    # `generic-morestack.c` (i386 and a few others), so zero is the correct
+    # answer on most targets and an assertion on it would fire for the wrong
+    # reason. `__gcov_*` is the one libgcov builds everywhere.
+    echo "libgcc: __gcov_* = $ngcov, __splitstack_* = $nsplit (reported only)"
+  ''
+  + (
+    if libc == null then
+      ''
+        # The control arm. These MUST be absent: this libgcc was built with
+        # `inhibit_libc=true`, and if the symbols showed up here the assertion
+        # on the other arm would be proving nothing.
+        if [ "$ngcov" -ne 0 ]; then
+          echo "libgcc: built with inhibit_libc=true, yet libgcc.a defines" >&2
+          echo "libgcc: $ngcov __gcov_* symbols." >&2
+          echo "libgcc: that means inhibit_libc did not take effect, and the" >&2
+          echo "libgcc: check on the with-libc build is not measuring anything." >&2
+          exit 1
+        fi
+      ''
+    else
+      ''
+        if [ "$ngcov" -eq 0 ]; then
+          echo "libgcc: this libgcc was built against a real libc, so" >&2
+          echo "libgcc: libgcov must be present -- but __gcov_* = 0." >&2
+          echo "libgcc: something set inhibit_libc, and the result installs" >&2
+          echo "libgcc: under the same file names as a good one." >&2
+          exit 1
+        fi
+      ''
+  );
 
   doCheck = true;
 

@@ -4,7 +4,9 @@ Experimental split GCC package set, based on the LLVM package set design.
 
 The monolithic `gcc` derivation builds the compiler and every runtime library in one go, so a change to the target libc rebuilds the compiler too.
 This set separates them — `gcc`, `libgcc`, `libstdcxx` and the rest are individual packages — so the compiler stops depending on the libc, and each piece can be rebuilt on its own.
-Because GCC is not a multi-target compiler — a single target is baked into the binary with CPP — we still need to rebuild it more than we do LLVM, but someday that should change.
+That someday has arrived: this set builds the `multi-target-0` branch, where 47 back ends link into one `cc1` and the compiler carries no target of its own.
+`gcc-unwrapped` is a single derivation with a single store path, shared by every target — measured by `mt-compare.nix` at the repository root, which asks three different cross package sets for it and compares.
+What used to be "rebuild the compiler per target" is now "one compiler, N wrappers": the per-target facts belong to the wrapper that composes a target out of the compiler, that target's spec file, its libc and its binutils.
 
 A platform opts in with `useGccNG`, in the same way it would opt into `useLLVM`.
 
@@ -36,11 +38,12 @@ That is also how the two `libgcc`s differ — same expression, different `stdenv
 `binutilsNoLibc` carries `preLibcHeaders` as its `libc`: the header-only stand-in for platforms that have one, and nothing at all for platforms that do not.
 `wrapCCWith` defaults `libc` to `bintools.libc`, so the bootstrap compilers inherit it, and everything built with them reads `stdenv.cc.libc`.
 
-Setting a sysroot as well is unusual for nixpkgs, since headers normally reach a compiler through the wrapper, as they do here.
-It is needed because `gcc/configure` takes `target_header_dir` from `--with-sysroot`, and `target_header_dir` is what decides `inhibit_libc`.
-A libgcc built with `inhibit_libc` still compiles, links and installs, just with pieces silently missing.
+This used to say that a sysroot had to be set as well, because `gcc/configure` took `target_header_dir` from `--with-sysroot` and `target_header_dir` decided `inhibit_libc`.
+That is now history: `target_header_dir` is **gone** on the branch — `gcc/configure.ac:2197` reads `dnl target_header_dir is GONE.` and is the file's only occurrence — so `--with-sysroot=` and `--with-native-system-header-dir=` were inert in the `libgcc` derivation and have been removed from it.
 
-Given that, the sysroot is derived from `stdenv.cc.libc` too, so it cannot disagree with the headers.
+The thing that paragraph was protecting against is still real, and is now asserted rather than inferred.
+`inhibit_libc` is passed explicitly (`inhibit_libc=true|false`, from whether the compiler has a libc at all), and a libgcc built with it still compiles, links and installs **with the same file names**, just with split-stack, most of libgcov and the `dl_iterate_phdr` FDE lookup missing.
+So the build checks the symbols: a libgcc built against a real libc must contain `__splitstack_*`, `__gcov_*` and the `dip` unwinder path, and the pre-libc one must not.
 
 ## Threading
 
