@@ -239,6 +239,27 @@ lib.makeOverridable (
 
       strictDeps = true;
 
+      # Two reasons, one of them a hard requirement:
+      #
+      #  o stdenv refuses `separateDebugInfo` together with any of
+      #    `{dis,}allowed{References,Requisites}` unless `__structuredAttrs` is
+      #    set (../../../stdenv/generic/make-derivation.nix). The userland
+      #    commands have debug outputs, and the boot archive wants a
+      #    `disallowedRequisites` guard so that a header package sneaking into
+      #    its closure -- `illumos.libc` is a symlinkJoin whose links point into
+      #    24M of `uts-headers` -- is a build failure rather than something
+      #    rediscovered by measuring an ISO. The two cannot coexist without
+      #    this.
+      #
+      #  o With plain attrs every attribute is a *string* in the environment,
+      #    so `lib.optionalString cond "..."` still sets an (empty) variable
+      #    when `cond` is false, and that is a different derivation from not
+      #    mentioning it at all. Lists are likewise flattened to
+      #    space-separated strings, which is why a `makeFlags` entry could
+      #    never contain a space. Both classes of accident simply do not exist
+      #    here.
+      __structuredAttrs = true;
+
       meta = with lib; {
         maintainers = with maintainers; [ ericson2314 ];
         platforms = platforms.illumos;

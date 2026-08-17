@@ -88,9 +88,16 @@ mkDerivation {
   installPhase = ''
     runHook preInstall
 
+    # `concatTo` rather than a bare `$makeFlags`: under `__structuredAttrs`
+    # (set in mkDerivation.nix) makeFlags is a real bash array, so word-
+    # splitting a scalar would pass only its first element -- INCLUDEDIR
+    # arrived empty and install(1) tried to create /bsm.
+    local flagsArray=()
+    concatTo flagsArray makeFlags makeFlagsArray
+
     for d in ${lib.concatStringsSep " " dirs}; do
       echo "installing headers from $d"
-      ( cd "$d" && make $makeFlags install_h )
+      ( cd "$d" && make "''${flagsArray[@]}" install_h )
     done
 
     runHook postInstall
