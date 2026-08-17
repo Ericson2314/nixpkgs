@@ -5,7 +5,7 @@
 
 # An /sbin/init that puts an interactive shell on the console, as an
 # alternative to `init-stub` (which prints one line and powers the machine
-# off). Select it with ILLUMOS_INIT=shell when running boot-qemu.sh.
+# off).
 #
 # The shell is bash, and the *whole point* is that it is an ordinary
 # dynamically linked illumos program: it exercises ld.so.1, the libc composite,
@@ -53,6 +53,6 @@ stdenv.mkDerivation {
   hardeningDisable = [ "all" ];
 
   # The bash whose path is compiled in has to be in the boot archive too;
-  # boot-qemu.sh stages this closure.
+  # whatever assembles the boot archive stages this closure.
   passthru.shell = bashInteractive;
 }

@@ -125,7 +125,7 @@ let
     # not what any real illumos install does on this hardware. Note that
     # psm_get_impl_module() offers DEFAULT_PSM_MODULE -- uppc -- and nothing
     # else on its own; the rest come from /etc/mach, which the image builder
-    # has to stage (see boot-qemu.sh). With it, apix wins the probe:
+    # has to stage. With it, apix wins the probe:
     #
     #     apix: NOTICE: apic: Using APIC interrupt routing mode
     #

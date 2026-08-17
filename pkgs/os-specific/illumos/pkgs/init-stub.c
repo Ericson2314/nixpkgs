@@ -16,7 +16,7 @@
  *     either: /dev is a mount point -- vfs_mountdev1() (common/fs/vfs.c:767)
  *     mounts the `dev` filesystem over it -- so anything underneath is
  *     shadowed, and in any case a root hsfs is read as plain iso9660 (see
- *     boot-qemu.sh) and plain iso9660 cannot represent a symlink.
+ *     the boot archive builder) and plain iso9660 cannot represent a symlink.
  *
  *   * /devices/pseudo/iwscn@0:iwscn opens, and writing to it returns the full
  *     byte count, but nothing comes out.  With console=ttya the console is the
@@ -109,7 +109,7 @@ _start(void)
 
 	/*
 	 * Power the machine off. This is also the console-independent proof
-	 * that we ran: qemu exits, so boot-qemu.sh finishes in ~15s rather
+	 * that we ran: qemu exits, so the run finishes in ~15s rather
 	 * than sitting there until it is killed.
 	 */
 	(void) sys(SYS_uadmin, A_SHUTDOWN, AD_POWEROFF, 0);
