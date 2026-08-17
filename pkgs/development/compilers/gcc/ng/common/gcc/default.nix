@@ -399,18 +399,53 @@ stdenv.mkDerivation (finalAttrs: {
   # `enableShared` is left as an argument because the surrounding set passes it,
   # and it now feeds nothing here rather than feeding something ignored.
   configureFlags = [
-    # `--target` IS PASSED, AND IT IS NOT A PRIVILEGED TARGET.
+    # *** THIS IS CURRENTLY A HARD BLOCKER AT `423c81b65f2`. ***
     #
-    # `gcc/configure` requires one: with `--build` and `--host` only, `${target}`
-    # comes out empty and `config.gcc` stops with `*** Configuration  not
-    # supported` -- measured, note the doubled space where the triple should be.
-    # It is the HOST's triple, so it says "this compiler runs here", and the
-    # back-end list comes from `--enable-backends`, defaulted by the tree.
+    # `83dd42cc697` stopped `--target=<host>` enrolling itself as a back end,
+    # and `207e43bf5dd` added a configure check that `--target` MUST name one of
+    # the configured back ends. `gcc/default-backends` spells the x86_64 Linux
+    # back end `x86_64-pc-linux-gnu`; nixpkgs' host triple is
+    # `x86_64-unknown-linux-gnu`. `config.gcc` keys on the whole triple, so
+    # those are two back-end entries with different header chains, not two names
+    # for one.
     #
-    # The store path therefore depends on the host, which is correct and is
-    # exactly what `mt-compare.nix` measures: it asks three different cross
-    # package sets for the *build* machine's compiler, so the host is the same
-    # on all three arms and the paths must be equal.
+    # Measured with a configure-only build of this derivation, all three arms:
+    #
+    #   --target=x86_64-unknown-linux-gnu  -> configure: error: ... is this
+    #       build tree's own target ... but it is not one of the configured
+    #       back ends
+    #   (no --target)                      -> *** Configuration  not supported
+    #       (note the doubled space: an empty triple, as before)
+    #   --target=x86_64-pc-linux-gnu       -> CONFIGURE-OK
+    #
+    # NOTHING IS HARDCODED HERE TO GET PAST IT, and the reason is not purity.
+    # Naming `x86_64-pc-linux-gnu` would configure, but the resulting compiler
+    # STILL could not serve this package set's native platform: every other part
+    # of the chain resolves targets by nixpkgs' spelling -- the driver's own
+    # name, `specs-config`'s directory, `gcc-composed`'s per-target directory --
+    # and `x86_64-unknown-linux-gnu` would not be an enrolled back end at all.
+    # `../target-specs` would then fail exactly as it does for musl:
+    # `no cpu_type for x86_64-unknown-linux-gnu`. The build would go green and
+    # the compiler would be unable to compile for the machine it runs on.
+    #
+    # So this is the same defect as #259 and wider than it was thought to be: it
+    # is not only that `default-backends` has no musl entries, it is that it
+    # does not carry the triple spellings distros actually use. Of the four
+    # arms this set exercises, `aarch64-unknown-linux-gnu` and
+    # `riscv64-unknown-linux-gnu` are present; `x86_64-unknown-linux-gnu` and
+    # `aarch64-unknown-linux-musl` are not.
+    #
+    # `--target` IS PASSED, AND IT IS NOT A PRIVILEGED TARGET. `gcc/configure`
+    # requires one -- see the empty-triple arm above -- and it is the HOST's
+    # triple, so it says "this compiler runs here"; the back-end list comes from
+    # `--enable-backends`, defaulted by the tree. Note that the upstream commit
+    # calls the coupling itself the defect: "The build tree having a target of
+    # its own at all is the defect behind this message."
+    #
+    # The store path therefore depends on the host, which is correct and is what
+    # `mt-compare.nix` measures: it asks three cross package sets for the BUILD
+    # machine's compiler, so the host is the same on all three arms and the
+    # paths must be equal.
     "--target=${stdenv.hostPlatform.config}"
   ]
   ++ lib.optional (
@@ -492,6 +527,30 @@ stdenv.mkDerivation (finalAttrs: {
   # `limits.h` defines and gcc's does not -- `PATH_MAX` being the common one --
   # goes missing from every libgcc source that needs it.
   makeFlags = [ "LIMITS_H_TEST=true" ];
+
+  # `itoolsdir`/`itoolsdatadir` HAVE NO DEFAULT ANY MORE, AND THAT IS THE POINT.
+  #
+  # `gcc/Makefile.in:6923-6924` now leaves both empty and `check-itoolsdirs`
+  # (`:6928`) fails by name if the caller did not set them. They used to be
+  # derived from `libsubdir`/`libexecsubdir` here AND computed independently in
+  # `fixincludes/Makefile.in`, which agreed only because both had been written
+  # to match -- and diverged in an accelerator build, where `accel_dir_suffix`
+  # reaches only gcc's copy. The top level now binds them per module from
+  # `MT_INSTALL_ITOOLSDIR`/`MT_INSTALL_ITOOLSDATADIR`.
+  #
+  # This package set IS that caller: it does not run the top level, so it states
+  # them, and it states the SAME pair it already passes to `../fixincludes` as
+  # `bindir=`/`datadir=`. Two components install into one directory; one
+  # authority now says where, and it is this expression.
+  #
+  # `release_version`, not `version`: everything under `lib/gcc/` is keyed by
+  # `gcc/BASE-VER`. Getting that wrong here would put gcc's half of
+  # `install-tools` in a second version directory beside fixincludes' half,
+  # which is the exact fault this pair was changed to prevent.
+  installFlags = [
+    "itoolsdir=${placeholder "out"}/libexec/gcc/${release_version}/install-tools"
+    "itoolsdatadir=${placeholder "out"}/lib/gcc/${release_version}/install-tools"
+  ];
 
   doCheck = false;
 
