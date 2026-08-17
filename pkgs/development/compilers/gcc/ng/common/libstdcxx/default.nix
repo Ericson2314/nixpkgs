@@ -104,15 +104,9 @@ stdenv.mkDerivation (finalAttrs: {
   ];
 
   patches = [
-    (fetchpatch {
-      name = "custom-threading-model.patch";
-      url = "https://github.com/gcc-mirror/gcc/commit/e5d853bbe9b05d6a00d98ad236f01937303e40c4.diff";
-      hash = "sha256-f0XAim3uzHnUx5lm/xO00IqBHu4YUEHF2WY+c0yCF6Y=";
-      includes = [
-        "config/*"
-        "libstdc++-v3/acinclude.m4"
-      ];
-    })
+    # THE `custom-threading-model` BACKPORT IS GONE -- ancestor of the pinned
+    # rev, same measurement as in `../libatomic`:
+    # `git merge-base --is-ancestor e5d853bbe9b0 1167d3f15f7` is true.
     (getVersionFile "libstdcxx/force-regular-dirs.patch")
 
     # From the posting to gcc-patches, which covers every component that links
