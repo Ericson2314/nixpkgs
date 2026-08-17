@@ -169,6 +169,82 @@ stdenv.mkDerivation (finalAttrs: {
   # And note what the boundary list did NOT predict. It named `specs-config` as
   # the missing artefact, and that was right but not sufficient: (2) and (3)
   # were both behind it, and (3) is not about libgcc's boundary at all.
+  #
+  # ==========================================================================
+  # THE 24 TOOL-VARIABLE LINES BELOW, SPLIT BY WHY EACH ONE IS STILL HERE.
+  # ==========================================================================
+  #
+  # "Delete the shuffling" is one instruction covering two different claims, and
+  # they have different evidence and different unblock conditions. The split is
+  # what makes the count actionable, so it is written down rather than left as a
+  # total.
+  #
+  # THE MEASUREMENT THAT SETTLES IT -- libgcc's own build system, not the
+  # packaging:
+  #
+  #   `grep -cE '_FOR_BUILD|_FOR_TARGET' libgcc/configure.ac`   -> **0**
+  #   `grep -cE '_FOR_BUILD|_FOR_TARGET' libgcc/configure`      -> **1**, and it
+  #       is inside a COMMENT (`:2687`, about post-stage1 host modules).
+  #   `grep -cE '_FOR_BUILD|_FOR_TARGET' libgcc/Makefile.in`    -> **21**, and
+  #       every one is a LOCAL DEFINITION, not a read:
+  #
+  #           AR_FOR_TARGET = $(AR)        GCC_FOR_TARGET = $(CC)
+  #           NM_FOR_TARGET = $(NM)        RANLIB_FOR_TARGET = $(RANLIB)
+  #           STRIP_FOR_TARGET = $(STRIP)  LIPO_FOR_TARGET = $(LIPO)
+  #
+  #       (`libgcc/Makefile.in:187-199`, then `export`ed at `:209-223` for its
+  #       own sub-makes.) They are the makefile's local names for its ONE
+  #       toolchain, derived from `$(AR)`/`$(CC)`/... which come from libgcc's
+  #       own configure. And they are plain `=` assignments, which an
+  #       environment variable CANNOT override in make -- so exporting these
+  #       names at libgcc does not even reach them.
+  #
+  # THE CHECK, STATED SO IT IS REPRODUCIBLE AND SO THAT PROSE CANNOT FAIL IT.
+  # Counting every matching line counts this comment, which discusses the
+  # variables by name and has to. So the check skips comment lines:
+  #
+  #     for f in $(find ng -name '*.nix'); do
+  #       grep -v '^[[:space:]]*#' "$f" | grep -c '_FOR_BUILD\|_FOR_TARGET'
+  #     done
+  #
+  # Measured: **0 for every file in the set except this one, which is 24.**
+  #
+  # So, of the 24:
+  #
+  #   *** 9 ARE UNNECESSARY REGARDLESS OF #246 *** -- the second block, the one
+  #   set just before libgcc's OWN configure runs: the five `*_FOR_BUILD` and
+  #   the four `*_FOR_TARGET` exports. Nothing in libgcc reads any of them, per
+  #   the grep above. They are not blocked on anything; they are simply not
+  #   read. They stay only because libgcc cannot currently be BUILT on the
+  #   target that would demonstrate the deletion, and deleting a thing while the
+  #   build that would contradict you cannot run is the unfalsifiable-claim
+  #   shape PRINCIPLES warns about. Delete them the moment a libgcc build
+  #   passes.
+  #
+  #   *** 15 SURVIVE ONLY BECAUSE OF THE INNER `gcc/configure` RUN *** -- the
+  #   first block: five `*_FOR_BUILD` exports, five uses of them to set the plain
+  #   names, four `*_FOR_TARGET` exports, one `NIX_CFLAGS_COMPILE_FOR_BUILD`.
+  #   That run needs the three-machine vocabulary because it IS a gcc build:
+  #   build machine for the
+  #   generators, target machine for the probes. They go when it goes, and it
+  #   goes when two things exist:
+  #     (a) the compiler installs per-target `tconfig.h`/`tm.h`/`options.h`/
+  #         `insn-constants.h` for `-I$(gcc_objdir)`. Today it installs the
+  #         PRIMARY's: measured on the built compiler,
+  #         `lib/gcc/<ver>/plugin/include/tm.h` is 72 lines of `#ifndef`-guarded
+  #         configure answers (`DEFAULT_LIBC LIBC_GLIBC`, `HAVE_LD_EH_FRAME_HDR
+  #         1`, ...), not a back end's `tm.h` chain, and there is no
+  #         `tconfig.h` there at all;
+  #     (b) #246, so that the compiler which would replace the run can assemble.
+  #
+  # The non-`*_FOR_*` exports in the second block (`AS`, `CC`, `CPP`, `CXX`,
+  # `LD`) are a third category the grep does not count: they exist to UNDO the
+  # first block's clobbering of the environment, and stdenv had them right to
+  # begin with. They go with the first block, not on their own.
+  #
+  # `GCC_CFLAGS` remains the one genuinely inverted variable, as recorded above:
+  # two variables in `libgcc.mvars`, one of them describing gcc's build rather
+  # than libgcc's machine.
   depsBuildBuild = [
     buildPackages.stdenv.cc
     buildGccPackages.libiberty

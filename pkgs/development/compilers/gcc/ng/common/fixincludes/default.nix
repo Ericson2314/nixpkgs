@@ -35,6 +35,13 @@
 # move that decision to run time, next to the rest of what `mkheaders` already
 # decides per target; that is a change to `Makefile.in:178` and `mkheaders.in`,
 # not to this file.
+let
+  # The two directories `mkheaders` calls `itoolsdir` and `itoolsdatadir`. Named
+  # once here and passed to `make install` below; `../include-fixed` reads them
+  # back out of `passthru` rather than spelling them again.
+  itoolsSubdir = "libexec/gcc/${release_version}/install-tools";
+  itoolsDataSubdir = "lib/gcc/${release_version}/install-tools";
+in
 stdenv.mkDerivation (finalAttrs: {
   pname = "fixincludes";
   inherit version;
@@ -78,21 +85,38 @@ stdenv.mkDerivation (finalAttrs: {
     "--disable-dependency-tracking"
   ];
 
-  # `mkheaders` bakes `@libdir@` and `@libexecdir@` in, and computes
-  # `libsubdir=${libdir}/gcc/${version}` from them
-  # (`fixincludes/mkheaders.in:147-155`). Its `prefix` positional argument is
-  # read and then never used for any of that, so this prefix is where every
-  # `mkheaders` run will try to WRITE, not merely where it reads from. The
-  # per-target derivation copies and rewrites rather than pointing at a store
-  # path it cannot write to; see `../include-fixed`.
-  postInstall = ''
-    itools="$out/libexec/gcc/${release_version}/install-tools"
+  # THE CALLER STATES THE INSTALL PATHS, AND THIS IS THE CALLER.
+  #
+  # `fixincludes/Makefile.in:114-116` installs into plain `$(bindir)` and
+  # `$(datadir)` and appends nothing -- no `install-tools`, no
+  # `gcc/<version>/`. Those are LOCAL names, parameters of that makefile, and
+  # the comment above them says so: "`bindir' here means where fixincludes'
+  # programs go, which is not obliged to be what anyone else means by
+  # `bindir'." So bind them, the way one passes an argument.
+  #
+  # They are bound to the layout gcc's `install-mkheaders` uses, on purpose:
+  # `mkheaders` still reads its DATA from gcc's tree (see `../include-fixed`),
+  # and two components that have to meet should be told the same address by one
+  # authority rather than two.
+  installFlags = [
+    "bindir=${placeholder "out"}/${itoolsSubdir}"
+    "datadir=${placeholder "out"}/${itoolsDataSubdir}"
+  ];
 
-    # `make install` writes four files here and reports success if it writes
-    # none of them -- the rule used to abort on its first line and did so
+  postInstall = ''
+    itools="$out/${itoolsSubdir}"
+
+    # `make install` writes five files here and used to report success if it
+    # wrote none of them -- the rule aborted on its first line and did so
     # silently for years (see the comment at `fixincludes/Makefile.in:40`). So
     # name them.
-    for f in fixincl fixinc.sh mkheaders; do
+    #
+    # `mkinstalldirs` IS IN THIS LIST NOW, and that is the point of listing it.
+    # It used to come from gcc's `install-mkheaders`, so this component could
+    # not produce a working tool directory on its own and every consumer had to
+    # install gcc as well, for one shell script. `mkheaders` runs
+    # `$(itoolsdir)/mkinstalldirs`, and `itoolsdir` is this directory.
+    for f in fixincl fixinc.sh mkheaders mkinstalldirs; do
       test -f "$itools/$f" || { echo "fixincludes: $itools/$f was not installed" >&2; exit 1; }
     done
 
@@ -112,7 +136,7 @@ stdenv.mkDerivation (finalAttrs: {
   passthru = {
     # Where `../include-fixed` looks. Written down once, here, rather than
     # recomputed at each use site.
-    itoolsSubdir = "libexec/gcc/${release_version}/install-tools";
+    inherit itoolsSubdir itoolsDataSubdir;
   };
 
   meta = gcc_meta // {
