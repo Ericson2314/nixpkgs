@@ -107,6 +107,12 @@ stdenv.mkDerivation (finalAttrs: {
   # which existed only to make the top level's relative `-I` arithmetic come
   # out right -- have nothing left to point at, and the build directory is
   # simply `$buildRoot`.
+  # THE MUSL `-isystem .../include-fixed` DANCE THAT WAS HERE IS GONE. It added
+  # a directory that has never existed: the path was
+  # `lib/gcc/<triple>/<version>/`, and gcc writes `lib/gcc/<version>/<triple>/`
+  # with `<version>` taken from `gcc/BASE-VER` rather than the nixpkgs version --
+  # wrong on both counts, and `-isystem` on a missing directory is silently
+  # ignored. See the longer note at the same deletion in `../libgcc`.
   preConfigure = ''
     cp ${lib.getDev libgcc}/include/gthr-default.h "$sourceRoot/../libgcc/gthr-default.h"
 
@@ -114,12 +120,6 @@ stdenv.mkDerivation (finalAttrs: {
     configureScript=$sourceRoot/configure
     chmod +x "$configureScript"
 
-    # THE MUSL `-isystem .../include-fixed` DANCE IS GONE. It added a directory
-    # that has never existed: the path was `lib/gcc/<triple>/<version>/`, and
-    # gcc writes `lib/gcc/<version>/<triple>/` with `<version>` taken from
-    # `gcc/BASE-VER` rather than the nixpkgs version -- wrong on both counts,
-    # and `-isystem` on a missing directory is silently ignored. See the longer
-    # note at the same deletion in `../libgcc`.
   '';
 
   configurePlatforms = [

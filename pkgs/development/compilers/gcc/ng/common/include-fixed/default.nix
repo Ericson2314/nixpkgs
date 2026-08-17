@@ -92,12 +92,21 @@ stdenvNoCC.mkDerivation (finalAttrs: {
   # derivation's platform -- the same authority `../libgcc` reads.
   nativeBuildInputs = [ stdenv.cc ];
 
+  # THREE STEPS, and two of them are guards.
+  #
+  # `fixinc_list` is gcc's, and its absence has two very different causes --
+  # "gcc did not run install-mkheaders" and "mkheaders is broken" -- which look
+  # identical from the failure, so this one is named.
+  #
+  # Then a WRITABLE tool directory. Note it is `fixincludes`' alone now:
+  # `mkinstalldirs` comes with it, so there is no second half to merge in.
+  #
+  # Then THIS TARGET'S `fixinc.sh`, not the host's -- see the note at the top of
+  # this file. Both sizes are printed because the no-op stub and the real fixer
+  # are distinguishable only by size.
   buildPhase = ''
     runHook preBuild
 
-    # `fixinc_list` is gcc's, and its absence has two very different causes --
-    # "gcc did not run install-mkheaders" and "mkheaders is broken" -- which
-    # look identical from the failure. Name this one.
     test -f "${gcc-unwrapped}/${itoolsDataSubdir}/fixinc_list" || {
       echo "include-fixed: ${gcc-unwrapped} has no ${itoolsDataSubdir}/fixinc_list." >&2
       echo "  That file is gcc's \`install-mkheaders'. Without it mkheaders has" >&2
@@ -105,8 +114,6 @@ stdenvNoCC.mkDerivation (finalAttrs: {
       echo "  directory leaves every non-default multilib unfixed, silently." >&2
       exit 1; }
 
-    # A writable tool directory. Note it is `fixincludes`' alone now:
-    # `mkinstalldirs` comes with it, so there is no second half to merge in.
     it="$NIX_BUILD_TOP/itools"
     mkdir -p "$it"
     cp -r "${fixincludes}/${itoolsSubdir}/." "$it/"
@@ -118,7 +125,6 @@ stdenvNoCC.mkDerivation (finalAttrs: {
         exit 1; }
     done
 
-    # THIS TARGET'S `fixinc.sh`, NOT THE HOST'S -- see the note at the top.
     hostSize=$(wc -c < "$it/fixinc.sh")
     ( cd "$it" && srcdir="$it" sh ./mkfixinc.sh ${target} )
     echo "include-fixed: fixinc.sh was $hostSize bytes for the host," \
@@ -127,13 +133,20 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     runHook postBuild
   '';
 
+  # `--itoolsdir` is deliberately absent: `mkheaders` self-locates by
+  # `dirname $0`, so running the copy is what selects the copy.
+  #
+  # The file count afterwards is REPORTED, not asserted: `mkheaders` writes
+  # nothing and exits 0 when `mkfixinc.sh` handed it the no-op fixer, so an
+  # empty directory and a real result share an exit status -- but a target whose
+  # headers genuinely need no fixing also produces few files, so a threshold
+  # would fire for the wrong reason. Making the number visible is what lets a
+  # silent zero be seen.
   installPhase = ''
     runHook preInstall
 
     mkdir -p "$out/${incdir}"
 
-    # `--itoolsdir` is deliberately absent: `mkheaders` self-locates by
-    # `dirname $0`, so running the copy is what selects the copy.
     sh "$it/mkheaders" \
       --target=${target} \
       --headers=${lib.getDev libc}/include \
@@ -141,17 +154,11 @@ stdenvNoCC.mkDerivation (finalAttrs: {
       --itoolsdatadir=${gcc-unwrapped}/${itoolsDataSubdir} \
       --incdir="$out/${incdir}"
 
-    # `mkheaders` writes nothing and exits 0 when `mkfixinc.sh` handed it the
-    # no-op fixer, so an empty directory and a real result are the same exit
-    # status. Report the count; do not assert a threshold on it, because a
-    # target whose headers need no fixing genuinely produces few files -- but
-    # make the number visible so a silent zero is a number someone can see.
     n=$(find "$out/${incdir}" -type f | wc -l)
     echo "include-fixed: ${target}: $n fixed header(s) in $out/${incdir}"
 
     runHook postInstall
   '';
-
   passthru = {
     inherit target;
     # What `../target-specs` takes as `--with-fixed-include-dir`, relative to

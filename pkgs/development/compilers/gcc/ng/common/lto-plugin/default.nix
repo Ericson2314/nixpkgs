@@ -119,6 +119,10 @@ stdenv.mkDerivation (finalAttrs: {
     "libexecsubdir=${placeholder "out"}/libexec/gcc/${release_version}"
   ];
 
+  # Two checks, and the second is the one that can catch a plausible-looking
+  # failure: `onload' is the entry point `ld' dlsym's, so a plugin that loads and
+  # exports nothing is indistinguishable from a working one until a link
+  # actually uses LTO.
   postInstall = ''
     so="$out/libexec/gcc/${release_version}/liblto_plugin.so"
     test -f "$so" || {
@@ -131,9 +135,6 @@ stdenv.mkDerivation (finalAttrs: {
       ls -R "$out" >&2
       exit 1; }
 
-    # `onload` is the entry point `ld` dlsym's. A plugin that loads and exports
-    # nothing is indistinguishable from a working one until a link actually
-    # uses LTO.
     "''${NM:-nm}" --dynamic --defined-only "$so" | grep -qw onload || {
       echo "lto-plugin: $so exports no \`onload'." >&2
       exit 1; }

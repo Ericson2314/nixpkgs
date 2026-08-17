@@ -19,6 +19,18 @@ stdenv.mkDerivation (finalAttrs: {
   pname = "libcpp";
   inherit version;
 
+  # LIBCPP REACHES INTO THE COMPILER'S BACK-END SOURCES, AND THIS SOURCE COPY IS
+  # THE BOUNDARY VIOLATION MADE VISIBLE BY BUILDING THE COMPONENT ALONE.
+  #
+  # `libcpp/lex.cc:397` is `#include "../gcc/config/i386/cpuid.h"` -- a relative,
+  # quoted include out of the preprocessor library into one back end's
+  # directory, for the SSE-accelerated lexer. It is a fact about the machine
+  # libcpp is being COMPILED for, so it is not target-dependence, but it does
+  # mean `libcpp` cannot be built without part of `gcc/`. Hence the
+  # `cp -r gcc/config` below.
+  #
+  # Copied rather than papered over: the include is real, and the fix is
+  # upstream (a host-capability header of libcpp's own), not here.
   src = runCommand "libcpp-src-${version}" { src = monorepoSrc; } ''
     runPhase unpackPhase
 
@@ -28,18 +40,6 @@ stdenv.mkDerivation (finalAttrs: {
 
     cp -r include "$out"
     cp -r libcpp "$out"
-
-    # LIBCPP REACHES INTO THE COMPILER'S BACK-END SOURCES, AND THIS IS THE
-    # BOUNDARY VIOLATION MADE VISIBLE BY BUILDING THE COMPONENT ALONE.
-    #
-    # `libcpp/lex.cc:397` is `#include "../gcc/config/i386/cpuid.h"` -- a
-    # relative, quoted include out of the preprocessor library into one back
-    # end's directory, for the SSE-accelerated lexer. It is a fact about the
-    # machine libcpp is being COMPILED for, so it is not target-dependence, but
-    # it does mean `libcpp` cannot be built without part of `gcc/`.
-    #
-    # Copied rather than papered over: the include is real, and the fix is
-    # upstream (a host-capability header of libcpp's own), not here.
     mkdir -p "$out/gcc"
     cp -r gcc/config "$out/gcc"
 

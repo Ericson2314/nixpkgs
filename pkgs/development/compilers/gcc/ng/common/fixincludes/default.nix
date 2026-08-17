@@ -102,33 +102,35 @@ stdenv.mkDerivation (finalAttrs: {
     "bindir=${placeholder "out"}/${itoolsSubdir}"
     "datadir=${placeholder "out"}/${itoolsDataSubdir}"
   ];
-
+  # THREE THINGS, and each is a check or an ingredient rather than an install.
+  #
+  # 1. `make install` writes five files, and used to report success if it wrote
+  #    none of them -- the rule aborted on its first line and did so silently
+  #    for years (see the comment at `fixincludes/Makefile.in:40`). So they are
+  #    named. `mkinstalldirs` IS IN THAT LIST NOW, and that is the point of
+  #    listing it: it used to come from gcc's `install-mkheaders`, so this
+  #    component could not produce a working tool directory on its own and every
+  #    consumer had to install gcc as well, for one shell script. `mkheaders`
+  #    runs `$(itoolsdir)/mkinstalldirs`, and `itoolsdir` is this directory.
+  #
+  # 2. `fixinc.in` and `mkfixinc.sh` are the ingredients for a PER-TARGET
+  #    `fixinc.sh`, because the one `make install` put there is this
+  #    derivation's target's answer. See the note at the top of this file.
+  #
+  # 3. The size of the installed `fixinc.sh` is reported because a one-line
+  #    `exit 0` is what `mkfixinc.sh` writes for a target that needs no fixing,
+  #    and it is also what a broken build would leave. The two are
+  #    distinguishable only by size.
   postInstall = ''
     itools="$out/${itoolsSubdir}"
 
-    # `make install` writes five files here and used to report success if it
-    # wrote none of them -- the rule aborted on its first line and did so
-    # silently for years (see the comment at `fixincludes/Makefile.in:40`). So
-    # name them.
-    #
-    # `mkinstalldirs` IS IN THIS LIST NOW, and that is the point of listing it.
-    # It used to come from gcc's `install-mkheaders`, so this component could
-    # not produce a working tool directory on its own and every consumer had to
-    # install gcc as well, for one shell script. `mkheaders` runs
-    # `$(itoolsdir)/mkinstalldirs`, and `itoolsdir` is this directory.
     for f in fixincl fixinc.sh mkheaders mkinstalldirs; do
       test -f "$itools/$f" || { echo "fixincludes: $itools/$f was not installed" >&2; exit 1; }
     done
 
-    # The ingredients for a per-target `fixinc.sh`, because the one installed
-    # above is this derivation's target's answer. See the note at the top.
     install -m644 "$sourceRoot/fixinc.in" "$itools/fixinc.in"
     install -m755 "$sourceRoot/mkfixinc.sh" "$itools/mkfixinc.sh"
 
-    # A one-line `exit 0` is what `mkfixinc.sh` writes for a target that needs
-    # no fixing, and it is also what a broken build would leave. They are
-    # distinguishable only by size, so record which one this is rather than
-    # leaving the next reader to guess.
     echo "fixincludes: installed fixinc.sh is $(wc -c < "$itools/fixinc.sh") bytes" \
          "for target ${stdenv.hostPlatform.config}"
   '';

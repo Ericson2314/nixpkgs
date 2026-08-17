@@ -36,16 +36,16 @@ stdenv.mkDerivation (finalAttrs: {
     configureScript=../$sourceRoot/configure
   '';
 
+  # `decContext.h:54` includes "gstdint.h", which this component's configure
+  # generates into its build directory. `-I../libdecnumber` in `gcc/` is what
+  # finds it, so it crosses the boundary alongside `config.h` -- named, not
+  # globbed, because a missing generated header shows up hundreds of lines
+  # away in someone else's compile.
   installPhase = ''
     runHook preInstall
 
     test -f libdecnumber.a
     test -f config.h
-    # `decContext.h:54` includes "gstdint.h", which this component's configure
-    # generates into its build directory. `-I../libdecnumber` in `gcc/` is what
-    # finds it, so it crosses the boundary alongside `config.h` -- named, not
-    # globbed, because a missing generated header shows up hundreds of lines
-    # away in someone else's compile.
     test -f gstdint.h
 
     install -Dm644 libdecnumber.a "$out/lib/libdecnumber.a"
