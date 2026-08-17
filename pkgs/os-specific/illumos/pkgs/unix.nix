@@ -375,6 +375,16 @@ let
     "intel/blkdev"
     "intel/vioblk"
 
+    # The Virtio FS client, which is the other way to get the host's store in:
+    # `drv/vtfs` owns the 1af4:105a PCI device and does the virtqueue round
+    # trips, `fs/virtiofs` speaks FUSE over it. Two modules rather than one
+    # because a module lives in exactly one of kernel/drv and kernel/fs, and
+    # this has to be found both by the device tree and by domount().
+    #
+    # vtfs -Nmisc/virtio; virtiofs -Nfs/specfs -Ndrv/vtfs. All already above.
+    "intel/vtfs"
+    "intel/virtiofs"
+
     # /dev/random and /dev/urandom, via the kernel crypto framework's
     # random(4D) (-Nmisc/kcf, and crypto/swrand is the entropy provider, both
     # already above). sshd will not start without a random source, and neither
