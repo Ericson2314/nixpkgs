@@ -61,45 +61,142 @@
   # Back ends this compiler serves, as a list of config triples, passed to
   # `gcc/configure` as `--enable-backends`.
   #
-  # `null` -- THE DEFAULT -- MEANS NIXPKGS NAMES NOTHING AT ALL, and that is
-  # the whole point of the argument. `gcc/configure` defaults the flag to the
-  # tree's own `gcc/default-backends`, so the compiler serves every back end the
-  # source ships and the packaging is not an authority for the list.
+  # NIXPKGS NAMES THE LIST, AND AS OF `5e122b17aa7` THAT IS THE DESIGN RATHER
+  # THAN A CONCESSION. THIS COMMENT USED TO SAY THE OPPOSITE.
   #
-  # The previous shape read `gcc/default-backends` out of `$src` in
-  # `preConfigure` and passed the 47 triples back in. That removed the
-  # `targetPlatform` reference but left nixpkgs holding the list, so the store
-  # path depended on a value the packaging computed -- target-dependence
-  # returning by the front door. The fix went into `gcc/configure`
-  # (`configure.ac`, the `no | ""` arm of the `enable_backends` case).
+  # It said `null` meant "nixpkgs names nothing at all, and that is the whole
+  # point of the argument", because `gcc/configure` defaulted the flag to the
+  # tree's own `gcc/default-backends`. That file is now DELETED, and the arm
+  # that read it is a fatal error naming this flag -- so `null` is no longer a
+  # way of declining to answer, it is a build failure.
   #
-  # A non-null value is still accepted, for exactly one purpose: the `differ`
+  # The reasoning behind the deletion is the reasoning for this default, and it
+  # is worth keeping because it inverts what was written here before:
+  # `gcc/default-backends` was a FINITE SAMPLE of an infinite space -- 47
+  # arbitrary triples, each carrying an arbitrary OS -- sitting BELOW the top
+  # level, inside `gcc/`, where a target triple must not appear at all. A
+  # sample belongs to whoever is playing distro. **This package set is the
+  # distro** -- that is the organising idea of the whole set, and it is stated
+  # in `preConfigure` -- so the sample belongs here.
+  #
+  # It was also dead: the top level errors on an empty `--enable-targets` and
+  # then unconditionally derives `--enable-backends=<list>`, so a tree
+  # configured the normal way never reached the defaulting arm. Measured
+  # upstream: `grep -c default-backends` in a real `gcc/config.log` is 0.
+  #
+  # THE LIST BELOW IS THAT SAMPLE, MOVED RATHER THAN INVENTED. It is the 47
+  # triples `gcc/default-backends` carried at `5e122b17aa7^`, verbatim and in
+  # order, so the compiler this set builds serves exactly the back ends it
+  # served before -- the change is who says so, not what is said. They are
+  # deliberately left in the tree's un-normalised spelling (`arm-eabi`,
+  # `sparc64-linux`); `config.sub` canonicalises them at configure time, which
+  # is why the installed manifest reads `arm-unknown-eabi`.
+  #
+  # AND NO musl ENTRY, WHICH IS NOT AN OVERSIGHT -- IT IS A LIMIT THIS LIST
+  # CANNOT EXPRESS, AND CONFIGURE SAYS SO BY NAME.
+  #
+  # Adding `aarch64-unknown-linux-musl` beside `aarch64-unknown-linux-gnu` was
+  # tried first, and `gcc/configure` refuses it:
+  #
+  #     --enable-backends: aarch64-unknown-linux-musl and
+  #     aarch64-unknown-linux-gnu are both the `aarch64' back end, and they
+  #     DISAGREE about that back end's target header chain, tm_defines or
+  #     target_cpu_default.  tm-aarch64.h is generated once per BACK END from
+  #     whichever of them is seen first ... so aarch64-unknown-linux-musl would
+  #     be built against aarch64-unknown-linux-gnu's ABI defaults with no
+  #     diagnostic.  Configure one triple per back end until those objects are
+  #     made per triple.
+  #
+  # So ONE TRIPLE PER BACK END is the current rule, and it bounds this whole
+  # design: `gcc-unwrapped` cannot serve `aarch64-unknown-linux-gnu` and
+  # `aarch64-unknown-linux-musl` at once. Two libcs on one back end means two
+  # compilers -- i.e. two store paths -- which is a real qualification of "one
+  # compiler, N targets": it holds across BACK ENDS, not across libc variants
+  # of one back end.
+  #
+  # The musl arm is therefore driven by OVERRIDING this list (musl instead of
+  # gnu for aarch64), which is what upstream measured too. It is not worked
+  # around here, and nothing is added that would make the refusal go away while
+  # leaving the ABI defaults wrong.
+  #
+  # NOTE WHAT IS *NOT* NEEDED: nixpkgs' own host spelling. This set builds on
+  # `x86_64-unknown-linux-gnu` and the list says `x86_64-pc-linux-gnu`.
+  # `5e122b17aa7` also made the build tree's own target match by `config.gcc`
+  # ANSWER -- `gen-target-manifest.sh` runs the stanza generator for `${target}`
+  # and matches the configured target whose stanza is byte-identical modulo the
+  # `target` spelling line -- so the two spellings resolve to one back end
+  # rather than colliding. Before that, this exact mismatch was a hard configure
+  # error and is what blocked the previous bump.
+  #
+  # Overriding it is still supported and still has a second user: the `differ`
   # arm of `mt-compare.nix`, which must be able to produce a deliberately
-  # different compiler so that the instrument can be shown capable of failing.
+  # different compiler so the instrument can be shown capable of failing.
   #
   # `--enable-targets` IS NOT USED HERE AND MUST NOT BE. That is the *top
-  # level's* flag, and the top level is a distro layer -- it decides which
-  # components exist, instantiates a tree per target and drives them in order.
-  # This package set is already the distro. See the boundary note in
-  # `preConfigure`.
+  # level's* flag, and the top level is the other distro layer. This set is
+  # already one; see the boundary note in `preConfigure`.
   #
-  # A configure-time default target is a hiding place. Anything still tied to one
-  # machine keeps working as long as that machine is the default, so the
-  # dependency is never noticed -- it surfaces only for whichever target was not
-  # chosen. With no default there is nowhere for it to hide.
-  #
-  # Note what this does to the store path, which is the point. The derivation
-  # depends on the *list*, not on `targetPlatform`: two different lists should
-  # give two different compilers, but the same list must give the same path no
-  # matter which platform is being built for. That equality is the test -- if a
-  # target dependency remains anywhere, the paths diverge and say so.
+  # Note what this does to the store path. The derivation depends on the LIST,
+  # not on `targetPlatform`: two different lists give two different compilers,
+  # but the same list must give the same path no matter which platform is being
+  # built for. That equality is what `mt-compare.nix` measures, and a constant
+  # list is constant on all three of its arms -- so moving the list here does
+  # not weaken it.
   #
   # Needs a GCC that has `--enable-backends` at all, i.e. `multi-target-0`. No
   # released GCC does, and autoconf accepts an unrecognised `--enable-*` with a
   # warning rather than an error -- so against a tarball this flag was silently
   # inert and the compiler came out single-target. That is why this package set
   # builds the branch and has no tarball arm; see `../../default.nix`.
-  enableBackends ? null,
+  enableBackends ? [
+    "aarch64-unknown-linux-gnu"
+    "alpha-linux-gnu"
+    "arc-elf32"
+    "arm-eabi"
+    "avr-elf"
+    "bfin-elf"
+    "bpf-unknown-none"
+    "c6x-elf"
+    "cris-elf"
+    "csky-elf"
+    "epiphany-elf"
+    "fr30-elf"
+    "frv-elf"
+    "ft32-elf"
+    "amdgcn-amdhsa"
+    "h8300-elf"
+    "x86_64-pc-linux-gnu"
+    "ia64-elf"
+    "iq2000-elf"
+    "lm32-elf"
+    "m32r-elf"
+    "m68k-elf"
+    "mcore-elf"
+    "microblaze-elf"
+    "mips64-elf"
+    "mmix-knuth-mmixware"
+    "mn10300-elf"
+    "moxie-elf"
+    "msp430-elf"
+    "nds32be-elf"
+    "nvptx-none"
+    "or1k-elf"
+    "hppa64-linux-gnu"
+    "pdp11-aout"
+    "pru-elf"
+    "riscv64-unknown-linux-gnu"
+    "rl78-elf"
+    "powerpc64-linux-gnu"
+    "rx-elf"
+    "s390x-linux-gnu"
+    "sh-elf"
+    "sparc64-linux"
+    "v850e1-elf"
+    "vax-linux-gnu"
+    "visium-elf"
+    "xstormy16-elf"
+    "xtensa-elf"
+  ],
   # The four static libraries `gcc/` links out of sibling build directories.
   # Named as arguments so the boundary is visible at the top of the file rather
   # than buried in a shell fragment.
