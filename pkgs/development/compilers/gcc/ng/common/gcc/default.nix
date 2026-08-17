@@ -482,6 +482,58 @@ stdenv.mkDerivation (finalAttrs: {
 
   doCheck = false;
 
+  # THE SOURCE-DERIVED HALF OF EVERY TARGET'S SPEC FILE IS BUILT AND INSTALLED
+  # HERE, BECAUSE ONLY THIS BUILD CAN PRODUCE IT AND ONLY ANOTHER DERIVATION CAN
+  # CONSUME IT.
+  #
+  # A target's spec file has two producers, and `gcc/Makefile.in:4039` is
+  # explicit that they are different questions:
+  #
+  #   * `LINK_SPEC`, `STARTFILE_SPEC`, `ENDFILE_SPEC`, `LIB_SPEC`, `ASM_SPEC`,
+  #     `CPP_SPEC`, `CC1_SPEC` and the multilib tables are strings in that back
+  #     end's own `tm.h` chain and its `t-*` fragments. They are known HERE, at
+  #     build time, and there is no probe that could recover them later.
+  #   * everything that depends on which assembler and linker are installed is
+  #     `target-specs/configure`'s, and is asked once the toolchain is known.
+  #
+  # `make multi-target-specs` writes the first half for every configured back
+  # end, as `specs-src-<target>` and `mlib-specs-<target>`, plus the
+  # `multi-target.manifest` that carries each target's `cpu_type` and
+  # `option_defaults`. `target-specs/configure` takes all four by name
+  # (`--with-source-specs`, `--with-cpu-type`, `--with-option-defaults`), and
+  # `Makefile.tpl:2424` refuses to run without the manifest -- because probing
+  # without it writes an EMPTY `*option_defaults` spec, which reads exactly like
+  # a target that genuinely has none.
+  #
+  # None of it is installed by `make install`: the top level reads it out of the
+  # build directory, in-place, because in a `./configure && make` world the
+  # prober and the compiler share one tree. Here they are two derivations, so
+  # the only way across is the store -- and this is the whole of what
+  # `../target-specs` needs from `gcc`.
+  #
+  # THIS DOES NOT PUT A TARGET INTO THIS DERIVATION. It emits one file per back
+  # end for EVERY back end the compiler serves, from the same list that already
+  # decides the store path. `mt-compare.nix` is the check that this stayed true.
+  # `all` is named explicitly because naming a second goal replaces the default
+  # rather than adding to it.
+  buildFlags = [
+    "all"
+    "multi-target-specs"
+  ];
+
+  postBuild = ''
+    # `multi-target-specs` reports per-target failures on stderr and still
+    # exits 0 -- deliberately, since a back end with no multilib table is a
+    # real answer. So count the artefacts rather than trusting the status: an
+    # empty `$out/.../multi-target` would be indistinguishable from a build
+    # whose rule did not run, and `target-specs` would then fail one derivation
+    # later with a message about the manifest.
+    test -f multi-target.manifest
+    nsrc=$(ls specs-src-* 2>/dev/null | wc -l)
+    echo "gcc: multi-target-specs wrote $nsrc source-derived spec halves"
+    test "$nsrc" -gt 0
+  '';
+
   # The plugin headers land under lib/gcc/<target>/<version>/, one directory per
   # target, so glob rather than naming a target.
   postInstall = ''
@@ -489,6 +541,18 @@ stdenv.mkDerivation (finalAttrs: {
       test -d "$d" || continue
       moveToOutput "''${d#$out/}" "''${!outputDev}"
     done
+
+    # Beside the per-target directories the driver searches, not inside one:
+    # this is the input a per-target `target-specs` run consumes, and it is the
+    # same file for all of them.
+    srcspecs="$out/lib/gcc/${version}/multi-target"
+    mkdir -p "$srcspecs"
+    install -m644 multi-target.manifest multi-target.multilib "$srcspecs/"
+    install -m644 specs-src-* "$srcspecs/"
+    for f in mlib-specs-*; do
+      test -f "$f" && install -m644 "$f" "$srcspecs/"
+    done
+    echo "gcc: installed $(ls "$srcspecs" | wc -l) files to $srcspecs"
   '';
 
   passthru = {

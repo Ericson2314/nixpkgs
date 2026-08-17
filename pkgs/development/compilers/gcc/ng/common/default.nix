@@ -183,6 +183,43 @@ makeScopeWithSplicing' {
       libsanitizer = callPackage ./libsanitizer { };
       libquadmath = callPackage ./libquadmath { };
 
+      # THE TWO COMPONENTS THAT TURN A BACK END INTO A TARGET.
+      #
+      # `gcc-unwrapped` is one store path serving 47 back ends and naming no
+      # target. Everything that depends on which assembler, linker and system
+      # headers a particular machine has is asked here, per machine, after that
+      # compiler is built -- and a wrapper composes the two into something a
+      # user can call a cross compiler.
+      #
+      # Note where each sits in the build/host/target scheme, because it is the
+      # answer to why they are separate:
+      #
+      #   `fixincludes` builds C and has a --host and NO target. One store path
+      #     serves every target. (`fixincludes/configure.ac` says so where
+      #     `ACX_NONCANONICAL_TARGET` used to be, and `Makefile.def` has never
+      #     listed it as a `target_module`.)
+      #   `target-specs` and `include-fixed` compile nothing at all. They are
+      #     data about one machine, so they are instantiated once per machine --
+      #     which in this package set means `stdenv.hostPlatform`, exactly as
+      #     for `libgcc`.
+      target-specs = callPackage ./target-specs { };
+
+      # `fixincludes` runs on the build machine, so it is taken from
+      # `buildGccPackages` at the use site rather than being a host package
+      # here; this attribute is the one that runs on THIS platform, for a set
+      # that is being cross-built for it.
+      fixincludes = callPackage ./fixincludes {
+        libiberty = gccPackages.libiberty;
+      };
+
+      # The per-target application of it. `cc` is the compiler that will
+      # preprocess for this target: `mkheaders` needs its predefined macros and
+      # refuses to run without them.
+      include-fixed = callPackage ./include-fixed {
+        fixincludes = buildGccPackages.fixincludes;
+        cc = buildGccPackages.gcc;
+      };
+
       gfortran-unwrapped = gccPackages.gcc-unwrapped.override {
         stdenv = overrideCC stdenv buildGccPackages.gcc;
         langFortran = true;
