@@ -7,7 +7,20 @@
   version,
   monorepoSrc ? null,
   gcc-unwrapped,
-  binutils,
+  # THE BINUTILS THAT RUN ON THE BUILD MACHINE AND EMIT FOR THIS TARGET, i.e.
+  # the ones whose `bin` holds `<triple>-as` and `<triple>-ld`.
+  #
+  # An argument rather than `stdenv.cc.bintools`, and the reason is a cycle
+  # rather than taste. In this scope `stdenv` is `overrideCC stdenv gcc`, and
+  # that `gcc` wraps `../gcc-composed`, which is built from THIS derivation. So
+  # reading the compiler's bintools here would make the spec file depend on a
+  # compiler that cannot exist until the spec file does. The call site passes
+  # the plain package set's bintools, which knows the same answer and is not
+  # downstream of anything here.
+  #
+  # It is deliberately NOT the scope's `binutils` either: in a cross set that is
+  # the copy which RUNS on the target and cannot be executed on the builder.
+  bintools,
   # This target's fixed system headers, if they have been made. `null` is the
   # honest answer before `mkheaders` has run, and it is NOT the same as "there
   # are none": see the note on `--with-fixed-include-dir` below.
@@ -60,7 +73,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
   # the target's assembler and linker on hand-written `.s` files and reads what
   # they say; it never needs a working C compiler for the target, and asking for
   # one would make this depend on `libgcc`, which depends on this.
-  nativeBuildInputs = [ binutils ];
+  nativeBuildInputs = [ bintools ];
 
   postUnpack = ''
     mkdir -p ./build
@@ -148,7 +161,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     # among them -- still fail with only those two set. A failed probe is not an
     # error here; it silently records "no". So hand over the whole directory,
     # which is what `--with-tools-dir` is for.
-    "--with-tools-dir=${binutils}/bin"
+    "--with-tools-dir=${bintools}/bin"
 
     "--with-specs-file=${placeholder "out"}/${specsDir}/specs"
   ]

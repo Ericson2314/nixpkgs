@@ -202,7 +202,32 @@ makeScopeWithSplicing' {
       #     data about one machine, so they are instantiated once per machine --
       #     which in this package set means `stdenv.hostPlatform`, exactly as
       #     for `libgcc`.
-      target-specs = callPackage ./target-specs { };
+      #
+      # `gcc-unwrapped` comes from `buildGccPackages` HERE AND THAT IS NOT
+      # PEDANTRY. What this reads out of it -- `multi-target.manifest` and the
+      # source-derived spec halves -- is the same for every target, but the
+      # derivation that carries it is per *host*. Left to the scope, a cross set
+      # asked for a compiler that RUNS on the target: measured, it went off to
+      # build `gcc-aarch64-unknown-linux-gnu-17.0.0` and died in that compiler's
+      # own configure on `gmp.h`, an error naming nothing to do with specs.
+      target-specs = callPackage ./target-specs {
+        gcc-unwrapped = buildGccPackages.gcc-unwrapped;
+        # The PLAIN package set's bintools, not this scope's `stdenv.cc`'s --
+        # see the argument's own note. `stdenv` here is still the outer one,
+        # before `overrideCC`, so this is the ordinary cross toolchain and
+        # nothing downstream of the compiler being composed.
+        bintools = stdenv.cc.bintools;
+      };
+
+      # The join, and the thing every wrapper below should really be wrapping:
+      # the target-agnostic compiler plus THIS target's probed spec file, in one
+      # prefix. `gcc-unwrapped` on its own cannot compile for any target at all
+      # -- it exits with `no configuration file for target ...` before reaching
+      # cc1 -- so a wrapper built straight on it is a compiler that names a
+      # target and cannot serve it.
+      gcc-composed = callPackage ./gcc-composed {
+        gcc-unwrapped = buildGccPackages.gcc-unwrapped;
+      };
 
       # `fixincludes` runs on the build machine, so it is taken from
       # `buildGccPackages` at the use site rather than being a host package
@@ -217,6 +242,10 @@ makeScopeWithSplicing' {
       # refuses to run without them.
       include-fixed = callPackage ./include-fixed {
         fixincludes = buildGccPackages.fixincludes;
+        # Same reason as for `target-specs` above: the halves of `install-tools`
+        # this reads are host-independent data, but the derivation carrying them
+        # runs on the build machine.
+        gcc-unwrapped = buildGccPackages.gcc-unwrapped;
         cc = buildGccPackages.gcc;
       };
 
@@ -269,7 +298,7 @@ makeScopeWithSplicing' {
       };
 
       gcc = wrapCCWith {
-        cc = gccPackages.gcc-unwrapped;
+        cc = gccPackages.gcc-composed;
         libcxx = targetGccPackages.libstdcxx;
         bintools = binutils;
         extraPackages = [
@@ -301,7 +330,7 @@ makeScopeWithSplicing' {
       # `binutilsNoLibc` carries `preLibcHeaders`. That is the only place the
       # pre-libc stage is written down.
       gccNoLibgcc = wrapCCWith {
-        cc = gccPackages.gcc-unwrapped;
+        cc = gccPackages.gcc-composed;
         libcxx = null;
         bintools = binutilsNoLibc;
         extraPackages = [ ];
@@ -339,7 +368,7 @@ makeScopeWithSplicing' {
       # `binutilsNoLibc` is what keeps the libc out, so nothing here refers to
       # a libc derivation and the cycle stays broken.
       gccWithLibgccNoCxx = wrapCCWith {
-        cc = gccPackages.gcc-unwrapped;
+        cc = gccPackages.gcc-composed;
         libcxx = null;
         bintools = binutilsNoLibc;
         extraPackages = [
@@ -362,7 +391,7 @@ makeScopeWithSplicing' {
         # Cygwin's libc is in partly C++ and needs C++ headers to build.
         if stdenv.targetPlatform.isCygwin then
           wrapCCWith {
-            cc = gccPackages.gcc-unwrapped;
+            cc = gccPackages.gcc-composed;
             libcxx = targetGccPackages.libstdcxx-no-libc;
             bintools = binutilsNoLibc;
             extraPackages = [
@@ -380,7 +409,7 @@ makeScopeWithSplicing' {
       # Stage 3: real libc, bootstrap libgcc still. The finished libgcc is what
       # this is about to build.
       gccWithLibcAndBasicLibgcc = wrapCCWith {
-        cc = gccPackages.gcc-unwrapped;
+        cc = gccPackages.gcc-composed;
         libcxx = null;
         bintools = binutils;
         extraPackages = [
@@ -392,7 +421,7 @@ makeScopeWithSplicing' {
       };
 
       gccWithLibc = wrapCCWith {
-        cc = gccPackages.gcc-unwrapped;
+        cc = gccPackages.gcc-composed;
         libcxx = null;
         bintools = binutils;
         extraPackages = [
@@ -412,7 +441,7 @@ makeScopeWithSplicing' {
       };
 
       gccWithLibssp = wrapCCWith {
-        cc = gccPackages.gcc-unwrapped;
+        cc = gccPackages.gcc-composed;
         libcxx = null;
         bintools = binutils;
         extraPackages = [
@@ -433,7 +462,7 @@ makeScopeWithSplicing' {
       };
 
       gccWithLibatomic = wrapCCWith {
-        cc = gccPackages.gcc-unwrapped;
+        cc = gccPackages.gcc-composed;
         libcxx = null;
         bintools = binutils;
         extraPackages = [
