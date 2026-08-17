@@ -34,6 +34,13 @@ mkDerivation (
       "buildtree"
     ];
 
+    # See the identical note in kmod.nix: the kernel's DWARF is split by
+    # `strip-dwarf.py`, never by stdenv's separate-debug-info.sh, because GNU
+    # objcopy destroys these objects. On `unix` it also reorders the allocatable
+    # sections and takes the multiboot header out of the first 8K, so nothing
+    # would boot the result.
+    illumosOwnDebugOutput = true;
+
     buildPhase = ''
       runHook preBuild
 

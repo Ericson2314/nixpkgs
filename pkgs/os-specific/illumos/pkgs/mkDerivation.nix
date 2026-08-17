@@ -111,6 +111,77 @@ lib.makeOverridable (
 
     pname = attrs.pname or (baseNameOf attrs.path);
 
+    # Split DWARF into a `debug` output, the way the rest of nixpkgs does.
+    # stdenv only honours `separateDebugInfo` on Linux and illumos; the gate was
+    # widened in ../../../stdenv/generic/make-derivation.nix.
+    #
+    # Restricted to usr/src/cmd/* -- the userland commands -- and deliberately
+    # so. The stock hook cannot be used on anything the illumos link-editor
+    # links, which is every library here, for two independent and separately
+    # measured reasons:
+    #
+    #  o It sets `-Wa,--compress-debug-sections` in NIX_CFLAGS_COMPILE, and
+    #    illumos ld cannot relocate a compressed .debug_info: every relocation
+    #    into it fails with "relocation error: R_AMD64_32: file pics/kstat.o
+    #    section [6].debug_info: invalid offset symbol '.debug_str (section)'".
+    #    These links run under -zfatal-warnings, so libkstat.so.1 and libmd.so.1
+    #    simply do not build.
+    #
+    #  o It keys everything off the GNU build-ID note, and illumos ld emits no
+    #    notes at all -- `readelf -n` on the resulting libc.so.1 prints nothing.
+    #    So even where the build survives, the hook skips every file and leaves
+    #    an empty `debug` output behind.
+    #
+    # `illumosLib`/`illumosLd` alone would be the obvious predicate for "linked
+    # by illumos ld" and is not sufficient: libmd sets `LD=` in its own
+    # makeFlags without either flag. So the source directory is the primary
+    # signal -- it is also what "a userland command" means -- with `useLd` kept
+    # as a second filter for the commands that do declare it (getent).
+    #
+    # usr/src/cmd/sgs/* is excluded by hand. That is the link-editor's own
+    # source tree, and despite living under cmd/ most of it is libraries --
+    # rtld (ld.so.1), libelf, libld, libconv and friends -- all linked by
+    # illumos ld and so subject to both problems above.
+    #
+    # The other exclusions:
+    #
+    #  o The *host* platform must be illumos. `buildPackages.illumos.*` -- `cw`,
+    #    `make`, `install`, `ld` -- are Linux binaries built from illumos source
+    #    only to run the cross build. They are in the `nativeBuildInputs` of
+    #    every illumos derivation including `uts-base` and every `kmod`, so
+    #    giving them debug outputs would move the whole kernel's input closure
+    #    for no benefit to anyone debugging illumos.
+    #
+    #  o `noCC` and headers-only packages install no ELF at all, and stdenvNoCC
+    #    leaves $OBJCOPY and $READELF unset, so the hook would only print
+    #    "variable is empty, skipping" in exchange for an empty extra output.
+    #
+    #  o `illumosOwnDebugOutput`: the package already has a `debug` output that
+    #    it fills itself. This is the kernel -- `uts-base` and `kmod` split
+    #    their DWARF with uts-common.nix's `strip-dwarf.py`, never with objcopy,
+    #    which silently deletes the DT_NEEDED module dependency names along with
+    #    `.strtab` and moves `unix`'s multiboot header out of the first 8K. See
+    #    commit "illumos: split kernel DWARF into a `debug` output". Their
+    #    usr/src/uts/* paths already exclude them here; the marker is kept as an
+    #    explicit, greppable statement of intent, because letting a kernel
+    #    object reach the stock hook produces a broken module that still looks
+    #    fine.
+    #
+    #    It is a marker attribute stripped from `attrs` below rather than a
+    #    plain `separateDebugInfo = false`, because stdenv leaks that argument
+    #    into the builder environment: `false` arrives as an empty *but set*
+    #    variable, which is not the same derivation as never mentioning it.
+    #    Passing it explicitly changed the hash of every kernel object --
+    #    exactly what the opt-out exists to prevent.
+    wantsDebugInfo =
+      stdenv'.hostPlatform.isIllumos
+      && lib.hasPrefix "usr/src/cmd/" (attrs.path or "")
+      && !lib.hasPrefix "usr/src/cmd/sgs/" (attrs.path or "")
+      && !useLd
+      && !(attrs.noCC or false)
+      && !(attrs.headersOnly or false)
+      && !(attrs.illumosOwnDebugOutput or false);
+
     # `illumosLib`: opt in to the shared boilerplate for a usr/src/lib/*
     # library -- the common makefile fragments, tools and command-line macros
     # defined above. Deliberately opt-in rather than automatic: the remaining
@@ -174,6 +245,9 @@ lib.makeOverridable (
         license = licenses.cddl;
       };
     }
+    // lib.optionalAttrs wantsDebugInfo {
+      separateDebugInfo = true;
+    }
     // lib.optionalAttrs (attrs.headersOnly or false) {
       installPhase = "includesPhase";
       dontBuild = true;
@@ -186,6 +260,7 @@ lib.makeOverridable (
       "illumosLib"
       "illumosLd"
       "illumosCtf"
+      "illumosOwnDebugOutput"
     ])
     # Last, so that these are *prepended* to whatever the package asked for
     # rather than replaced by it. Only set when opted in: unconditionally

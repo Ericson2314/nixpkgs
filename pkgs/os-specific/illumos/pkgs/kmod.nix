@@ -33,6 +33,16 @@ mkDerivation (
       "debug"
     ];
 
+    # ...and *not* by stdenv's separate-debug-info.sh, which mkDerivation.nix
+    # otherwise turns on for every illumos package. That hook uses GNU objcopy,
+    # which silently destroys kernel objects: it rebuilds `.strtab` and drops
+    # the DT_NEEDED module dependency names with it, and it zeroes `.dynamic`'s
+    # sh_link, which is how krtld finds that table. `strip-dwarf.py` empties the
+    # DWARF in place instead, moving nothing. Leaving this on would also append
+    # a second "debug" to the `outputs` above, which is a hard eval error
+    # ("duplicate derivation output 'debug'").
+    illumosOwnDebugOutput = true;
+
     # Already unpacked, already patched, and with the generated headers,
     # assym.h and genunix that this module's build needs left in place. Going
     # back to the filtered source would mean redoing all of that ninety times.
