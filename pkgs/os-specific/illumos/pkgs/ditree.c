@@ -63,13 +63,24 @@ walk(di_node_t node, int depth)
 	for (; node != DI_NODE_NIL; node = di_sibling_node(node)) {
 		char *name = di_node_name(node);
 		char *bind = di_binding_name(node);
+		char *drv = di_driver_name(node);
 		char *path = di_devfs_path(node);
 		int inst = di_instance(node);
 
-		(void) printf("%*s%-22s drv=%-12s inst=%-3d state=",
+		/*
+		 * Both names, because they answer different questions and
+		 * confusing them wastes a lot of time. di_binding_name() is
+		 * the string the node bound *by* -- for an alias binding that
+		 * is the alias itself, e.g. "pci1af4,1", which looks exactly
+		 * like an unbound node whose name is also "pci1af4,1".
+		 * di_driver_name() is the driver that actually claimed it, so
+		 * it is the one that says whether a binding happened at all.
+		 */
+		(void) printf("%*s%-22s bind=%-16s drv=%-9s inst=%-3d state=",
 		    depth * 2, "",
 		    name ? name : "?",
-		    bind ? bind : "(unbound)",
+		    bind ? bind : "(none)",
+		    drv ? drv : "(NONE)",
 		    inst);
 		print_state(di_state(node));
 
@@ -84,6 +95,30 @@ walk(di_node_t node, int depth)
 			di_devfs_path_free(path);
 		}
 		(void) printf("\n");
+
+		/*
+		 * The `compatible` property, for any node no driver claimed.
+		 *
+		 * This is the list the system matches /etc/driver_aliases
+		 * against, in order, so it is the only way to know which alias
+		 * string a device would actually have needed. Guessing at it
+		 * from the PCI IDs is how one ends up writing plausible
+		 * aliases that match nothing -- the names here are built from
+		 * subsystem IDs and class codes as well as vendor/device, and
+		 * differ between the `pci` and `pciex` nexus.
+		 */
+		if (drv == NULL) {
+			char *compat;
+			int n = di_prop_lookup_strings(DDI_DEV_T_ANY, node,
+			    "compatible", &compat);
+			int i;
+
+			for (i = 0; i < n; i++) {
+				(void) printf("%*s    compat[%d]=%s\n",
+				    depth * 2, "", i, compat);
+				compat += strlen(compat) + 1;
+			}
+		}
 
 		child = di_child_node(node);
 		if (child != DI_NODE_NIL)

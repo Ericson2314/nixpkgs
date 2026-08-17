@@ -37,6 +37,30 @@ let
     "intel/devfs"
     "intel/mac"
     "intel/dls"
+
+    # Needed even though nothing here is a GLDv2 device. softmac's usual job
+    # is wrapping DLPI drivers in a GLDv3 MAC, which no driver we build
+    # requires -- but dls calls into it on the *physical link* path
+    # regardless: dls_devnet_hold_by_name() reaches softmac_hold_device()
+    # (uts/common/io/dls/dls_mgmt.c:1440, :1546) to attach the device and find
+    # its linkid.
+    #
+    # Without it that lookup cannot succeed, and all anyone sees is ifconfig
+    # refusing to plumb a NIC which is present, attached, and registered with
+    # dlmgmtd:
+    #
+    #     ifconfig: cannot plumb vioif0: Could not open DLPI link
+    #
+    # with /dev/net empty -- those entries being sdev's rendering of exactly
+    # the datalinks this path would have found.
+    #
+    # Note that dls does not declare the dependency: its Makefile carries only
+    # `-N misc/mac`. Upstream gets away with that because softmac is a
+    # DRV_KMODS module that is always present on a real system, so the symbol
+    # is always there to resolve. Building a hand-picked module list removes
+    # that guarantee, and nothing warns.
+    "intel/softmac"
+
     "intel/dev"
     "intel/namefs"
     "intel/procfs"
