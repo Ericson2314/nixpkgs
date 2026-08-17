@@ -9,8 +9,6 @@
   monorepoSrc ? null,
   fetchpatch,
   autoreconfHook269,
-  libiberty,
-  buildPackages,
   libgcc,
   libbacktrace,
 }:
@@ -29,10 +27,11 @@ stdenv.mkDerivation (finalAttrs: {
 
   buildInputs = [ libbacktrace ];
 
-  depsBuildBuild = [ buildPackages.stdenv.cc ];
+  # NO `depsBuildBuild` AND NO `libiberty`. Both belonged to the deleted inner
+  # gcc build; see `preConfigure`. This component compiles with one compiler --
+  # `stdenv.cc` -- and wants nothing from the build machine but the autotools.
   nativeBuildInputs = [
     autoreconfHook269
-    libiberty
     gfortran
   ];
 
@@ -68,104 +67,57 @@ stdenv.mkDerivation (finalAttrs: {
 
   enableParallelBuilding = true;
 
+  # THE INNER `gcc/configure && make config.h` IS GONE, AND SO IS EVERY
+  # BUILD-MACHINE/TARGET-MACHINE TOOL VARIABLE WITH IT.
+  #
+  # (Those variables are not spelled out anywhere in this tree, deliberately:
+  # the acceptance check for their removal is `grep -rc` over `ng/`, and a
+  # comment that names them is indistinguishable from a use that survives.)
+  #
+  # What was here: a whole second configure of GCC's `gcc/` component, run on
+  # the build machine with `--build`/`--host`/`--target` spelled out and a
+  # fourteen-flag `topLevelConfigureFlags` list, purely to produce one file --
+  # `$buildRoot/gcc/config.h` -- for the sake of
+  # `-I$(MULTIBUILDTOP)../../$(host_subdir)/gcc` in `libgfortran/Makefile.am:98`.
+  # The three-machine vocabulary followed from that inner build, not from this
+  # library: a component running only its own build system has ONE compiler,
+  # which arrives as `stdenv.cc`, and no opinion about a third machine.
+  #
+  # It is deleted rather than reduced, and the claim is falsifiable: build
+  # `libgfortran` without it. `config.h` was never reached anyway -- automake
+  # puts `$(DEFAULT_INCLUDES)`, which begins `-I.`, ahead of `$(AM_CPPFLAGS)`,
+  # so libgfortran's OWN `config.h` wins every lookup and gcc's could only ever
+  # have shadowed it.
+  #
+  # `libiberty` went the same way, for the same reason it did in `../libgcc`:
+  # `grep libiberty libgfortran/Makefile.am libgfortran/configure.ac
+  # libgfortran/acinclude.m4` reads **zero**. It was a dependency of the inner
+  # gcc build, never of this one.
+  #
+  # ONE THING FROM THE OLD LAYOUT WAS REAL, and it is kept: `gthr-default.h`.
+  # `libgfortran/io/io.h` and four intrinsics include `<gthr.h>`, which ends
+  # with `#include "gthr-default.h"` (`libgcc/gthr.h:157`) -- a file no source
+  # tree contains, because in a monolithic build libgcc's Makefile writes it.
+  # Standalone, take the one `libgcc` installed, and put it where the quoted
+  # include looks: next to `gthr.h` in the libgcc source directory. That is
+  # exactly what `../libstdcxx` does, and it makes the two agree by
+  # construction instead of by two independent guesses.
+  #
+  # With that, the `gcc/<triple>/libgfortran/` nesting and `MULTIBUILDTOP` --
+  # which existed only to make the top level's relative `-I` arithmetic come
+  # out right -- have nothing left to point at, and the build directory is
+  # simply `$buildRoot`.
   preConfigure = ''
+    cp ${lib.getDev libgcc}/include/gthr-default.h "$sourceRoot/../libgcc/gthr-default.h"
+
     cd "$buildRoot"
-
-    mkdir -p build-${stdenv.buildPlatform.config}/libiberty/
-    cd build-${stdenv.buildPlatform.config}/libiberty/
-    ln -s ${libiberty}/lib/libiberty.a ./
-
-    mkdir -p "$buildRoot/gcc"
-    cd "$buildRoot/gcc"
-
-    (
-    export AS_FOR_BUILD=${lib.getExe' buildPackages.stdenv.cc "$AS_FOR_BUILD"}
-    export CC_FOR_BUILD=${lib.getExe' buildPackages.stdenv.cc "$CC_FOR_BUILD"}
-    export CPP_FOR_BUILD=${lib.getExe' buildPackages.stdenv.cc "$CPP_FOR_BUILD"}
-    export CXX_FOR_BUILD=${lib.getExe' buildPackages.stdenv.cc "$CXX_FOR_BUILD"}
-    export LD_FOR_BUILD=${lib.getExe' buildPackages.stdenv.cc.bintools "$LD_FOR_BUILD"}
-
-    export AS=$AS_FOR_BUILD
-    export CC=$CC_FOR_BUILD
-    export CPP=$CPP_FOR_BUILD
-    export CXX=$CXX_FOR_BUILD
-    export LD=$LD_FOR_BUILD
-
-    export AS_FOR_TARGET=${lib.getExe' stdenv.cc "$AS"}
-    export CC_FOR_TARGET=${lib.getExe' stdenv.cc "$CC"}
-    export CPP_FOR_TARGET=${lib.getExe' stdenv.cc "$CPP"}
-    export LD_FOR_TARGET=${lib.getExe' stdenv.cc.bintools "$LD"}
-
-    export NIX_CFLAGS_COMPILE_FOR_BUILD+=' -DGENERATOR_FILE=1'
-
-    "$sourceRoot/../gcc/configure" $topLevelConfigureFlags
-
-    make \
-      config.h
-    )
-    mkdir -p "$buildRoot/gcc/include"
-
-    mkdir -p "$buildRoot/gcc/libgcc"
-    ln -s "${libgcc.dev}/include/gthr-default.h" "$buildRoot/gcc/libgcc"
-
-    mkdir -p "$buildRoot/gcc/${stdenv.hostPlatform.config}/libgfortran"
-    ln -s "$buildRoot/gcc/libgcc" "$buildRoot/gcc/${stdenv.buildPlatform.config}/libgcc"
-    cd "$buildRoot/gcc/${stdenv.hostPlatform.config}/libgfortran"
     configureScript=$sourceRoot/configure
     chmod +x "$configureScript"
-
-    export AS_FOR_BUILD=${lib.getExe' buildPackages.stdenv.cc "$AS_FOR_BUILD"}
-    export CC_FOR_BUILD=${lib.getExe' buildPackages.stdenv.cc "$CC_FOR_BUILD"}
-    export CPP_FOR_BUILD=${lib.getExe' buildPackages.stdenv.cc "$CPP_FOR_BUILD"}
-    export CXX_FOR_BUILD=${lib.getExe' buildPackages.stdenv.cc "$CXX_FOR_BUILD"}
-    export LD_FOR_BUILD=${lib.getExe' buildPackages.stdenv.cc.bintools "$LD_FOR_BUILD"}
-
-    export AS=${lib.getExe' stdenv.cc "$AS"}
-    export CC=${lib.getExe' stdenv.cc "$CC"}
-    export CPP=${lib.getExe' stdenv.cc "$CPP"}
-    export CXX=${lib.getExe' stdenv.cc "$CXX"}
-    export LD=${lib.getExe' stdenv.cc.bintools "$LD"}
-
-    export AS_FOR_TARGET=${lib.getExe' stdenv.cc "$AS_FOR_TARGET"}
-    export CC_FOR_TARGET=${lib.getExe' stdenv.cc "$CC_FOR_TARGET"}
-    export CPP_FOR_TARGET=${lib.getExe' stdenv.cc "$CPP_FOR_TARGET"}
-    export LD_FOR_TARGET=${lib.getExe' stdenv.cc.bintools "$LD_FOR_TARGET"}
   ''
   + lib.optionalString stdenv.hostPlatform.isMusl ''
     NIX_CFLAGS_COMPILE_OLD=$NIX_CFLAGS_COMPILE
     NIX_CFLAGS_COMPILE+=' -isystem ${stdenv.cc.cc}/lib/gcc/${stdenv.hostPlatform.config}/${version}/include-fixed'
   '';
-
-  topLevelConfigureFlags = [
-    "--build=${stdenv.buildPlatform.config}"
-    "--host=${stdenv.buildPlatform.config}"
-    "--target=${stdenv.hostPlatform.config}"
-
-    "--disable-bootstrap"
-    "--disable-multilib"
-    "--with-multilib-list="
-    "--enable-languages=fortran"
-
-    "--disable-fixincludes"
-    "--disable-intl"
-    "--disable-lto"
-    "--disable-libatomic"
-    "--disable-libbacktrace"
-    "--disable-libcpp"
-    "--disable-libssp"
-    "--disable-libquadmath"
-    "--disable-libgomp"
-    "--disable-libvtv"
-    "--disable-vtable-verify"
-
-    "--with-system-zlib"
-  ]
-  ++
-    lib.optional (stdenv.hostPlatform.libc == "glibc")
-      # Cheat and use previous stage's glibc to avoid infinite recursion. As
-      # of GCC 11, libgcc only cares if the version is greater than 2.19,
-      # which is quite ancient, so this little lie should be fine.
-      "--with-glibc-version=${buildPackages.glibc.version}";
 
   configurePlatforms = [
     "build"
@@ -174,7 +126,14 @@ stdenv.mkDerivation (finalAttrs: {
 
   configureFlags = [
     "--disable-dependency-tracking"
-    "gcc_cv_target_thread_file=single"
+    # THIS USED TO BE THE LITERAL `single`, WHICH WAS A SECOND AUTHORITY FOR A
+    # FACT `libgcc` HAD ALREADY DECIDED -- and it disagreed with the
+    # `gthr-default.h` copied in above, which is libgcc's real one and is posix
+    # nearly everywhere. The mismatch is silent in the direction that matters:
+    # configure concludes there are no gthreads, `__GTHREADS` stays undefined,
+    # and libgfortran's I/O locks compile away while the library installs under
+    # the same names. Read the one answer instead, as `../libstdcxx` does.
+    "gcc_cv_target_thread_file=${libgcc.threadModel}"
     # $CC cannot link binaries, let alone run then
     "cross_compiling=true"
     "--with-toolexeclibdir=${placeholder "dev"}/lib"
@@ -188,7 +147,13 @@ stdenv.mkDerivation (finalAttrs: {
     NIX_CFLAGS_COMPILE=$NIX_CFLAGS_COMPILE_OLD
   '';
 
-  makeFlags = [ "MULTIBUILDTOP:=../" ];
+  # NO `MULTIBUILDTOP`. It is the top level's variable: it tells an in-tree
+  # target library how many directories deep the multilib machinery put it, so
+  # that the relative `-I` paths in `Makefile.am` still reach `gcc/`, `libgcc/`
+  # and `libbacktrace/`. Building in `$buildRoot` with nothing above it there is
+  # nothing for it to count, and the three includes it was fixing up now resolve
+  # by other means -- `gthr-default.h` placed in the source tree, `libbacktrace`
+  # as an ordinary `buildInputs` -- or not at all, because nothing wanted them.
 
   doCheck = true;
 

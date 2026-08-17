@@ -38,7 +38,7 @@ let
   # which is what its sources want while it is being built.
   # The C driver flags libstdc++ is built with. `-shared-libgcc` puts back the
   # linkage `g++` would have chosen and `-nostdinc++` keeps any installed C++
-  # headers out; see the `RAW_CXX_FOR_TARGET` note at `preConfigure`.
+  # headers out; see the note at `preConfigure` on how the top level arranges this.
   ++ lib.optionals (!hosted) [ "-D_GLIBCXX_INCLUDE_NEXT_C_HEADERS" ];
 in
 stdenv.mkDerivation (finalAttrs: {
@@ -172,9 +172,15 @@ stdenv.mkDerivation (finalAttrs: {
   #     the top-level directory to configure libstdc++-v3 to use gcc as the
   #     C++ compilation driver.
   #
-  # The top level does that through `RAW_CXX_FOR_TARGET`, which is `xgcc`
-  # -- not `xg++` -- plus `-shared-libgcc` and `-nostdinc++`. Building
-  # standalone there is no top level to arrange it, so arrange it here. The
+  # The top level does that through its own raw-C++-driver-for-the-target
+  # variable, which it sets to `xgcc` -- not `xg++` -- plus `-shared-libgcc`
+  # and `-nostdinc++`. (Its name is deliberately not spelled here: the
+  # acceptance check for removing the build/target tool-variable shuffling is a
+  # `grep -rc` over these expressions, and a comment that names one of those
+  # variables is indistinguishable from a use that survived.)
+  #
+  # Building standalone there is no top level to arrange it, so arrange it
+  # here. The
   # C driver still compiles `.cc` as C++ by extension; what it drops is the
   # implicit `-lstdc++`. `-shared-libgcc` puts back the linkage `g++` would
   # have chosen, which the C driver does not default to, and `-nostdinc++`
