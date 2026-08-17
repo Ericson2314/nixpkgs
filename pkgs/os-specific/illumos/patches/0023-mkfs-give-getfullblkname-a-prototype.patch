@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Sun, 16 Aug 2026 13:07:07 -0400
+Subject: [PATCH] mkfs: give `getfullblkname()` a prototype
+
+`mkfs.c` declares it in the K&R style:
+
+    extern char	*getfullblkname();
+
+Under C23 an empty parameter list means "takes no arguments" rather
+than "unspecified", so the one call site becomes an error:
+
+    mkfs.c:1428:27: error: too many arguments to function
+        `getfullblkname`; expected 0, have 1
+
+Spell out the parameter. This is what the neighbouring consumers of the
+same libadm routine already do -- see `ufs/roll_log/roll_log.c` and
+`udfs/mkfs/mkfs.c`, both of which declare `getfullblkname(char *)` --
+so this brings `ufs/mkfs` in line with the rest of `cmd/fs.d` rather
+than inventing anything.
+
+`ufs/df`, `ufs/tunefs` and `udfs/fsck` still carry the K&R form and
+will need the same treatment; they are left alone here because nothing
+in this series builds them.
+
+Assisted-by: Claude Code (Claude Opus 5)
+---
+ usr/src/cmd/fs.d/ufs/mkfs/mkfs.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/usr/src/cmd/fs.d/ufs/mkfs/mkfs.c b/usr/src/cmd/fs.d/ufs/mkfs/mkfs.c
+index 94ed8b734f..515ad80100 100644
+--- a/usr/src/cmd/fs.d/ufs/mkfs/mkfs.c
++++ b/usr/src/cmd/fs.d/ufs/mkfs/mkfs.c
+@@ -260,7 +260,7 @@
+ #include	<sys/asynch.h>
+ 
+ extern offset_t	llseek();
+-extern char	*getfullblkname();
++extern char	*getfullblkname(char *);
+ extern long	lrand48();
+ 
+ extern int	optind;

@@ -1,0 +1,47 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Sun, 16 Aug 2026 13:07:57 -0400
+Subject: [PATCH] mkfs: drop the K&R re-declaration of `llseek()`
+
+`mkfs.c` carries its own declaration:
+
+    extern offset_t	llseek();
+
+`<unistd.h>` already declares it, and properly:
+
+    extern offset_t llseek(int, offset_t, int);
+
+so the local one is redundant. It is also actively harmful under C23,
+where an empty parameter list means "takes no arguments" rather than
+"unspecified" -- the two declarations then disagree and every call site
+fails:
+
+    mkfs.c:262:17: error: conflicting types for `llseek`;
+        have `offset_t(void)`
+    mkfs.c:3224:6: error: too many arguments to function `llseek`;
+        expected 0, have 3
+
+Delete it and let `<unistd.h>` supply the prototype.
+
+With this, `cmd/fs.d/ufs/mkfs/mkfs.c` compiles clean against a foreign
+libc using nothing but the gate's own headers -- no compat shim and no
+`-std=` override. `llseek` is left as a link-time symbol, which is the
+right place for a foreign host to make up the difference.
+
+Assisted-by: Claude Code (Claude Opus 5)
+---
+ usr/src/cmd/fs.d/ufs/mkfs/mkfs.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/usr/src/cmd/fs.d/ufs/mkfs/mkfs.c b/usr/src/cmd/fs.d/ufs/mkfs/mkfs.c
+index 515ad80100..821aad8ee5 100644
+--- a/usr/src/cmd/fs.d/ufs/mkfs/mkfs.c
++++ b/usr/src/cmd/fs.d/ufs/mkfs/mkfs.c
+@@ -259,7 +259,6 @@
+ #include	<sys/dkio.h>
+ #include	<sys/asynch.h>
+ 
+-extern offset_t	llseek();
+ extern char	*getfullblkname(char *);
+ extern long	lrand48();
+ 

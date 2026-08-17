@@ -1,0 +1,3807 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Mon, 17 Aug 2026 11:29:51 -0400
+Subject: [PATCH] virtiofs: a read-only Virtio FS (FUSE-over-virtqueue) client
+
+Two new modules, because a module cannot be in both `kernel/drv` and
+`kernel/fs`:
+
+  * `drv/vtfs` (`uts/common/io/virtiofs/`) owns the Virtio FS PCI device
+    (1af4:105a).  It is modelled on `vioblk`: `virtio_init()`,
+    `virtio_init_features()`, one request queue, `virtio_init_complete()`,
+    and a pool of request slots each holding a `virtio_chain_t` and a
+    bounce buffer.  Requests are synchronous -- submit, then sleep until
+    the interrupt handler returns the chain.  Devices are found by the
+    `tag` in their configuration space.
+
+  * `fs/virtiofs` (`uts/common/fs/virtiofs/`) is the file system, modelled
+    on `hsfs`: read-only, with the ISO9660 parsing replaced by FUSE
+    message marshalling and disk reads replaced by `FUSE_READ`.
+
+`VOP_GETPAGE` follows the conventional `pvn_getpages()` /
+`pvn_read_kluster()` / `pageio_setup()` / `bp_mapin()` shape, with the
+`FUSE_READ` round trip where a disk based file system would call its
+strategy routine.  It is load-bearing rather than decorative: the intended
+use is mounting a host `/nix/store`, whose contents are ELF objects that
+are mapped rather than `read(2)`.
+
+FUSE opcodes implemented: `FUSE_INIT`, `FUSE_LOOKUP`, `FUSE_FORGET`,
+`FUSE_GETATTR`, `FUSE_OPEN`, `FUSE_READ`, `FUSE_RELEASE`, `FUSE_OPENDIR`,
+`FUSE_READDIR`, `FUSE_RELEASEDIR`, `FUSE_READLINK`, `FUSE_STATFS`.  This
+is not a FUSE subsystem: there is no `/dev/fuse`, no library ABI and no
+upcall path, only the wire structures a Virtio FS device speaks.
+
+Mount with `mount -F virtiofs [-o uid=,gid=] <tag> <dir>`.
+
+Untested at runtime.  Both modules compile and link cleanly, and neither
+has an undefined symbol beyond what its `-N` declarations promise.
+
+Assisted-by: Claude <noreply@anthropic.com>
+---
+ usr/src/uts/common/Makefile.files             |    5 +
+ usr/src/uts/common/Makefile.rules             |    8 +
+ usr/src/uts/common/fs/virtiofs/fuse.h         |  267 +++++
+ usr/src/uts/common/fs/virtiofs/virtiofs.h     |  169 +++
+ .../uts/common/fs/virtiofs/virtiofs_subr.c    |  731 ++++++++++++
+ .../uts/common/fs/virtiofs/virtiofs_vfsops.c  |  486 ++++++++
+ .../uts/common/fs/virtiofs/virtiofs_vnops.c   | 1000 +++++++++++++++++
+ usr/src/uts/common/io/virtiofs/vtfs.c         |  719 ++++++++++++
+ usr/src/uts/common/io/virtiofs/vtfs.h         |  110 ++
+ usr/src/uts/intel/Makefile.intel              |    4 +
+ usr/src/uts/intel/virtiofs/Makefile           |   69 ++
+ usr/src/uts/intel/vtfs/Makefile               |   68 ++
+ 12 files changed, 3636 insertions(+)
+ create mode 100644 usr/src/uts/common/fs/virtiofs/fuse.h
+ create mode 100644 usr/src/uts/common/fs/virtiofs/virtiofs.h
+ create mode 100644 usr/src/uts/common/fs/virtiofs/virtiofs_subr.c
+ create mode 100644 usr/src/uts/common/fs/virtiofs/virtiofs_vfsops.c
+ create mode 100644 usr/src/uts/common/fs/virtiofs/virtiofs_vnops.c
+ create mode 100644 usr/src/uts/common/io/virtiofs/vtfs.c
+ create mode 100644 usr/src/uts/common/io/virtiofs/vtfs.h
+ create mode 100644 usr/src/uts/intel/virtiofs/Makefile
+ create mode 100644 usr/src/uts/intel/vtfs/Makefile
+
+diff --git a/usr/src/uts/common/Makefile.files b/usr/src/uts/common/Makefile.files
+index 65a5cdd608..a0e6728f32 100644
+--- a/usr/src/uts/common/Makefile.files
++++ b/usr/src/uts/common/Makefile.files
+@@ -1095,6 +1095,8 @@ FIFO_OBJS +=	fifosubr.o	fifovnops.o
+ 
+ PIPE_OBJS +=	pipe.o
+ 
++VIRTIOFS_OBJS +=	virtiofs_vfsops.o	virtiofs_vnops.o	virtiofs_subr.o
++
+ HSFS_OBJS +=	hsfs_node.o	hsfs_subr.o	hsfs_vfsops.o	hsfs_vnops.o \
+ 		hsfs_susp.o	hsfs_rrip.o	hsfs_susp_subr.o
+ 
+@@ -2131,6 +2133,9 @@ VIRTIO_OBJS = virtio_main.o virtio_legacy.o virtio_modern.o virtio_dma.o
+ # Virtio block driver
+ VIOBLK_OBJS = vioblk.o
+ 
++# Virtio FS transport driver
++VTFS_OBJS = vtfs.o
++
+ # Virtio network driver
+ VIOIF_OBJS = vioif.o
+ 
+diff --git a/usr/src/uts/common/Makefile.rules b/usr/src/uts/common/Makefile.rules
+index 99deee52bf..82d3b352fc 100644
+--- a/usr/src/uts/common/Makefile.rules
++++ b/usr/src/uts/common/Makefile.rules
+@@ -287,6 +287,10 @@ $(OBJS_DIR)/%.o:		$(UTSBASE)/common/fs/hsfs/%.c
+ 	$(COMPILE.c) -o $@ $<
+ 	$(CTFCONVERT_O)
+ 
++$(OBJS_DIR)/%.o:		$(UTSBASE)/common/fs/virtiofs/%.c
++	$(COMPILE.c) -o $@ $<
++	$(CTFCONVERT_O)
++
+ $(OBJS_DIR)/%.o:		$(UTSBASE)/common/fs/lofs/%.c
+ 	$(COMPILE.c) -o $@ $<
+ 	$(CTFCONVERT_O)
+@@ -1610,6 +1614,10 @@ $(OBJS_DIR)/%.o:		$(UTSBASE)/common/io/vioblk/%.c
+ 	$(COMPILE.c) -o $@ $<
+ 	$(CTFCONVERT_O)
+ 
++$(OBJS_DIR)/%.o:		$(UTSBASE)/common/io/virtiofs/%.c
++	$(COMPILE.c) -o $@ $<
++	$(CTFCONVERT_O)
++
+ $(OBJS_DIR)/%.o:		$(UTSBASE)/common/io/vioif/%.c
+ 	$(COMPILE.c) -o $@ $<
+ 	$(CTFCONVERT_O)
+diff --git a/usr/src/uts/common/fs/virtiofs/fuse.h b/usr/src/uts/common/fs/virtiofs/fuse.h
+new file mode 100644
+index 0000000000..e255acbd2c
+--- /dev/null
++++ b/usr/src/uts/common/fs/virtiofs/fuse.h
+@@ -0,0 +1,267 @@
++/*
++ * This file and its contents are supplied under the terms of the
++ * Common Development and Distribution License ("CDDL"), version 1.0.
++ * You may only use this file in accordance with the terms of version
++ * 1.0 of the CDDL.
++ *
++ * A full copy of the text of the CDDL should have accompanied this
++ * source.  A copy of the CDDL is also available via the Internet at
++ * http://www.illumos.org/license/CDDL.
++ */
++
++/*
++ * Copyright 2026 John Ericson
++ */
++
++#ifndef	_FS_VIRTIOFS_FUSE_H
++#define	_FS_VIRTIOFS_FUSE_H
++
++/*
++ * THE FUSE WIRE PROTOCOL
++ *
++ * This describes the messages a Virtio FS device exchanges with its driver.
++ * illumos has no FUSE subsystem and this header does not create one: there is
++ * no character device, no library ABI and no upcall path here, only the
++ * on-the-wire structures of the protocol that a Virtio FS device happens to
++ * speak.
++ *
++ * The layouts below are those of protocol version 7.31.  Every field is
++ * little endian, which on the platforms this module builds for is also the
++ * host order; a big endian port would need byte swapping throughout.
++ *
++ * Only the subset of the protocol used by a read-only client is declared.
++ * Opcodes that would modify the file system are deliberately absent.
++ */
++
++#include <sys/types.h>
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++#define	FUSE_KERNEL_VERSION		7
++#define	FUSE_KERNEL_MINOR_VERSION	31
++
++/*
++ * The nodeid of the root of any FUSE file system.  Nodeid 0 is never valid.
++ */
++#define	FUSE_ROOT_ID			1
++
++/*
++ * The opcodes a read-only client needs.  The numbering is the protocol's, so
++ * the gaps are the write side of the protocol, which we do not implement.
++ */
++typedef enum fuse_opcode {
++	FUSE_LOOKUP		= 1,
++	FUSE_FORGET		= 2,	/* no reply */
++	FUSE_GETATTR		= 3,
++	FUSE_READLINK		= 5,
++	FUSE_OPEN		= 14,
++	FUSE_READ		= 15,
++	FUSE_STATFS		= 17,
++	FUSE_RELEASE		= 18,
++	FUSE_INIT		= 26,
++	FUSE_OPENDIR		= 27,
++	FUSE_READDIR		= 28,
++	FUSE_RELEASEDIR		= 29
++} fuse_opcode_t;
++
++/*
++ * Every request begins with this header, and its "len" covers the header
++ * itself plus whatever in-args follow.
++ */
++struct fuse_in_header {
++	uint32_t	len;
++	uint32_t	opcode;
++	uint64_t	unique;
++	uint64_t	nodeid;
++	uint32_t	uid;
++	uint32_t	gid;
++	uint32_t	pid;
++	uint32_t	padding;
++};
++
++/*
++ * Every reply begins with this header.  "error" is a negative errno on
++ * failure, and zero on success; note that the errno values are Linux's, not
++ * illumos', and have to be translated.  On failure "len" is just the size of
++ * the header.
++ */
++struct fuse_out_header {
++	uint32_t	len;
++	int32_t		error;
++	uint64_t	unique;
++};
++
++/*
++ * The attributes of one file.  "mode" carries the usual S_IF* type bits, in
++ * their Linux encoding, which happens to agree with ours for every type we
++ * care about.
++ */
++struct fuse_attr {
++	uint64_t	ino;
++	uint64_t	size;
++	uint64_t	blocks;
++	uint64_t	atime;
++	uint64_t	mtime;
++	uint64_t	ctime;
++	uint32_t	atimensec;
++	uint32_t	mtimensec;
++	uint32_t	ctimensec;
++	uint32_t	mode;
++	uint32_t	nlink;
++	uint32_t	uid;
++	uint32_t	gid;
++	uint32_t	rdev;
++	uint32_t	blksize;
++	uint32_t	flags;
++};
++
++struct fuse_kstatfs {
++	uint64_t	blocks;
++	uint64_t	bfree;
++	uint64_t	bavail;
++	uint64_t	files;
++	uint64_t	ffree;
++	uint32_t	bsize;
++	uint32_t	namelen;
++	uint32_t	frsize;
++	uint32_t	padding;
++	uint32_t	spare[6];
++};
++
++/*
++ * FUSE_INIT.  The client proposes a version; the server replies with the
++ * version it will actually speak, which is never newer than what was asked
++ * for.  A server that cannot speak our major version replies with the major
++ * version it wants and an error.
++ */
++struct fuse_init_in {
++	uint32_t	major;
++	uint32_t	minor;
++	uint32_t	max_readahead;
++	uint32_t	flags;
++};
++
++struct fuse_init_out {
++	uint32_t	major;
++	uint32_t	minor;
++	uint32_t	max_readahead;
++	uint32_t	flags;
++	uint16_t	max_background;
++	uint16_t	congestion_threshold;
++	uint32_t	max_write;
++	uint32_t	time_gran;
++	uint16_t	max_pages;
++	uint16_t	map_alignment;
++	uint32_t	flags2;
++	uint32_t	unused[7];
++};
++
++/*
++ * FUSE_LOOKUP takes a NUL terminated name as its in-args and replies with a
++ * fuse_entry_out.  A successful lookup takes a reference on the nodeid, which
++ * must eventually be dropped with a matching count in FUSE_FORGET.
++ */
++struct fuse_entry_out {
++	uint64_t	nodeid;
++	uint64_t	generation;
++	uint64_t	entry_valid;
++	uint64_t	attr_valid;
++	uint32_t	entry_valid_nsec;
++	uint32_t	attr_valid_nsec;
++	struct fuse_attr attr;
++};
++
++/*
++ * FUSE_FORGET has no reply at all -- not even a fuse_out_header.
++ */
++struct fuse_forget_in {
++	uint64_t	nlookup;
++};
++
++/*
++ * FUSE_GETATTR.  FUSE_GETATTR_FH says that "fh" is meaningful, i.e. that the
++ * request refers to an open file rather than to a nodeid.
++ */
++#define	FUSE_GETATTR_FH			(1 << 0)
++
++struct fuse_getattr_in {
++	uint32_t	getattr_flags;
++	uint32_t	dummy;
++	uint64_t	fh;
++};
++
++struct fuse_attr_out {
++	uint64_t	attr_valid;
++	uint32_t	attr_valid_nsec;
++	uint32_t	dummy;
++	struct fuse_attr attr;
++};
++
++/*
++ * FUSE_OPEN and FUSE_OPENDIR.  "flags" holds open(2) flags in their Linux
++ * encoding; a read-only client only ever sends O_RDONLY, which is zero in
++ * both encodings.
++ */
++struct fuse_open_in {
++	uint32_t	flags;
++	uint32_t	open_flags;
++};
++
++struct fuse_open_out {
++	uint64_t	fh;
++	uint32_t	open_flags;
++	int32_t		backing_id;
++};
++
++/*
++ * FUSE_RELEASE and FUSE_RELEASEDIR.
++ */
++struct fuse_release_in {
++	uint64_t	fh;
++	uint32_t	flags;
++	uint32_t	release_flags;
++	uint64_t	lock_owner;
++};
++
++/*
++ * FUSE_READ and FUSE_READDIR.  The reply is the fuse_out_header followed by
++ * up to "size" bytes of data; the header's "len" says how much arrived.
++ */
++struct fuse_read_in {
++	uint64_t	fh;
++	uint64_t	offset;
++	uint32_t	size;
++	uint32_t	read_flags;
++	uint64_t	lock_owner;
++	uint32_t	flags;
++	uint32_t	padding;
++};
++
++/*
++ * The FUSE_READDIR reply is a packed stream of these, each followed by
++ * "namelen" bytes of name -- not NUL terminated -- and then padding to the
++ * next eight byte boundary.  "off" is an opaque cookie to be handed back as
++ * the offset of the next FUSE_READDIR; it is not a byte offset and must not be
++ * treated as one.
++ */
++struct fuse_dirent {
++	uint64_t	ino;
++	uint64_t	off;
++	uint32_t	namelen;
++	uint32_t	type;		/* a DT_* value, i.e. mode >> 12 */
++	char		name[];
++};
++
++#define	FUSE_DIRENT_ALIGN(x)	\
++	(((x) + sizeof (uint64_t) - 1) & ~(sizeof (uint64_t) - 1))
++#define	FUSE_NAME_OFFSET	offsetof(struct fuse_dirent, name)
++#define	FUSE_DIRENT_SIZE(d)	\
++	FUSE_DIRENT_ALIGN(FUSE_NAME_OFFSET + (d)->namelen)
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif	/* _FS_VIRTIOFS_FUSE_H */
+diff --git a/usr/src/uts/common/fs/virtiofs/virtiofs.h b/usr/src/uts/common/fs/virtiofs/virtiofs.h
+new file mode 100644
+index 0000000000..25c0603ab0
+--- /dev/null
++++ b/usr/src/uts/common/fs/virtiofs/virtiofs.h
+@@ -0,0 +1,169 @@
++/*
++ * This file and its contents are supplied under the terms of the
++ * Common Development and Distribution License ("CDDL"), version 1.0.
++ * You may only use this file in accordance with the terms of version
++ * 1.0 of the CDDL.
++ *
++ * A full copy of the text of the CDDL should have accompanied this
++ * source.  A copy of the CDDL is also available via the Internet at
++ * http://www.illumos.org/license/CDDL.
++ */
++
++/*
++ * Copyright 2026 John Ericson
++ */
++
++#ifndef	_FS_VIRTIOFS_VIRTIOFS_H
++#define	_FS_VIRTIOFS_VIRTIOFS_H
++
++#include <sys/types.h>
++#include <sys/vnode.h>
++#include <sys/vfs.h>
++#include <sys/list.h>
++#include <sys/ksynch.h>
++#include <sys/avl.h>
++
++#include "fuse.h"
++#include "vtfs.h"
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++/*
++ * The largest read we will ask the server for in one go.  This also bounds the
++ * kluster that VOP_GETPAGE assembles, and hence the number of scatter-gather
++ * cookies one request can need.
++ */
++#define	VIRTIOFS_MAXBSIZE	(64 * 1024)
++
++/*
++ * The size of the buffer we hand to FUSE_READDIR.  One buffer's worth of
++ * fuse_dirent records is decoded into the caller's dirent64 buffer per pass.
++ */
++#define	VIRTIOFS_DIRBUFSZ	(8 * 1024)
++
++/*
++ * Node hash.  Nodes are keyed by the server's nodeid, which is unique and
++ * stable for the lifetime of the reference we hold on it.
++ */
++#define	VIRTIOFS_NHASH		251
++
++typedef struct virtiofs_node vfnode_t;
++typedef struct virtiofs vfsmnt_t;
++
++struct virtiofs_node {
++	vfnode_t	*vfn_hash;	/* next in hash bucket */
++	vnode_t		*vfn_vnode;
++	vfsmnt_t	*vfn_mnt;
++
++	uint64_t	vfn_nodeid;	/* FUSE nodeid */
++	uint64_t	vfn_gen;	/* FUSE generation */
++
++	/*
++	 * How many successful FUSE_LOOKUPs we have done for this node.  The
++	 * server keeps a matching count, and VOP_INACTIVE must return all of
++	 * them at once with a single FUSE_FORGET.
++	 */
++	uint64_t	vfn_nlookup;
++
++	kmutex_t	vfn_lock;	/* covers everything below */
++	struct fuse_attr vfn_attr;	/* last known attributes */
++	hrtime_t	vfn_attr_expiry; /* when vfn_attr goes stale */
++	boolean_t	vfn_attr_valid;
++
++	uint64_t	vfn_fh;		/* server file handle, when open */
++	uint_t		vfn_fh_count;	/* opens that share vfn_fh */
++	boolean_t	vfn_fh_valid;
++
++	uint_t		vfn_mapcnt;	/* pages currently mapped */
++};
++
++struct virtiofs {
++	vfs_t		*vfs_vfsp;
++	vtfs_t		*vfs_dev;
++	vnode_t		*vfs_rootvp;
++	dev_t		vfs_dev_no;	/* synthetic, for st_dev */
++
++	kmutex_t	vfs_lock;
++	uint64_t	vfs_unique;	/* next FUSE request id */
++
++	krwlock_t	vfs_hash_lock;
++	vfnode_t	*vfs_hash[VIRTIOFS_NHASH];
++
++	/*
++	 * Negotiated at FUSE_INIT time.
++	 */
++	uint32_t	vfs_major;
++	uint32_t	vfs_minor;
++	uint32_t	vfs_max_write;
++	uint32_t	vfs_max_read;
++
++	/*
++	 * Mount options.  The server reports whatever uid and gid it likes;
++	 * on a store mount those are the host's, which need not mean anything
++	 * locally, so they can be overridden wholesale.
++	 */
++	boolean_t	vfs_override_ids;
++	uid_t		vfs_uid;
++	gid_t		vfs_gid;
++};
++
++#define	VFS_TO_VIRTIOFS(vfsp)	((vfsmnt_t *)((vfsp)->vfs_data))
++#define	VTOVF(vp)		((vfnode_t *)((vp)->v_data))
++#define	VFTOV(vfn)		((vfn)->vfn_vnode)
++
++/*
++ * The file identifier we hand out for NFS export and for VFS_VGET.  A nodeid
++ * is only meaningful while we hold a lookup count on it, so this is not a
++ * durable handle; it is enough for the lifetime of a mount.
++ */
++typedef struct virtiofs_fid {
++	uint16_t	vfid_len;
++	uint16_t	vfid_pad;
++	uint32_t	vfid_gen;
++	uint64_t	vfid_nodeid;
++} vfid_t;
++
++extern struct vnodeops *virtiofs_vnodeops;
++extern const fs_operation_def_t virtiofs_vnodeops_template[];
++
++/*
++ * virtiofs_subr.c: the FUSE operations themselves, plus the node cache.
++ */
++extern int virtiofs_errno(int32_t);
++extern int virtiofs_fuse_init(vfsmnt_t *);
++extern int virtiofs_fuse_lookup(vfsmnt_t *, uint64_t, const char *,
++    struct fuse_entry_out *);
++extern void virtiofs_fuse_forget(vfsmnt_t *, uint64_t, uint64_t);
++extern int virtiofs_fuse_getattr(vfsmnt_t *, uint64_t, struct fuse_attr_out *);
++extern int virtiofs_fuse_open(vfsmnt_t *, uint64_t, boolean_t, uint64_t *);
++extern int virtiofs_fuse_release(vfsmnt_t *, uint64_t, uint64_t, boolean_t);
++extern int virtiofs_fuse_read(vfsmnt_t *, uint64_t, uint64_t, u_offset_t,
++    void *, size_t, size_t *);
++extern int virtiofs_fuse_readdir(vfsmnt_t *, uint64_t, uint64_t, u_offset_t,
++    void *, size_t, size_t *);
++extern int virtiofs_fuse_readlink(vfsmnt_t *, uint64_t, char *, size_t,
++    size_t *);
++extern int virtiofs_fuse_statfs(vfsmnt_t *, struct fuse_kstatfs *);
++
++extern vfnode_t *virtiofs_node_hold(vfsmnt_t *, uint64_t,
++    const struct fuse_attr *, uint64_t);
++extern vfnode_t *virtiofs_node_find(vfsmnt_t *, uint64_t);
++extern void virtiofs_node_free(vfnode_t *);
++extern void virtiofs_node_setattr(vfnode_t *, const struct fuse_attr *,
++    uint64_t, uint32_t);
++extern int virtiofs_node_getattr(vfnode_t *, struct fuse_attr *);
++extern void virtiofs_attr_to_vattr(vfsmnt_t *, const struct fuse_attr *,
++    vattr_t *);
++extern enum vtype virtiofs_mode_to_vtype(uint32_t);
++extern int virtiofs_putapage(vnode_t *, page_t *, u_offset_t *, size_t *,
++    int, cred_t *);
++extern int virtiofs_openfh(vfnode_t *, boolean_t, uint64_t *);
++extern void virtiofs_closefh(vfnode_t *, boolean_t);
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif	/* _FS_VIRTIOFS_VIRTIOFS_H */
+diff --git a/usr/src/uts/common/fs/virtiofs/virtiofs_subr.c b/usr/src/uts/common/fs/virtiofs/virtiofs_subr.c
+new file mode 100644
+index 0000000000..e699013d37
+--- /dev/null
++++ b/usr/src/uts/common/fs/virtiofs/virtiofs_subr.c
+@@ -0,0 +1,731 @@
++/*
++ * This file and its contents are supplied under the terms of the
++ * Common Development and Distribution License ("CDDL"), version 1.0.
++ * You may only use this file in accordance with the terms of version
++ * 1.0 of the CDDL.
++ *
++ * A full copy of the text of the CDDL should have accompanied this
++ * source.  A copy of the CDDL is also available via the Internet at
++ * http://www.illumos.org/license/CDDL.
++ */
++
++/*
++ * Copyright 2026 John Ericson
++ */
++
++/*
++ * VIRTIO FS: FUSE OPERATIONS AND THE NODE CACHE
++ *
++ * Everything here is the plumbing between the vnode layer above and the
++ * "vtfs" transport below: marshalling a FUSE request, unmarshalling the reply,
++ * translating the server's error and attribute encodings into ours, and
++ * keeping a hash of the nodeids the server has told us about.
++ *
++ * LIFETIME OF A NODEID
++ *
++ * A FUSE server hands out a nodeid from a successful FUSE_LOOKUP and keeps a
++ * count of how many times it has done so.  The client must eventually return
++ * that count with a FUSE_FORGET, at which point the server may reuse the
++ * nodeid.  So each of our nodes counts the lookups behind it in vfn_nlookup,
++ * and VOP_INACTIVE forgets the whole count at once.  Getting this wrong does
++ * not corrupt anything locally, but it does leak inodes on the server, or --
++ * worse -- lets the server reuse a nodeid we still believe in.
++ */
++
++#include <sys/types.h>
++#include <sys/param.h>
++#include <sys/systm.h>
++#include <sys/errno.h>
++#include <sys/kmem.h>
++#include <sys/sysmacros.h>
++#include <sys/cmn_err.h>
++#include <sys/debug.h>
++#include <sys/vnode.h>
++#include <sys/vfs.h>
++#include <sys/vfs_opreg.h>
++#include <sys/stat.h>
++#include <sys/mode.h>
++#include <sys/time.h>
++#include <sys/atomic.h>
++#include <sys/proc.h>
++#include <sys/cred.h>
++
++#include <vm/pvn.h>
++
++#include "virtiofs.h"
++
++/*
++ * A FUSE server reports Linux errno values.  The first thirty-four agree with
++ * ours by historical accident; past that they do not, and the ones that a
++ * read-only client can plausibly see have to be translated by hand.  Anything
++ * we do not recognise becomes EIO rather than something that would be silently
++ * misinterpreted.
++ */
++int
++virtiofs_errno(int32_t err)
++{
++	int e = -err;
++
++	if (e <= 0)
++		return (0);
++
++	if (e <= 34)
++		return (e);
++
++	switch (e) {
++	case 36:			/* Linux ENAMETOOLONG */
++		return (ENAMETOOLONG);
++	case 39:			/* Linux ENOTEMPTY */
++		return (ENOTEMPTY);
++	case 40:			/* Linux ELOOP */
++		return (ELOOP);
++	case 61:			/* Linux ENODATA */
++		return (ENODATA);
++	case 75:			/* Linux EOVERFLOW */
++		return (EOVERFLOW);
++	case 78:			/* Linux EREMOTE */
++		return (EREMOTE);
++	case 95:			/* Linux EOPNOTSUPP */
++		return (ENOTSUP);
++	case 122:			/* Linux EDQUOT */
++		return (EDQUOT);
++	default:
++		return (EIO);
++	}
++}
++
++/*
++ * Issue one FUSE request and wait for its reply.
++ *
++ * "inbody" and "inbodylen" are the in-args that follow the fuse_in_header;
++ * "outbody" and "outbodylen" are the fixed size part of the reply that follows
++ * the fuse_out_header.  "data" is an optional buffer for a variable length
++ * tail -- the payload of a FUSE_READ, or the dirent stream of a FUSE_READDIR
++ * -- and on success *residp is set to how many bytes of it the server filled.
++ *
++ * An outbodylen and datalen of zero, with a NULL data, means the request has
++ * no reply at all; only FUSE_FORGET is like that.
++ */
++static int
++virtiofs_call(vfsmnt_t *vfs, uint32_t opcode, uint64_t nodeid,
++    const void *inbody, size_t inbodylen,
++    void *outbody, size_t outbodylen,
++    void *data, size_t datalen, size_t *residp)
++{
++	struct fuse_in_header *ihdr;
++	struct fuse_out_header *ohdr;
++	vtfs_xfer_t vx;
++	char *obuf, *ibuf;
++	size_t obuflen = sizeof (*ihdr) + inbodylen;
++	size_t ibuflen;
++	boolean_t noreply = (outbodylen == 0 && data == NULL);
++	size_t got;
++	int r;
++
++	ibuflen = noreply ? 0 : sizeof (*ohdr) + outbodylen;
++
++	if (obuflen > VTFS_BOUNCE_SIZE || ibuflen > VTFS_BOUNCE_SIZE)
++		return (EINVAL);
++
++	obuf = kmem_zalloc(obuflen, KM_SLEEP);
++	ibuf = ibuflen > 0 ? kmem_zalloc(ibuflen, KM_SLEEP) : NULL;
++
++	ihdr = (struct fuse_in_header *)obuf;
++	ihdr->len = (uint32_t)obuflen;
++	ihdr->opcode = opcode;
++	mutex_enter(&vfs->vfs_lock);
++	ihdr->unique = ++vfs->vfs_unique;
++	mutex_exit(&vfs->vfs_lock);
++	ihdr->nodeid = nodeid;
++	ihdr->uid = crgetuid(CRED());
++	ihdr->gid = crgetgid(CRED());
++	ihdr->pid = (uint32_t)ttoproc(curthread)->p_pid;
++
++	if (inbodylen > 0)
++		bcopy(inbody, obuf + sizeof (*ihdr), inbodylen);
++
++	bzero(&vx, sizeof (vx));
++	vx.vx_out = obuf;
++	vx.vx_outlen = obuflen;
++	vx.vx_in = ibuf;
++	vx.vx_inlen = ibuflen;
++	vx.vx_data = data;
++	vx.vx_datalen = datalen;
++
++	r = vtfs_xfer(vfs->vfs_dev, &vx);
++	if (r != 0 || noreply)
++		goto out;
++
++	ohdr = (struct fuse_out_header *)ibuf;
++
++	if (ohdr->error != 0) {
++		r = virtiofs_errno(ohdr->error);
++		goto out;
++	}
++
++	/*
++	 * The server's own length field, not the transport's idea of how many
++	 * bytes it wrote, is what says how much of the reply is meaningful;
++	 * the latter is documented in the Virtio specification as advisory.
++	 */
++	if (ohdr->len < sizeof (*ohdr) + outbodylen) {
++		r = EIO;
++		goto out;
++	}
++
++	got = ohdr->len - sizeof (*ohdr) - outbodylen;
++	if (got > datalen) {
++		r = EIO;
++		goto out;
++	}
++
++	if (outbodylen > 0)
++		bcopy(ibuf + sizeof (*ohdr), outbody, outbodylen);
++	if (residp != NULL)
++		*residp = got;
++
++out:
++	kmem_free(obuf, obuflen);
++	if (ibuf != NULL)
++		kmem_free(ibuf, ibuflen);
++	return (r);
++}
++
++int
++virtiofs_fuse_init(vfsmnt_t *vfs)
++{
++	struct fuse_init_in in;
++	struct fuse_init_out out;
++	int r;
++
++	bzero(&in, sizeof (in));
++	in.major = FUSE_KERNEL_VERSION;
++	in.minor = FUSE_KERNEL_MINOR_VERSION;
++	in.max_readahead = VIRTIOFS_MAXBSIZE;
++	in.flags = 0;
++
++	bzero(&out, sizeof (out));
++	r = virtiofs_call(vfs, FUSE_INIT, 0, &in, sizeof (in),
++	    &out, sizeof (out), NULL, 0, NULL);
++	if (r != 0)
++		return (r);
++
++	if (out.major != FUSE_KERNEL_VERSION) {
++		cmn_err(CE_WARN, "virtiofs: server wants FUSE %u.%u, "
++		    "we speak %u.%u", out.major, out.minor,
++		    FUSE_KERNEL_VERSION, FUSE_KERNEL_MINOR_VERSION);
++		return (ENOTSUP);
++	}
++
++	vfs->vfs_major = out.major;
++	vfs->vfs_minor = out.minor;
++	vfs->vfs_max_write = out.max_write != 0 ? out.max_write :
++	    VIRTIOFS_MAXBSIZE;
++	vfs->vfs_max_read = VIRTIOFS_MAXBSIZE;
++
++	return (0);
++}
++
++int
++virtiofs_fuse_lookup(vfsmnt_t *vfs, uint64_t parent, const char *name,
++    struct fuse_entry_out *eo)
++{
++	size_t namelen = strlen(name) + 1;
++	int r;
++
++	if (namelen > MAXNAMELEN)
++		return (ENAMETOOLONG);
++
++	r = virtiofs_call(vfs, FUSE_LOOKUP, parent, name, namelen,
++	    eo, sizeof (*eo), NULL, 0, NULL);
++	if (r != 0)
++		return (r);
++
++	/*
++	 * A server is allowed to answer a lookup for a nonexistent name with a
++	 * zero nodeid and a positive entry timeout, which is its way of
++	 * caching a negative result.  We have nowhere to keep that, so it is
++	 * simply an ENOENT.
++	 */
++	if (eo->nodeid == 0)
++		return (ENOENT);
++
++	return (0);
++}
++
++void
++virtiofs_fuse_forget(vfsmnt_t *vfs, uint64_t nodeid, uint64_t nlookup)
++{
++	struct fuse_forget_in in;
++
++	if (nlookup == 0)
++		return;
++
++	in.nlookup = nlookup;
++
++	/*
++	 * FUSE_FORGET has no reply, so there is nothing to check and nothing
++	 * useful to do about a transport failure either.
++	 */
++	(void) virtiofs_call(vfs, FUSE_FORGET, nodeid, &in, sizeof (in),
++	    NULL, 0, NULL, 0, NULL);
++}
++
++int
++virtiofs_fuse_getattr(vfsmnt_t *vfs, uint64_t nodeid, struct fuse_attr_out *ao)
++{
++	struct fuse_getattr_in in;
++
++	bzero(&in, sizeof (in));
++
++	return (virtiofs_call(vfs, FUSE_GETATTR, nodeid, &in, sizeof (in),
++	    ao, sizeof (*ao), NULL, 0, NULL));
++}
++
++int
++virtiofs_fuse_open(vfsmnt_t *vfs, uint64_t nodeid, boolean_t isdir,
++    uint64_t *fhp)
++{
++	struct fuse_open_in in;
++	struct fuse_open_out out;
++	int r;
++
++	bzero(&in, sizeof (in));
++	/*
++	 * O_RDONLY is zero in the Linux encoding these flags use, and this
++	 * module never opens anything any other way.
++	 */
++	in.flags = 0;
++
++	bzero(&out, sizeof (out));
++	r = virtiofs_call(vfs, isdir ? FUSE_OPENDIR : FUSE_OPEN, nodeid,
++	    &in, sizeof (in), &out, sizeof (out), NULL, 0, NULL);
++	if (r != 0)
++		return (r);
++
++	*fhp = out.fh;
++	return (0);
++}
++
++int
++virtiofs_fuse_release(vfsmnt_t *vfs, uint64_t nodeid, uint64_t fh,
++    boolean_t isdir)
++{
++	struct fuse_release_in in;
++
++	bzero(&in, sizeof (in));
++	in.fh = fh;
++	in.flags = 0;
++
++	return (virtiofs_call(vfs, isdir ? FUSE_RELEASEDIR : FUSE_RELEASE,
++	    nodeid, &in, sizeof (in), NULL, 0, NULL, 0, NULL));
++}
++
++static int
++virtiofs_read_common(vfsmnt_t *vfs, uint32_t opcode, uint64_t nodeid,
++    uint64_t fh, u_offset_t off, void *buf, size_t len, size_t *residp)
++{
++	struct fuse_read_in in;
++	struct fuse_out_header ohdr;
++	int r;
++
++	if (len > UINT32_MAX)
++		return (EINVAL);
++
++	bzero(&in, sizeof (in));
++	in.fh = fh;
++	in.offset = off;
++	in.size = (uint32_t)len;
++
++	/*
++	 * There is no fixed size out-args for either of these; the whole reply
++	 * past the header is the payload, which goes straight into the
++	 * caller's buffer without passing through the bounce buffer.
++	 */
++	bzero(&ohdr, sizeof (ohdr));
++	r = virtiofs_call(vfs, opcode, nodeid, &in, sizeof (in),
++	    NULL, 0, buf, len, residp);
++
++	return (r);
++}
++
++int
++virtiofs_fuse_read(vfsmnt_t *vfs, uint64_t nodeid, uint64_t fh,
++    u_offset_t off, void *buf, size_t len, size_t *residp)
++{
++	return (virtiofs_read_common(vfs, FUSE_READ, nodeid, fh, off, buf, len,
++	    residp));
++}
++
++int
++virtiofs_fuse_readdir(vfsmnt_t *vfs, uint64_t nodeid, uint64_t fh,
++    u_offset_t off, void *buf, size_t len, size_t *residp)
++{
++	return (virtiofs_read_common(vfs, FUSE_READDIR, nodeid, fh, off, buf,
++	    len, residp));
++}
++
++int
++virtiofs_fuse_readlink(vfsmnt_t *vfs, uint64_t nodeid, char *buf, size_t len,
++    size_t *residp)
++{
++	/*
++	 * The reply to FUSE_READLINK is the target, without a NUL terminator;
++	 * the caller is responsible for adding one if it wants one.
++	 */
++	return (virtiofs_call(vfs, FUSE_READLINK, nodeid, NULL, 0,
++	    NULL, 0, buf, len, residp));
++}
++
++int
++virtiofs_fuse_statfs(vfsmnt_t *vfs, struct fuse_kstatfs *ks)
++{
++	return (virtiofs_call(vfs, FUSE_STATFS, FUSE_ROOT_ID, NULL, 0,
++	    ks, sizeof (*ks), NULL, 0, NULL));
++}
++
++/*
++ * The node cache.
++ */
++
++static uint_t
++virtiofs_hash(uint64_t nodeid)
++{
++	return ((uint_t)(nodeid % VIRTIOFS_NHASH));
++}
++
++enum vtype
++virtiofs_mode_to_vtype(uint32_t mode)
++{
++	switch (mode & S_IFMT) {
++	case S_IFREG:
++		return (VREG);
++	case S_IFDIR:
++		return (VDIR);
++	case S_IFLNK:
++		return (VLNK);
++	case S_IFCHR:
++		return (VCHR);
++	case S_IFBLK:
++		return (VBLK);
++	case S_IFIFO:
++		return (VFIFO);
++	case S_IFSOCK:
++		return (VSOCK);
++	default:
++		return (VNON);
++	}
++}
++
++void
++virtiofs_attr_to_vattr(vfsmnt_t *vfs, const struct fuse_attr *fa, vattr_t *vap)
++{
++	vap->va_type = virtiofs_mode_to_vtype(fa->mode);
++	vap->va_mode = fa->mode & MODEMASK;
++	vap->va_uid = vfs->vfs_override_ids ? vfs->vfs_uid : (uid_t)fa->uid;
++	vap->va_gid = vfs->vfs_override_ids ? vfs->vfs_gid : (gid_t)fa->gid;
++	vap->va_fsid = vfs->vfs_dev_no;
++	vap->va_nodeid = fa->ino;
++	vap->va_nlink = fa->nlink;
++	vap->va_size = fa->size;
++	vap->va_atime.tv_sec = fa->atime;
++	vap->va_atime.tv_nsec = fa->atimensec;
++	vap->va_mtime.tv_sec = fa->mtime;
++	vap->va_mtime.tv_nsec = fa->mtimensec;
++	vap->va_ctime.tv_sec = fa->ctime;
++	vap->va_ctime.tv_nsec = fa->ctimensec;
++	vap->va_rdev = fa->rdev;
++	vap->va_blksize = fa->blksize != 0 ? fa->blksize : PAGESIZE;
++	vap->va_nblocks = fa->blocks;
++	vap->va_seq = 0;
++}
++
++/*
++ * Record a fresh set of attributes, with the validity window the server asked
++ * for.  A window of zero means "do not cache", which we honour by making the
++ * entry expire immediately rather than by refusing to store it, so that the
++ * read path stays uniform.
++ */
++void
++virtiofs_node_setattr(vfnode_t *vfn, const struct fuse_attr *fa,
++    uint64_t valid_sec, uint32_t valid_nsec)
++{
++	hrtime_t window;
++
++	mutex_enter(&vfn->vfn_lock);
++	vfn->vfn_attr = *fa;
++	vfn->vfn_attr_valid = B_TRUE;
++
++	/*
++	 * Servers routinely report a validity of one year, or of UINT64_MAX,
++	 * for an immutable tree.  Clamp before scaling so the arithmetic
++	 * cannot overflow.
++	 */
++	if (valid_sec > 3600)
++		valid_sec = 3600;
++	window = (hrtime_t)valid_sec * NANOSEC + (hrtime_t)valid_nsec;
++	vfn->vfn_attr_expiry = gethrtime() + window;
++
++	VFTOV(vfn)->v_type = virtiofs_mode_to_vtype(fa->mode);
++	mutex_exit(&vfn->vfn_lock);
++}
++
++/*
++ * Fetch this node's attributes, going to the server if what we have has
++ * expired.
++ */
++int
++virtiofs_node_getattr(vfnode_t *vfn, struct fuse_attr *fa)
++{
++	vfsmnt_t *vfs = vfn->vfn_mnt;
++	struct fuse_attr_out ao;
++	int r;
++
++	mutex_enter(&vfn->vfn_lock);
++	if (vfn->vfn_attr_valid && gethrtime() < vfn->vfn_attr_expiry) {
++		*fa = vfn->vfn_attr;
++		mutex_exit(&vfn->vfn_lock);
++		return (0);
++	}
++	mutex_exit(&vfn->vfn_lock);
++
++	bzero(&ao, sizeof (ao));
++	if ((r = virtiofs_fuse_getattr(vfs, vfn->vfn_nodeid, &ao)) != 0) {
++		/*
++		 * Fall back on a stale cached copy rather than failing outright
++		 * only if we have nothing at all; a stale size would be worse
++		 * than an error for the paging path.
++		 */
++		return (r);
++	}
++
++	virtiofs_node_setattr(vfn, &ao.attr, ao.attr_valid,
++	    ao.attr_valid_nsec);
++	*fa = ao.attr;
++
++	return (0);
++}
++
++vfnode_t *
++virtiofs_node_find(vfsmnt_t *vfs, uint64_t nodeid)
++{
++	vfnode_t *vfn;
++	uint_t h = virtiofs_hash(nodeid);
++
++	VERIFY(RW_LOCK_HELD(&vfs->vfs_hash_lock));
++
++	for (vfn = vfs->vfs_hash[h]; vfn != NULL; vfn = vfn->vfn_hash) {
++		if (vfn->vfn_nodeid == nodeid)
++			return (vfn);
++	}
++
++	return (NULL);
++}
++
++/*
++ * Return the node for "nodeid", creating it if we have not seen it before, and
++ * with a held vnode either way.  "nlookup" is how many lookup references the
++ * caller is handing over; it is one for a fresh FUSE_LOOKUP and zero when the
++ * caller already owns the reference (as VFS_ROOT does).
++ */
++vfnode_t *
++virtiofs_node_hold(vfsmnt_t *vfs, uint64_t nodeid, const struct fuse_attr *fa,
++    uint64_t nlookup)
++{
++	vfnode_t *vfn, *found;
++	vnode_t *vp;
++	uint_t h = virtiofs_hash(nodeid);
++
++	rw_enter(&vfs->vfs_hash_lock, RW_READER);
++	if ((vfn = virtiofs_node_find(vfs, nodeid)) != NULL) {
++		VN_HOLD(VFTOV(vfn));
++		atomic_add_64(&vfn->vfn_nlookup, nlookup);
++		rw_exit(&vfs->vfs_hash_lock);
++		if (fa != NULL)
++			virtiofs_node_setattr(vfn, fa, 0, 0);
++		return (vfn);
++	}
++	rw_exit(&vfs->vfs_hash_lock);
++
++	vfn = kmem_zalloc(sizeof (*vfn), KM_SLEEP);
++	vfn->vfn_mnt = vfs;
++	vfn->vfn_nodeid = nodeid;
++	vfn->vfn_nlookup = nlookup;
++	mutex_init(&vfn->vfn_lock, NULL, MUTEX_DEFAULT, NULL);
++
++	vp = vn_alloc(KM_SLEEP);
++	vfn->vfn_vnode = vp;
++	vn_setops(vp, virtiofs_vnodeops);
++	vp->v_data = vfn;
++	vp->v_vfsp = vfs->vfs_vfsp;
++	vp->v_type = fa != NULL ? virtiofs_mode_to_vtype(fa->mode) : VNON;
++	vp->v_rdev = vfs->vfs_dev_no;
++	vn_exists(vp);
++
++	if (fa != NULL) {
++		vfn->vfn_attr = *fa;
++		vfn->vfn_attr_valid = B_TRUE;
++		vfn->vfn_attr_expiry = gethrtime();
++	}
++
++	/*
++	 * Another thread may have raced us here with the same nodeid, so look
++	 * again with the lock held for writing before publishing ours.
++	 */
++	rw_enter(&vfs->vfs_hash_lock, RW_WRITER);
++	if ((found = virtiofs_node_find(vfs, nodeid)) != NULL) {
++		VN_HOLD(VFTOV(found));
++		atomic_add_64(&found->vfn_nlookup, nlookup);
++		rw_exit(&vfs->vfs_hash_lock);
++
++		vn_invalid(vp);
++		vn_free(vp);
++		mutex_destroy(&vfn->vfn_lock);
++		kmem_free(vfn, sizeof (*vfn));
++
++		if (fa != NULL)
++			virtiofs_node_setattr(found, fa, 0, 0);
++		return (found);
++	}
++
++	vfn->vfn_hash = vfs->vfs_hash[h];
++	vfs->vfs_hash[h] = vfn;
++	rw_exit(&vfs->vfs_hash_lock);
++
++	return (vfn);
++}
++
++/*
++ * Unhash a node and release everything it owns.  Called only from
++ * VOP_INACTIVE, once the last reference is gone and the node has been
++ * unlinked from nothing else.
++ */
++void
++virtiofs_node_free(vfnode_t *vfn)
++{
++	vfsmnt_t *vfs = vfn->vfn_mnt;
++	vnode_t *vp = VFTOV(vfn);
++	uint_t h = virtiofs_hash(vfn->vfn_nodeid);
++	vfnode_t **pp;
++	uint64_t nlookup;
++
++	rw_enter(&vfs->vfs_hash_lock, RW_WRITER);
++	for (pp = &vfs->vfs_hash[h]; *pp != NULL; pp = &(*pp)->vfn_hash) {
++		if (*pp == vfn) {
++			*pp = vfn->vfn_hash;
++			break;
++		}
++	}
++	rw_exit(&vfs->vfs_hash_lock);
++
++	if (vfn->vfn_fh_valid) {
++		(void) virtiofs_fuse_release(vfs, vfn->vfn_nodeid, vfn->vfn_fh,
++		    vp->v_type == VDIR);
++		vfn->vfn_fh_valid = B_FALSE;
++	}
++
++	nlookup = vfn->vfn_nlookup;
++	vfn->vfn_nlookup = 0;
++	virtiofs_fuse_forget(vfs, vfn->vfn_nodeid, nlookup);
++
++	/*
++	 * Nothing here is ever dirty, but the pages still have to be taken off
++	 * the vnode before it goes away.
++	 */
++	if (vn_has_cached_data(vp)) {
++		(void) pvn_vplist_dirty(vp, 0, virtiofs_putapage,
++		    B_INVAL | B_TRUNC, kcred);
++	}
++
++	vn_invalid(vp);
++	vn_free(vp);
++	mutex_destroy(&vfn->vfn_lock);
++	kmem_free(vfn, sizeof (*vfn));
++}
++
++/*
++ * Server file handles.  One handle is shared by every open of a node; the
++ * count says how many opens are still relying on it.  A read-only client has
++ * no per-open state that could make sharing wrong, and the alternative --
++ * a handle per open -- would mean threading state through VOP_READ and
++ * VOP_GETPAGE, which do not always have an open file to hand.
++ */
++int
++virtiofs_openfh(vfnode_t *vfn, boolean_t isdir, uint64_t *fhp)
++{
++	vfsmnt_t *vfs = vfn->vfn_mnt;
++	uint64_t fh;
++	int r;
++
++	mutex_enter(&vfn->vfn_lock);
++	if (vfn->vfn_fh_valid) {
++		vfn->vfn_fh_count++;
++		if (fhp != NULL)
++			*fhp = vfn->vfn_fh;
++		mutex_exit(&vfn->vfn_lock);
++		return (0);
++	}
++	mutex_exit(&vfn->vfn_lock);
++
++	if ((r = virtiofs_fuse_open(vfs, vfn->vfn_nodeid, isdir, &fh)) != 0)
++		return (r);
++
++	mutex_enter(&vfn->vfn_lock);
++	if (vfn->vfn_fh_valid) {
++		/*
++		 * We raced with another opener.  Keep theirs and give ours
++		 * back; two handles on one node is legal but pointless.
++		 */
++		vfn->vfn_fh_count++;
++		if (fhp != NULL)
++			*fhp = vfn->vfn_fh;
++		mutex_exit(&vfn->vfn_lock);
++		(void) virtiofs_fuse_release(vfs, vfn->vfn_nodeid, fh, isdir);
++		return (0);
++	}
++
++	vfn->vfn_fh = fh;
++	vfn->vfn_fh_valid = B_TRUE;
++	vfn->vfn_fh_count = 1;
++	if (fhp != NULL)
++		*fhp = fh;
++	mutex_exit(&vfn->vfn_lock);
++
++	return (0);
++}
++
++void
++virtiofs_closefh(vfnode_t *vfn, boolean_t isdir)
++{
++	vfsmnt_t *vfs = vfn->vfn_mnt;
++	uint64_t fh;
++
++	mutex_enter(&vfn->vfn_lock);
++	if (!vfn->vfn_fh_valid || vfn->vfn_fh_count == 0) {
++		mutex_exit(&vfn->vfn_lock);
++		return;
++	}
++
++	if (--vfn->vfn_fh_count > 0) {
++		mutex_exit(&vfn->vfn_lock);
++		return;
++	}
++
++	/*
++	 * Deliberately keep the handle across a zero count for a regular file:
++	 * VOP_GETPAGE can be called long after the last close, for a mapping
++	 * that outlives it, and it has no way to reopen.  The handle is
++	 * released for good in virtiofs_node_free().  A directory has no such
++	 * problem, so its handle goes back immediately.
++	 */
++	if (!isdir) {
++		mutex_exit(&vfn->vfn_lock);
++		return;
++	}
++
++	fh = vfn->vfn_fh;
++	vfn->vfn_fh_valid = B_FALSE;
++	mutex_exit(&vfn->vfn_lock);
++
++	(void) virtiofs_fuse_release(vfs, vfn->vfn_nodeid, fh, B_TRUE);
++}
+diff --git a/usr/src/uts/common/fs/virtiofs/virtiofs_vfsops.c b/usr/src/uts/common/fs/virtiofs/virtiofs_vfsops.c
+new file mode 100644
+index 0000000000..a1f7078c1d
+--- /dev/null
++++ b/usr/src/uts/common/fs/virtiofs/virtiofs_vfsops.c
+@@ -0,0 +1,486 @@
++/*
++ * This file and its contents are supplied under the terms of the
++ * Common Development and Distribution License ("CDDL"), version 1.0.
++ * You may only use this file in accordance with the terms of version
++ * 1.0 of the CDDL.
++ *
++ * A full copy of the text of the CDDL should have accompanied this
++ * source.  A copy of the CDDL is also available via the Internet at
++ * http://www.illumos.org/license/CDDL.
++ */
++
++/*
++ * Copyright 2026 John Ericson
++ */
++
++/*
++ * VIRTIO FS: VFS OPERATIONS
++ *
++ * A mount names a Virtio FS device by the tag that device advertises in its
++ * configuration space:
++ *
++ *	mount -F virtiofs [-o ro,uid=0,gid=0] <tag> /mnt
++ *
++ * There is no block device and nothing to read a superblock out of; the mount
++ * consists of finding the tagged device, negotiating a FUSE version with it,
++ * and asking it for the attributes of the root nodeid.
++ *
++ * The file system is read-only, and not because the server is: a Virtio FS
++ * device will happily accept writes.  There is simply no write path in this
++ * module, so the mount asserts VFS_RDONLY and every vnode operation that would
++ * modify anything is absent from the operation table.
++ */
++
++#include <sys/types.h>
++#include <sys/param.h>
++#include <sys/systm.h>
++#include <sys/errno.h>
++#include <sys/kmem.h>
++#include <sys/sysmacros.h>
++#include <sys/cmn_err.h>
++#include <sys/debug.h>
++#include <sys/vnode.h>
++#include <sys/vfs.h>
++#include <sys/vfs_opreg.h>
++#include <sys/mount.h>
++#include <sys/mntent.h>
++#include <sys/statvfs.h>
++#include <sys/pathname.h>
++#include <sys/policy.h>
++#include <sys/modctl.h>
++#include <sys/cred.h>
++#include <sys/dnlc.h>
++#include <sys/mkdev.h>
++#include <sys/ddi.h>
++#include <sys/sunddi.h>
++
++#include "fs/fs_subr.h"
++#include "virtiofs.h"
++
++/*
++ * Mount options.  "uid" and "gid" replace whatever the server reports for
++ * every file; on a host store mount the server's ids are the host's, which
++ * need not correspond to anything in this system's name service.
++ */
++#define	VFOPT_UID	"uid"
++#define	VFOPT_GID	"gid"
++
++static char *ro_cancel[] = { MNTOPT_RW, NULL };
++
++static mntopt_t virtiofs_options[] = {
++	{ MNTOPT_RO, ro_cancel, NULL, MO_DEFAULT, NULL },
++	{ VFOPT_UID, NULL, NULL, MO_HASVALUE, NULL },
++	{ VFOPT_GID, NULL, NULL, MO_HASVALUE, NULL }
++};
++
++static mntopts_t virtiofs_proto_opttbl = {
++	sizeof (virtiofs_options) / sizeof (mntopt_t),
++	virtiofs_options
++};
++
++static int virtiofsinit(int, char *);
++
++static vfsdef_t vfw = {
++	VFSDEF_VERSION,
++	"virtiofs",
++	virtiofsinit,
++	VSW_HASPROTO | VSW_STATS,
++	&virtiofs_proto_opttbl
++};
++
++static struct modlfs modlfs = {
++	&mod_fsops, "filesystem for VIRTIO FS", &vfw
++};
++
++static struct modlinkage modlinkage = {
++	MODREV_1, { (void *)&modlfs, NULL }
++};
++
++static int virtiofsfstype;
++static major_t virtiofs_major;
++static minor_t virtiofs_minor;
++static kmutex_t virtiofs_minor_lock;
++
++static int virtiofs_mount(vfs_t *, vnode_t *, struct mounta *, cred_t *);
++static int virtiofs_unmount(vfs_t *, int, cred_t *);
++static int virtiofs_root(vfs_t *, vnode_t **);
++static int virtiofs_statvfs(vfs_t *, struct statvfs64 *);
++static int virtiofs_vget(vfs_t *, vnode_t **, struct fid *);
++
++int
++_init(void)
++{
++	return (mod_install(&modlinkage));
++}
++
++int
++_fini(void)
++{
++	int error;
++
++	if ((error = mod_remove(&modlinkage)) != 0)
++		return (error);
++
++	(void) vfs_freevfsops_by_type(virtiofsfstype);
++	vn_freevnodeops(virtiofs_vnodeops);
++	mutex_destroy(&virtiofs_minor_lock);
++
++	return (0);
++}
++
++int
++_info(struct modinfo *modinfop)
++{
++	return (mod_info(&modlinkage, modinfop));
++}
++
++static int
++virtiofsinit(int fstype, char *name)
++{
++	static const fs_operation_def_t virtiofs_vfsops_template[] = {
++		VFSNAME_MOUNT,		{ .vfs_mount = virtiofs_mount },
++		VFSNAME_UNMOUNT,	{ .vfs_unmount = virtiofs_unmount },
++		VFSNAME_ROOT,		{ .vfs_root = virtiofs_root },
++		VFSNAME_STATVFS,	{ .vfs_statvfs = virtiofs_statvfs },
++		VFSNAME_VGET,		{ .vfs_vget = virtiofs_vget },
++		NULL,			NULL
++	};
++	int error;
++
++	error = vfs_setfsops(fstype, virtiofs_vfsops_template, NULL);
++	if (error != 0) {
++		cmn_err(CE_WARN, "virtiofsinit: bad vfs ops template");
++		return (error);
++	}
++
++	error = vn_make_ops(name, virtiofs_vnodeops_template,
++	    &virtiofs_vnodeops);
++	if (error != 0) {
++		(void) vfs_freevfsops_by_type(fstype);
++		cmn_err(CE_WARN, "virtiofsinit: bad vnode ops template");
++		return (error);
++	}
++
++	if ((virtiofs_major = getudev()) == (major_t)-1) {
++		cmn_err(CE_WARN, "virtiofsinit: no unique device number");
++		virtiofs_major = 0;
++	}
++	mutex_init(&virtiofs_minor_lock, NULL, MUTEX_DEFAULT, NULL);
++
++	virtiofsfstype = fstype;
++
++	return (0);
++}
++
++/*
++ * Pick a device number that no other mount is using.  There is no real device
++ * behind this file system, but stat(2) still has to report something unique
++ * per mount for st_dev.
++ */
++static dev_t
++virtiofs_alloc_dev(void)
++{
++	dev_t dev;
++
++	mutex_enter(&virtiofs_minor_lock);
++	do {
++		virtiofs_minor = (virtiofs_minor + 1) & L_MAXMIN32;
++		dev = makedevice(virtiofs_major, virtiofs_minor);
++	} while (vfs_devismounted(dev));
++	mutex_exit(&virtiofs_minor_lock);
++
++	return (dev);
++}
++
++static int
++virtiofs_mount(vfs_t *vfsp, vnode_t *mvp, struct mounta *uap, cred_t *cr)
++{
++	vfsmnt_t *vfs = NULL;
++	vtfs_t *dev = NULL;
++	vfnode_t *rootvfn;
++	struct fuse_attr_out ao;
++	struct pathname dpn;
++	char *tag = NULL;
++	char *optval;
++	size_t taglen;
++	int error;
++
++	if ((error = secpolicy_fs_mount(cr, mvp, vfsp)) != 0)
++		return (error);
++
++	if (mvp->v_type != VDIR)
++		return (ENOTDIR);
++
++	mutex_enter(&mvp->v_lock);
++	if ((uap->flags & MS_REMOUNT) == 0 && (uap->flags & MS_OVERLAY) == 0 &&
++	    (mvp->v_count != 1 || (mvp->v_flag & VROOT))) {
++		mutex_exit(&mvp->v_lock);
++		return (EBUSY);
++	}
++	mutex_exit(&mvp->v_lock);
++
++	/*
++	 * We have no state that a remount could usefully change.
++	 */
++	if (uap->flags & MS_REMOUNT)
++		return (ENOTSUP);
++
++	/*
++	 * The "special" is the device tag rather than a path, but it arrives
++	 * the same way any mount's special does.
++	 */
++	tag = kmem_alloc(VIRTIO_FS_TAG_LEN + 1, KM_SLEEP);
++	if (uap->flags & MS_SYSSPACE) {
++		error = copystr(uap->spec, tag, VIRTIO_FS_TAG_LEN + 1, &taglen);
++	} else {
++		error = copyinstr(uap->spec, tag, VIRTIO_FS_TAG_LEN + 1,
++		    &taglen);
++	}
++	if (error != 0) {
++		kmem_free(tag, VIRTIO_FS_TAG_LEN + 1);
++		return (error == ENAMETOOLONG ? ENAMETOOLONG : EFAULT);
++	}
++	tag[VIRTIO_FS_TAG_LEN] = '\0';
++
++	error = pn_get(uap->dir, (uap->flags & MS_SYSSPACE) ? UIO_SYSSPACE :
++	    UIO_USERSPACE, &dpn);
++	if (error != 0) {
++		kmem_free(tag, VIRTIO_FS_TAG_LEN + 1);
++		return (error);
++	}
++
++	if ((dev = vtfs_hold_by_tag(tag)) == NULL) {
++		cmn_err(CE_NOTE, "virtiofs: no Virtio FS device with tag "
++		    "\"%s\"", tag);
++		error = ENXIO;
++		goto fail;
++	}
++
++	vfs = kmem_zalloc(sizeof (*vfs), KM_SLEEP);
++	vfs->vfs_vfsp = vfsp;
++	vfs->vfs_dev = dev;
++	vfs->vfs_dev_no = virtiofs_alloc_dev();
++	mutex_init(&vfs->vfs_lock, NULL, MUTEX_DEFAULT, NULL);
++	rw_init(&vfs->vfs_hash_lock, NULL, RW_DEFAULT, NULL);
++
++	if (vfs_optionisset(vfsp, VFOPT_UID, &optval)) {
++		long v;
++
++		if (ddi_strtol(optval, NULL, 10, &v) != 0 || v < 0) {
++			error = EINVAL;
++			goto fail;
++		}
++		vfs->vfs_uid = (uid_t)v;
++		vfs->vfs_override_ids = B_TRUE;
++	}
++	if (vfs_optionisset(vfsp, VFOPT_GID, &optval)) {
++		long v;
++
++		if (ddi_strtol(optval, NULL, 10, &v) != 0 || v < 0) {
++			error = EINVAL;
++			goto fail;
++		}
++		vfs->vfs_gid = (gid_t)v;
++		vfs->vfs_override_ids = B_TRUE;
++	}
++
++	vfsp->vfs_data = (caddr_t)vfs;
++	vfsp->vfs_fstype = virtiofsfstype;
++	vfsp->vfs_dev = vfs->vfs_dev_no;
++	vfsp->vfs_bsize = MAXBSIZE;
++	vfsp->vfs_flag |= VFS_RDONLY | VFS_NOTRUNC;
++	vfs_make_fsid(&vfsp->vfs_fsid, vfs->vfs_dev_no, virtiofsfstype);
++	vfs_setmntopt(vfsp, MNTOPT_RO, NULL, 0);
++
++	/*
++	 * Negotiate the protocol version before anything else; a server will
++	 * not answer any other opcode until it has seen a FUSE_INIT.
++	 */
++	if ((error = virtiofs_fuse_init(vfs)) != 0) {
++		cmn_err(CE_WARN, "virtiofs: FUSE_INIT failed on tag \"%s\": "
++		    "%d", tag, error);
++		goto fail;
++	}
++
++	bzero(&ao, sizeof (ao));
++	if ((error = virtiofs_fuse_getattr(vfs, FUSE_ROOT_ID, &ao)) != 0) {
++		cmn_err(CE_WARN, "virtiofs: cannot stat the root of tag "
++		    "\"%s\": %d", tag, error);
++		goto fail;
++	}
++
++	/*
++	 * The root nodeid is never the result of a lookup, so there is no
++	 * lookup count to hand over and none to forget later.
++	 */
++	rootvfn = virtiofs_node_hold(vfs, FUSE_ROOT_ID, &ao.attr, 0);
++	virtiofs_node_setattr(rootvfn, &ao.attr, ao.attr_valid,
++	    ao.attr_valid_nsec);
++
++	vfs->vfs_rootvp = VFTOV(rootvfn);
++	vfs->vfs_rootvp->v_flag |= VROOT;
++
++	pn_free(&dpn);
++	kmem_free(tag, VIRTIO_FS_TAG_LEN + 1);
++
++	return (0);
++
++fail:
++	if (vfs != NULL) {
++		mutex_destroy(&vfs->vfs_lock);
++		rw_destroy(&vfs->vfs_hash_lock);
++		kmem_free(vfs, sizeof (*vfs));
++		vfsp->vfs_data = NULL;
++	}
++	if (dev != NULL)
++		vtfs_rele(dev);
++	pn_free(&dpn);
++	kmem_free(tag, VIRTIO_FS_TAG_LEN + 1);
++
++	return (error);
++}
++
++/* ARGSUSED */
++static int
++virtiofs_unmount(vfs_t *vfsp, int flag, cred_t *cr)
++{
++	vfsmnt_t *vfs = VFS_TO_VIRTIOFS(vfsp);
++	vnode_t *rvp = vfs->vfs_rootvp;
++	int error;
++
++	if ((error = secpolicy_fs_unmount(cr, vfsp)) != 0)
++		return (error);
++
++	/*
++	 * A forced unmount would have to invalidate every mapping of every
++	 * file on the mount, which is more machinery than a read-only store
++	 * mount justifies.
++	 */
++	if (flag & MS_FORCE)
++		return (ENOTSUP);
++
++	/*
++	 * Purge the name cache first: entries there hold vnodes, and the
++	 * busy check below would see them.
++	 */
++	(void) dnlc_purge_vfsp(vfsp, 0);
++
++	if (rvp->v_count > 1) {
++		/*
++		 * Something other than us still has the root.
++		 */
++		return (EBUSY);
++	}
++
++	/*
++	 * The root is the only node that may still be around; anything else
++	 * means a file on this mount is still referenced somewhere.
++	 */
++	rw_enter(&vfs->vfs_hash_lock, RW_READER);
++	for (uint_t i = 0; i < VIRTIOFS_NHASH; i++) {
++		for (vfnode_t *vfn = vfs->vfs_hash[i]; vfn != NULL;
++		    vfn = vfn->vfn_hash) {
++			if (vfn != VTOVF(rvp)) {
++				rw_exit(&vfs->vfs_hash_lock);
++				return (EBUSY);
++			}
++		}
++	}
++	rw_exit(&vfs->vfs_hash_lock);
++
++	/*
++	 * The root is the one node that never carries a lookup count, so it
++	 * can simply be released; VOP_INACTIVE unhashes and frees it.
++	 */
++	vfs->vfs_rootvp = NULL;
++	VN_RELE(rvp);
++
++	vtfs_rele(vfs->vfs_dev);
++
++	rw_destroy(&vfs->vfs_hash_lock);
++	mutex_destroy(&vfs->vfs_lock);
++	kmem_free(vfs, sizeof (*vfs));
++	vfsp->vfs_data = NULL;
++
++	return (0);
++}
++
++static int
++virtiofs_root(vfs_t *vfsp, vnode_t **vpp)
++{
++	vfsmnt_t *vfs = VFS_TO_VIRTIOFS(vfsp);
++
++	if (vfs->vfs_rootvp == NULL)
++		return (EIO);
++
++	*vpp = vfs->vfs_rootvp;
++	VN_HOLD(*vpp);
++
++	return (0);
++}
++
++static int
++virtiofs_statvfs(vfs_t *vfsp, struct statvfs64 *sbp)
++{
++	vfsmnt_t *vfs = VFS_TO_VIRTIOFS(vfsp);
++	struct fuse_kstatfs ks;
++	dev32_t d32;
++	int error;
++
++	bzero(&ks, sizeof (ks));
++	if ((error = virtiofs_fuse_statfs(vfs, &ks)) != 0)
++		return (error);
++
++	bzero(sbp, sizeof (*sbp));
++	sbp->f_bsize = ks.bsize != 0 ? ks.bsize : vfsp->vfs_bsize;
++	sbp->f_frsize = ks.frsize != 0 ? ks.frsize : sbp->f_bsize;
++	sbp->f_blocks = (fsblkcnt64_t)ks.blocks;
++
++	/*
++	 * The mount is read-only whatever the server says about free space, so
++	 * report none: an application that asks whether it can write here
++	 * should be told no in the way it is most likely to understand.
++	 */
++	sbp->f_bfree = 0;
++	sbp->f_bavail = 0;
++	sbp->f_files = (fsfilcnt64_t)ks.files;
++	sbp->f_ffree = 0;
++	sbp->f_favail = 0;
++
++	(void) cmpldev(&d32, vfsp->vfs_dev);
++	sbp->f_fsid = d32;
++	(void) strcpy(sbp->f_basetype, vfssw[vfsp->vfs_fstype].vsw_name);
++	sbp->f_flag = vf_to_stf(vfsp->vfs_flag);
++	sbp->f_namemax = ks.namelen != 0 ? ks.namelen : MAXNAMELEN - 1;
++	(void) strncpy(sbp->f_fstr, vtfs_tag(vfs->vfs_dev),
++	    sizeof (sbp->f_fstr) - 1);
++
++	return (0);
++}
++
++/*
++ * VFS_VGET.  A nodeid is only meaningful while we hold a reference to it, so
++ * this only ever finds nodes that are already in the hash; it cannot resurrect
++ * one the server may since have reused.
++ */
++static int
++virtiofs_vget(vfs_t *vfsp, vnode_t **vpp, struct fid *fidp)
++{
++	vfsmnt_t *vfs = VFS_TO_VIRTIOFS(vfsp);
++	vfid_t *vfid = (vfid_t *)fidp;
++	vfnode_t *vfn;
++
++	*vpp = NULL;
++
++	if (vfid->vfid_len != sizeof (vfid_t) - sizeof (uint16_t))
++		return (EINVAL);
++
++	rw_enter(&vfs->vfs_hash_lock, RW_READER);
++	if ((vfn = virtiofs_node_find(vfs, vfid->vfid_nodeid)) != NULL) {
++		VN_HOLD(VFTOV(vfn));
++		*vpp = VFTOV(vfn);
++	}
++	rw_exit(&vfs->vfs_hash_lock);
++
++	return (*vpp == NULL ? ESTALE : 0);
++}
+diff --git a/usr/src/uts/common/fs/virtiofs/virtiofs_vnops.c b/usr/src/uts/common/fs/virtiofs/virtiofs_vnops.c
+new file mode 100644
+index 0000000000..127ee261e8
+--- /dev/null
++++ b/usr/src/uts/common/fs/virtiofs/virtiofs_vnops.c
+@@ -0,0 +1,1000 @@
++/*
++ * This file and its contents are supplied under the terms of the
++ * Common Development and Distribution License ("CDDL"), version 1.0.
++ * You may only use this file in accordance with the terms of version
++ * 1.0 of the CDDL.
++ *
++ * A full copy of the text of the CDDL should have accompanied this
++ * source.  A copy of the CDDL is also available via the Internet at
++ * http://www.illumos.org/license/CDDL.
++ */
++
++/*
++ * Copyright 2026 John Ericson
++ */
++
++/*
++ * VIRTIO FS: VNODE OPERATIONS
++ *
++ * This is a read-only file system, so the operation set is close to hsfs':
++ * lookup, read, readdir, readlink, getattr, access, and the paging entry
++ * points, with everything that would modify the file system left out of the
++ * table entirely so that the vnode layer's fs_nosys() stubs answer for them.
++ *
++ * PAGING
++ *
++ * VOP_GETPAGE is the reason this module cannot be a thin translation of
++ * read(2) into FUSE_READ.  Executables and shared libraries are mapped, never
++ * read, so a file system whose pages do not come from the page cache cannot
++ * run a program out of itself.  The structure here is the conventional one --
++ * pvn_getpages() over a per-page routine which klusters with
++ * pvn_read_kluster(), sets up a pageio buffer, maps it into the kernel with
++ * bp_mapin(9F), and fills it -- with the FUSE_READ round trip standing where a
++ * disk based file system would call its strategy routine.
++ *
++ * VOP_PUTPAGE exists only to take clean pages off a vnode.  Nothing here is
++ * ever dirty; a dirty page would mean somebody wrote to a MAP_SHARED mapping,
++ * which VOP_MAP refuses to create.
++ */
++
++#include <sys/types.h>
++#include <sys/param.h>
++#include <sys/systm.h>
++#include <sys/errno.h>
++#include <sys/kmem.h>
++#include <sys/sysmacros.h>
++#include <sys/cmn_err.h>
++#include <sys/debug.h>
++#include <sys/vnode.h>
++#include <sys/vfs.h>
++#include <sys/vfs_opreg.h>
++#include <sys/uio.h>
++#include <sys/stat.h>
++#include <sys/mode.h>
++#include <sys/dirent.h>
++#include <sys/pathname.h>
++#include <sys/policy.h>
++#include <sys/cred.h>
++#include <sys/buf.h>
++#include <sys/fcntl.h>
++#include <sys/file.h>
++#include <sys/dnlc.h>
++#include <sys/statvfs.h>
++#include <sys/mman.h>
++#include <sys/vmsystm.h>
++
++#include <vm/hat.h>
++#include <vm/as.h>
++#include <vm/page.h>
++#include <vm/pvn.h>
++#include <vm/seg.h>
++#include <vm/seg_map.h>
++#include <vm/seg_vn.h>
++#include <vm/seg_kmem.h>
++
++#include "fs/fs_subr.h"
++#include "virtiofs.h"
++
++struct vnodeops *virtiofs_vnodeops;
++
++static int virtiofs_getapage(vnode_t *, u_offset_t, size_t, uint_t *,
++    page_t *[], size_t, struct seg *, caddr_t, enum seg_rw, cred_t *);
++
++/*
++ * Read [off, off + len) of "vp" into the kernel buffer "buf", asking the
++ * server for at most one maximum sized read at a time.  A short reply means
++ * end of file: the remainder of the buffer is zeroed, which is what the paging
++ * path needs for the partial page at the end of a file.
++ */
++static int
++virtiofs_readio(vnode_t *vp, caddr_t buf, u_offset_t off, size_t len)
++{
++	vfnode_t *vfn = VTOVF(vp);
++	vfsmnt_t *vfs = vfn->vfn_mnt;
++	uint64_t fh;
++	size_t done = 0;
++	int r;
++
++	if ((r = virtiofs_openfh(vfn, B_FALSE, &fh)) != 0)
++		return (r);
++
++	while (done < len) {
++		size_t want = MIN(len - done, vfs->vfs_max_read);
++		size_t got = 0;
++
++		r = virtiofs_fuse_read(vfs, vfn->vfn_nodeid, fh, off + done,
++		    buf + done, want, &got);
++		if (r != 0)
++			break;
++
++		done += got;
++
++		if (got < want) {
++			/*
++			 * End of file.  Everything past it reads as zero.
++			 */
++			break;
++		}
++	}
++
++	/*
++	 * The handle stays open: see the comment in virtiofs_closefh() about
++	 * mappings that outlive their file descriptor.  All we give back here
++	 * is the count we took.
++	 */
++	virtiofs_closefh(vfn, B_FALSE);
++
++	if (r != 0)
++		return (r);
++
++	if (done < len)
++		bzero(buf + done, len - done);
++
++	return (0);
++}
++
++/*
++ * The access check.  Modelled on hs_access(): a read-only medium never grants
++ * write, and the rest is the usual owner/group/other shift into
++ * secpolicy_vnode_access2().
++ */
++static int
++virtiofs_taccess(vnode_t *vp, mode_t m, cred_t *cr)
++{
++	vfnode_t *vfn = VTOVF(vp);
++	vfsmnt_t *vfs = vfn->vfn_mnt;
++	struct fuse_attr fa;
++	uid_t uid;
++	gid_t gid;
++	int shift = 0;
++	int r;
++
++	if (m & VWRITE)
++		return (EROFS);
++
++	if ((r = virtiofs_node_getattr(vfn, &fa)) != 0)
++		return (r);
++
++	uid = vfs->vfs_override_ids ? vfs->vfs_uid : (uid_t)fa.uid;
++	gid = vfs->vfs_override_ids ? vfs->vfs_gid : (gid_t)fa.gid;
++
++	if (crgetuid(cr) != uid) {
++		shift += 3;
++		if (!groupmember(gid, cr))
++			shift += 3;
++	}
++
++	return (secpolicy_vnode_access2(cr, vp, uid,
++	    (fa.mode & MODEMASK) << shift, m));
++}
++
++/* ARGSUSED */
++static int
++virtiofs_open(vnode_t **vpp, int flag, cred_t *cr, caller_context_t *ct)
++{
++	vnode_t *vp = *vpp;
++	vfnode_t *vfn = VTOVF(vp);
++
++	if (flag & (FWRITE | FTRUNC | FCREAT))
++		return (EROFS);
++
++	/*
++	 * opendir(3C) is an open(2), so a directory must be openable.  It
++	 * needs no server handle here: VOP_READDIR does its own FUSE_OPENDIR
++	 * for the duration of each call.
++	 */
++	if (vp->v_type != VREG)
++		return (0);
++
++	return (virtiofs_openfh(vfn, B_FALSE, NULL));
++}
++
++/* ARGSUSED */
++static int
++virtiofs_close(vnode_t *vp, int flag, int count, offset_t offset, cred_t *cr,
++    caller_context_t *ct)
++{
++	vfnode_t *vfn = VTOVF(vp);
++
++	if (count > 1)
++		return (0);
++
++	if (vp->v_type != VREG)
++		return (0);
++
++	cleanlocks(vp, ttoproc(curthread)->p_pid, 0);
++	cleanshares(vp, ttoproc(curthread)->p_pid);
++
++	virtiofs_closefh(vfn, B_FALSE);
++
++	return (0);
++}
++
++/*
++ * VOP_READ, by way of the page cache.  This is hsfs_read() with the ISO
++ * specifics taken out: one segmap window at a time, which faults through
++ * virtiofs_getpage() and so shares every page with any mapping of the same
++ * file.
++ */
++/* ARGSUSED */
++static int
++virtiofs_read(vnode_t *vp, struct uio *uiop, int ioflag, cred_t *cr,
++    caller_context_t *ct)
++{
++	vfnode_t *vfn = VTOVF(vp);
++	struct fuse_attr fa;
++	u_offset_t filesize;
++	caddr_t base;
++	int error;
++
++	if (vp->v_type == VDIR)
++		return (EISDIR);
++	if (vp->v_type != VREG)
++		return (EINVAL);
++
++	if ((error = virtiofs_node_getattr(vfn, &fa)) != 0)
++		return (error);
++	filesize = fa.size;
++
++	if (uiop->uio_resid == 0 || uiop->uio_loffset < 0)
++		return (uiop->uio_loffset < 0 ? EINVAL : 0);
++	if ((u_offset_t)uiop->uio_loffset >= filesize)
++		return (0);
++
++	do {
++		offset_t mapon;
++		offset_t diff;
++		size_t nbytes;
++		size_t n;
++		uint_t flags;
++
++		mapon = uiop->uio_loffset & MAXBOFFSET;
++		diff = filesize - uiop->uio_loffset;
++		nbytes = (size_t)MIN(MAXBSIZE - mapon, uiop->uio_resid);
++		n = (size_t)MIN(diff, (offset_t)nbytes);
++		if (n == 0)
++			return (0);
++
++		base = segmap_getmapflt(segkmap, vp,
++		    (u_offset_t)uiop->uio_loffset, n, 1, S_READ);
++
++		error = uiomove(base + mapon, n, UIO_READ, uiop);
++
++		if (error == 0) {
++			/*
++			 * A window we have finished with, or one that ends at
++			 * end of file, will not be wanted again soon.
++			 */
++			if (n + mapon == MAXBSIZE ||
++			    (u_offset_t)uiop->uio_loffset == filesize)
++				flags = SM_DONTNEED;
++			else
++				flags = 0;
++
++			error = segmap_release(segkmap, base, flags);
++		} else {
++			(void) segmap_release(segkmap, base, 0);
++		}
++	} while (error == 0 && uiop->uio_resid > 0);
++
++	return (error);
++}
++
++/* ARGSUSED */
++static int
++virtiofs_getattr(vnode_t *vp, vattr_t *vap, int flags, cred_t *cr,
++    caller_context_t *ct)
++{
++	vfnode_t *vfn = VTOVF(vp);
++	struct fuse_attr fa;
++	int r;
++
++	if ((r = virtiofs_node_getattr(vfn, &fa)) != 0)
++		return (r);
++
++	virtiofs_attr_to_vattr(vfn->vfn_mnt, &fa, vap);
++
++	return (0);
++}
++
++/* ARGSUSED */
++static int
++virtiofs_access(vnode_t *vp, int mode, int flags, cred_t *cr,
++    caller_context_t *ct)
++{
++	return (virtiofs_taccess(vp, (mode_t)mode, cr));
++}
++
++/*
++ * VOP_LOOKUP.  "." and ".." would both be answered correctly by the server,
++ * but "." can be answered without a round trip, and the DNLC covers the rest.
++ */
++/* ARGSUSED */
++static int
++virtiofs_lookup(vnode_t *dvp, char *nm, vnode_t **vpp, struct pathname *pnp,
++    int flags, vnode_t *rdir, cred_t *cr, caller_context_t *ct,
++    int *direntflags, pathname_t *realpnp)
++{
++	vfnode_t *dvfn = VTOVF(dvp);
++	vfsmnt_t *vfs = dvfn->vfn_mnt;
++	struct fuse_entry_out eo;
++	vfnode_t *vfn;
++	vnode_t *vp;
++	int error;
++
++	if (dvp->v_type != VDIR)
++		return (ENOTDIR);
++
++	if (*nm == '\0') {
++		VN_HOLD(dvp);
++		*vpp = dvp;
++		return (0);
++	}
++
++	if ((error = virtiofs_taccess(dvp, VEXEC, cr)) != 0)
++		return (error);
++
++	if (nm[0] == '.' && nm[1] == '\0') {
++		VN_HOLD(dvp);
++		*vpp = dvp;
++		return (0);
++	}
++
++	if ((vp = dnlc_lookup(dvp, nm)) != NULL) {
++		if (vp == DNLC_NO_VNODE) {
++			VN_RELE(vp);
++			return (ENOENT);
++		}
++		*vpp = vp;
++		return (0);
++	}
++
++	bzero(&eo, sizeof (eo));
++	if ((error = virtiofs_fuse_lookup(vfs, dvfn->vfn_nodeid, nm,
++	    &eo)) != 0) {
++		/*
++		 * Only a definitively absent name is worth a negative cache
++		 * entry; an I/O error says nothing about the name.
++		 */
++		if (error == ENOENT)
++			dnlc_enter(dvp, nm, DNLC_NO_VNODE);
++		return (error);
++	}
++
++	vfn = virtiofs_node_hold(vfs, eo.nodeid, &eo.attr, 1);
++	vfn->vfn_gen = eo.generation;
++	virtiofs_node_setattr(vfn, &eo.attr, eo.attr_valid, eo.attr_valid_nsec);
++
++	*vpp = VFTOV(vfn);
++	dnlc_enter(dvp, nm, *vpp);
++
++	return (0);
++}
++
++/*
++ * VOP_READDIR.  One serverside buffer of packed fuse_dirent records is decoded
++ * into the caller's dirent64 buffer per pass; d_off carries the server's
++ * opaque cookie straight back out, since that is what the next FUSE_READDIR
++ * expects to be given as its offset.
++ */
++/* ARGSUSED */
++static int
++virtiofs_readdir(vnode_t *vp, struct uio *uiop, cred_t *cr, int *eofp,
++    caller_context_t *ct, int flags)
++{
++	vfnode_t *vfn = VTOVF(vp);
++	vfsmnt_t *vfs = vfn->vfn_mnt;
++	uint64_t fh;
++	char *fbuf = NULL;
++	char *obuf = NULL;
++	struct dirent64 *nd;
++	size_t obufsize;
++	size_t outoff = 0;
++	size_t got = 0;
++	size_t pos;
++	u_offset_t cookie;
++	int error;
++
++	if (vp->v_type != VDIR)
++		return (ENOTDIR);
++	if (uiop->uio_loffset < 0 || uiop->uio_resid <= 0)
++		return (EINVAL);
++	if (uiop->uio_iovcnt != 1)
++		return (EINVAL);
++
++	if (eofp != NULL)
++		*eofp = 0;
++
++	if ((error = virtiofs_openfh(vfn, B_TRUE, &fh)) != 0)
++		return (error);
++
++	cookie = (u_offset_t)uiop->uio_loffset;
++
++	fbuf = kmem_alloc(VIRTIOFS_DIRBUFSZ, KM_SLEEP);
++	obufsize = uiop->uio_resid;
++	obuf = kmem_alloc(obufsize, KM_SLEEP);
++
++	error = virtiofs_fuse_readdir(vfs, vfn->vfn_nodeid, fh, cookie,
++	    fbuf, VIRTIOFS_DIRBUFSZ, &got);
++	if (error != 0)
++		goto done;
++
++	if (got == 0) {
++		/*
++		 * An empty reply is the end of the directory.
++		 */
++		if (eofp != NULL)
++			*eofp = 1;
++		goto done;
++	}
++
++	pos = 0;
++	while (pos + FUSE_NAME_OFFSET <= got) {
++		struct fuse_dirent *fd = (struct fuse_dirent *)(fbuf + pos);
++		size_t reclen;
++		long ndlen;
++
++		if (fd->namelen == 0 || fd->namelen > MAXNAMELEN - 1) {
++			error = EIO;
++			goto done;
++		}
++
++		reclen = FUSE_DIRENT_SIZE(fd);
++		if (pos + reclen > got) {
++			/*
++			 * A record that runs off the end of the buffer.  The
++			 * server should never send one, since it is told how
++			 * much room it has.
++			 */
++			error = EIO;
++			goto done;
++		}
++
++		ndlen = (long)DIRENT64_RECLEN(fd->namelen);
++		if (outoff + ndlen > obufsize) {
++			/*
++			 * The caller's buffer is full.  Everything decoded so
++			 * far is good, and the next call resumes from the
++			 * cookie of the last record we did copy.
++			 */
++			break;
++		}
++
++		nd = (struct dirent64 *)(obuf + outoff);
++		nd->d_ino = (ino64_t)fd->ino;
++		nd->d_off = (offset_t)fd->off;
++		nd->d_reclen = (ushort_t)ndlen;
++		/* strncpy(9F) zeroes the bytes past the name for us. */
++		(void) strncpy(nd->d_name, fd->name,
++		    DIRENT64_NAMELEN(ndlen));
++		nd->d_name[fd->namelen] = '\0';
++
++		outoff += ndlen;
++		cookie = fd->off;
++		pos += reclen;
++	}
++
++	if (outoff == 0) {
++		/*
++		 * Not one record fitted.  If we decoded nothing at all then
++		 * the server has run out of entries; otherwise the caller
++		 * simply asked with too small a buffer.
++		 */
++		if (pos == 0) {
++			if (eofp != NULL)
++				*eofp = 1;
++		} else {
++			error = EINVAL;
++		}
++		goto done;
++	}
++
++	error = uiomove(obuf, outoff, UIO_READ, uiop);
++	if (error == 0)
++		uiop->uio_loffset = (offset_t)cookie;
++
++done:
++	if (fbuf != NULL)
++		kmem_free(fbuf, VIRTIOFS_DIRBUFSZ);
++	if (obuf != NULL)
++		kmem_free(obuf, obufsize);
++	virtiofs_closefh(vfn, B_TRUE);
++
++	return (error);
++}
++
++/* ARGSUSED */
++static int
++virtiofs_readlink(vnode_t *vp, struct uio *uiop, cred_t *cr,
++    caller_context_t *ct)
++{
++	vfnode_t *vfn = VTOVF(vp);
++	char *buf;
++	size_t got = 0;
++	int error;
++
++	if (vp->v_type != VLNK)
++		return (EINVAL);
++
++	buf = kmem_alloc(MAXPATHLEN, KM_SLEEP);
++
++	error = virtiofs_fuse_readlink(vfn->vfn_mnt, vfn->vfn_nodeid, buf,
++	    MAXPATHLEN, &got);
++	if (error == 0 && got > 0)
++		error = uiomove(buf, got, UIO_READ, uiop);
++
++	kmem_free(buf, MAXPATHLEN);
++
++	return (error);
++}
++
++/* ARGSUSED */
++static int
++virtiofs_fsync(vnode_t *vp, int syncflag, cred_t *cr, caller_context_t *ct)
++{
++	/*
++	 * Nothing here is ever dirty.
++	 */
++	return (0);
++}
++
++/* ARGSUSED */
++static void
++virtiofs_inactive(vnode_t *vp, cred_t *cr, caller_context_t *ct)
++{
++	vfnode_t *vfn = VTOVF(vp);
++
++	mutex_enter(&vp->v_lock);
++	VERIFY3U(vp->v_count, >=, 1);
++	VN_RELE_LOCKED(vp);
++	if (vp->v_count > 0) {
++		/*
++		 * Somebody found and held this vnode while we were on our way
++		 * here, so it is alive again.
++		 */
++		mutex_exit(&vp->v_lock);
++		return;
++	}
++	mutex_exit(&vp->v_lock);
++
++	virtiofs_node_free(vfn);
++}
++
++/* ARGSUSED */
++static int
++virtiofs_fid(vnode_t *vp, struct fid *fidp, caller_context_t *ct)
++{
++	vfnode_t *vfn = VTOVF(vp);
++	vfid_t *vfid;
++
++	if (fidp->fid_len < sizeof (vfid_t) - sizeof (uint16_t)) {
++		fidp->fid_len = sizeof (vfid_t) - sizeof (uint16_t);
++		return (ENOSPC);
++	}
++
++	vfid = (vfid_t *)fidp;
++	bzero(vfid, sizeof (*vfid));
++	vfid->vfid_len = sizeof (vfid_t) - sizeof (uint16_t);
++	vfid->vfid_gen = (uint32_t)vfn->vfn_gen;
++	vfid->vfid_nodeid = vfn->vfn_nodeid;
++
++	return (0);
++}
++
++/* ARGSUSED */
++static int
++virtiofs_seek(vnode_t *vp, offset_t ooff, offset_t *noffp,
++    caller_context_t *ct)
++{
++	return (*noffp < 0 ? EINVAL : 0);
++}
++
++/* ARGSUSED */
++static int
++virtiofs_frlock(vnode_t *vp, int cmd, struct flock64 *bfp, int flag,
++    offset_t offset, struct flk_callback *flk_cbp, cred_t *cr,
++    caller_context_t *ct)
++{
++	vfnode_t *vfn = VTOVF(vp);
++	struct fuse_attr fa;
++
++	/*
++	 * As in hsfs, a mapped file cannot take a mandatory lock.  The map
++	 * count is read without its lock for the same reason hsfs reads it
++	 * that way: every lock is dropped before fs_frlock() is entered, so a
++	 * consistent snapshot would not stay consistent.
++	 */
++	if (vfn->vfn_mapcnt > 0 && virtiofs_node_getattr(vfn, &fa) == 0 &&
++	    MANDLOCK(vp, fa.mode))
++		return (EAGAIN);
++
++	return (fs_frlock(vp, cmd, bfp, flag, offset, flk_cbp, cr, ct));
++}
++
++/*
++ * Fetch one page-cache page's worth of file, klustering out to a full block
++ * where we can.  Called only from pvn_getpages().
++ */
++/* ARGSUSED */
++static int
++virtiofs_getapage(vnode_t *vp, u_offset_t off, size_t len, uint_t *protp,
++    page_t *pl[], size_t plsz, struct seg *seg, caddr_t addr, enum seg_rw rw,
++    cred_t *cr)
++{
++	vfnode_t *vfn = VTOVF(vp);
++	struct fuse_attr fa;
++	page_t *pp = NULL;
++	page_t *pagefound;
++	struct buf *bp;
++	u_offset_t io_off;
++	u_offset_t blkoff;
++	size_t io_len = 0;
++	size_t blksize;
++	uint_t bsize;
++	int error = 0;
++
++	bsize = MAX(vp->v_vfsp->vfs_bsize, PAGESIZE);
++
++	if ((error = virtiofs_node_getattr(vfn, &fa)) != 0)
++		return (error);
++
++reread:
++	bp = NULL;
++	pp = NULL;
++
++	if (pl != NULL)
++		pl[0] = NULL;
++
++	error = 0;
++
++again:
++	if ((pagefound = page_exists(vp, off)) == NULL) {
++		if (pl == NULL) {
++			/*
++			 * A read-ahead request.  We have no asynchronous
++			 * machinery, and a synchronous round trip here would
++			 * make the caller pay for work it did not ask for.
++			 */
++			return (0);
++		}
++
++		blkoff = (off / bsize) * bsize;
++		if (blkoff < fa.size && blkoff + bsize >= fa.size) {
++			/*
++			 * The last block of the file: ask only for what is
++			 * really there, but never for less than one page.
++			 */
++			if (fa.size <= off)
++				blksize = off + PAGESIZE - blkoff;
++			else
++				blksize = fa.size - blkoff;
++		} else if (off == 0) {
++			blksize = PAGESIZE;
++			blkoff = off;
++		} else {
++			blksize = bsize;
++		}
++
++		pp = pvn_read_kluster(vp, off, seg, addr, &io_off, &io_len,
++		    blkoff, blksize, 0);
++
++		/*
++		 * Another thread got there first and has the page; start over
++		 * and pick it up from the cache.
++		 */
++		if (pp == NULL)
++			goto again;
++
++		/*
++		 * Round out to whole pages so that the tail of the last page
++		 * is zeroed rather than left holding whatever was there.
++		 */
++		io_len = ptob(btopr(io_len));
++
++		bp = pageio_setup(pp, io_len, vp, B_READ);
++		ASSERT(bp != NULL);
++
++		/*
++		 * pageio_setup() leaves b_addr at zero, which is what we want:
++		 * bp_mapin() reads it as the offset within the first page and
++		 * then replaces it with the kernel virtual address of the
++		 * mapping it made.
++		 */
++		ASSERT(bp->b_un.b_addr == 0);
++
++		bp->b_edev = 0;
++		bp->b_dev = 0;
++		bp->b_lblkno = lbtodb(io_off);
++		bp->b_file = vp;
++		bp->b_offset = (offset_t)off;
++		bp_mapin(bp);
++
++		if (io_off >= fa.size) {
++			/*
++			 * Entirely past end of file.  There is nothing to ask
++			 * the server for.
++			 */
++			bzero(bp->b_un.b_addr, io_len);
++		} else {
++			error = virtiofs_readio(vp, bp->b_un.b_addr, io_off,
++			    io_len);
++		}
++
++		bp_mapout(bp);
++		pageio_done(bp);
++	}
++
++	if (pl == NULL)
++		return (error);
++
++	if (error != 0) {
++		if (pp != NULL)
++			pvn_read_done(pp, B_ERROR);
++		return (error);
++	}
++
++	if (pagefound != NULL) {
++		se_t se = (rw == S_CREATE ? SE_EXCL : SE_SHARED);
++
++		/*
++		 * The page was in the cache; take the right lock on it.  If it
++		 * has gone away underneath us, start again.
++		 */
++		if ((pp = page_lookup(vp, off, se)) == NULL)
++			goto reread;
++
++		pl[0] = pp;
++		pl[1] = NULL;
++		return (0);
++	}
++
++	if (pp != NULL)
++		pvn_plist_init(pp, pl, plsz, off, io_len, rw);
++
++	return (0);
++}
++
++/* ARGSUSED */
++static int
++virtiofs_getpage(vnode_t *vp, offset_t off, size_t len, uint_t *protp,
++    page_t *pl[], size_t plsz, struct seg *seg, caddr_t addr, enum seg_rw rw,
++    cred_t *cr, caller_context_t *ct)
++{
++	vfnode_t *vfn = VTOVF(vp);
++	struct fuse_attr fa;
++	int error;
++
++	if (vp->v_flag & VNOMAP)
++		return (ENOSYS);
++
++	if (off < 0 || off + (offset_t)len < 0)
++		return (EINVAL);
++
++	if (vp->v_type != VREG)
++		return (EINVAL);
++
++	if (protp != NULL) {
++		/*
++		 * Read-only: never hand out write permission, or a private
++		 * mapping would be able to become dirty without going through
++		 * VOP_MAP's refusal.
++		 */
++		*protp = PROT_ALL & ~PROT_WRITE;
++	}
++
++	if ((error = virtiofs_node_getattr(vfn, &fa)) != 0)
++		return (error);
++
++	if ((u_offset_t)off + len > fa.size + PAGEOFFSET)
++		return (EFAULT);
++
++	return (pvn_getpages(virtiofs_getapage, vp, (u_offset_t)off, len,
++	    protp, pl, plsz, seg, addr, rw, cr));
++}
++
++/*
++ * There is no write path, so a page can only reach here clean.  Destroy it if
++ * that is what was asked, and otherwise just unlock it.
++ */
++/* ARGSUSED */
++int
++virtiofs_putapage(vnode_t *vp, page_t *pp, u_offset_t *offp, size_t *lenp,
++    int flags, cred_t *cr)
++{
++	if (offp != NULL)
++		*offp = pp->p_offset;
++	if (lenp != NULL)
++		*lenp = PAGESIZE;
++
++	pvn_write_done(pp, B_ERROR | B_WRITE | B_INVAL | B_FORCE | flags);
++
++	return (0);
++}
++
++/* ARGSUSED */
++static int
++virtiofs_putpage(vnode_t *vp, offset_t off, size_t len, int flags, cred_t *cr,
++    caller_context_t *ct)
++{
++	if (vp->v_flag & VNOMAP)
++		return (ENOSYS);
++
++	if (!vn_has_cached_data(vp))
++		return (0);
++
++	if (len == 0)
++		return (pvn_vplist_dirty(vp, off, virtiofs_putapage, flags,
++		    cr));
++
++	for (offset_t io_off = off; io_off < off + (offset_t)len;
++	    io_off += PAGESIZE) {
++		page_t *pp;
++
++		if ((flags & B_INVAL) || (flags & B_ASYNC) == 0) {
++			pp = page_lookup(vp, io_off,
++			    (flags & (B_INVAL | B_FREE)) ? SE_EXCL : SE_SHARED);
++		} else {
++			pp = page_lookup_nowait(vp, io_off,
++			    (flags & B_FREE) ? SE_EXCL : SE_SHARED);
++		}
++
++		if (pp == NULL)
++			continue;
++
++		/*
++		 * pvn_getdirty() normally does the whole job and returns zero.
++		 * A one means the page was dirty, which cannot happen on a
++		 * file system with no write path; fake a failed write so that
++		 * the page is destroyed rather than queued for one.
++		 */
++		if (pvn_getdirty(pp, flags) == 1) {
++			cmn_err(CE_NOTE, "virtiofs: dirty page on a "
++			    "read-only file system");
++			pvn_write_done(pp, flags | B_ERROR | B_WRITE |
++			    B_INVAL | B_FORCE);
++		}
++	}
++
++	return (0);
++}
++
++/* ARGSUSED */
++static int
++virtiofs_map(vnode_t *vp, offset_t off, struct as *as, caddr_t *addrp,
++    size_t len, uchar_t prot, uchar_t maxprot, uint_t flags, cred_t *cr,
++    caller_context_t *ct)
++{
++	struct segvn_crargs vn_a;
++	vfnode_t *vfn = VTOVF(vp);
++	struct fuse_attr fa;
++	int error;
++
++	if (vp->v_flag & VNOMAP)
++		return (ENOSYS);
++
++	/*
++	 * A shared writable mapping would create dirty pages that we have
++	 * nowhere to put.
++	 */
++	if ((prot & PROT_WRITE) && (flags & MAP_SHARED))
++		return (ENOSYS);
++
++	if (off < 0 || off + (offset_t)len < 0)
++		return (ENXIO);
++
++	if (vp->v_type != VREG)
++		return (ENODEV);
++
++	if ((error = virtiofs_node_getattr(vfn, &fa)) != 0)
++		return (error);
++
++	if (vn_has_mandatory_locks(vp, fa.mode))
++		return (EAGAIN);
++
++	as_rangelock(as);
++	error = choose_addr(as, addrp, len, off, ADDR_VACALIGN, flags);
++	if (error != 0) {
++		as_rangeunlock(as);
++		return (error);
++	}
++
++	vn_a.vp = vp;
++	vn_a.offset = (u_offset_t)off;
++	vn_a.type = flags & MAP_TYPE;
++	vn_a.prot = prot;
++	vn_a.maxprot = maxprot & ~PROT_WRITE;
++	vn_a.flags = flags & ~MAP_TYPE;
++	vn_a.cred = cr;
++	vn_a.amp = NULL;
++	vn_a.szc = 0;
++	vn_a.lgrp_mem_policy_flags = 0;
++
++	error = as_map(as, *addrp, len, segvn_create, &vn_a);
++	as_rangeunlock(as);
++
++	return (error);
++}
++
++/* ARGSUSED */
++static int
++virtiofs_addmap(vnode_t *vp, offset_t off, struct as *as, caddr_t addr,
++    size_t len, uchar_t prot, uchar_t maxprot, uint_t flags, cred_t *cr,
++    caller_context_t *ct)
++{
++	vfnode_t *vfn = VTOVF(vp);
++
++	if (vp->v_flag & VNOMAP)
++		return (ENOSYS);
++
++	mutex_enter(&vfn->vfn_lock);
++	vfn->vfn_mapcnt += btopr(len);
++	mutex_exit(&vfn->vfn_lock);
++
++	return (0);
++}
++
++/* ARGSUSED */
++static int
++virtiofs_delmap(vnode_t *vp, offset_t off, struct as *as, caddr_t addr,
++    size_t len, uint_t prot, uint_t maxprot, uint_t flags, cred_t *cr,
++    caller_context_t *ct)
++{
++	vfnode_t *vfn = VTOVF(vp);
++
++	if (vp->v_flag & VNOMAP)
++		return (ENOSYS);
++
++	mutex_enter(&vfn->vfn_lock);
++	vfn->vfn_mapcnt -= btopr(len);
++	mutex_exit(&vfn->vfn_lock);
++
++	return (0);
++}
++
++/* ARGSUSED */
++static int
++virtiofs_pathconf(vnode_t *vp, int cmd, ulong_t *valp, cred_t *cr,
++    caller_context_t *ct)
++{
++	switch (cmd) {
++	case _PC_FILESIZEBITS:
++		*valp = 64;
++		return (0);
++	case _PC_TIMESTAMP_RESOLUTION:
++		/*
++		 * FUSE carries nanoseconds, whatever the server behind it can
++		 * actually resolve.
++		 */
++		*valp = 1L;
++		return (0);
++	default:
++		return (fs_pathconf(vp, cmd, valp, cr, ct));
++	}
++}
++
++/*
++ * Everything that would modify the file system is absent from this table, so
++ * the vnode layer answers it with fs_nosys().
++ */
++const fs_operation_def_t virtiofs_vnodeops_template[] = {
++	VOPNAME_OPEN,		{ .vop_open = virtiofs_open },
++	VOPNAME_CLOSE,		{ .vop_close = virtiofs_close },
++	VOPNAME_READ,		{ .vop_read = virtiofs_read },
++	VOPNAME_GETATTR,	{ .vop_getattr = virtiofs_getattr },
++	VOPNAME_ACCESS,		{ .vop_access = virtiofs_access },
++	VOPNAME_LOOKUP,		{ .vop_lookup = virtiofs_lookup },
++	VOPNAME_READDIR,	{ .vop_readdir = virtiofs_readdir },
++	VOPNAME_READLINK,	{ .vop_readlink = virtiofs_readlink },
++	VOPNAME_FSYNC,		{ .vop_fsync = virtiofs_fsync },
++	VOPNAME_INACTIVE,	{ .vop_inactive = virtiofs_inactive },
++	VOPNAME_FID,		{ .vop_fid = virtiofs_fid },
++	VOPNAME_SEEK,		{ .vop_seek = virtiofs_seek },
++	VOPNAME_FRLOCK,		{ .vop_frlock = virtiofs_frlock },
++	VOPNAME_GETPAGE,	{ .vop_getpage = virtiofs_getpage },
++	VOPNAME_PUTPAGE,	{ .vop_putpage = virtiofs_putpage },
++	VOPNAME_MAP,		{ .vop_map = virtiofs_map },
++	VOPNAME_ADDMAP,		{ .vop_addmap = virtiofs_addmap },
++	VOPNAME_DELMAP,		{ .vop_delmap = virtiofs_delmap },
++	VOPNAME_PATHCONF,	{ .vop_pathconf = virtiofs_pathconf },
++	NULL,			NULL
++};
+diff --git a/usr/src/uts/common/io/virtiofs/vtfs.c b/usr/src/uts/common/io/virtiofs/vtfs.c
+new file mode 100644
+index 0000000000..a1af61b203
+--- /dev/null
++++ b/usr/src/uts/common/io/virtiofs/vtfs.c
+@@ -0,0 +1,719 @@
++/*
++ * This file and its contents are supplied under the terms of the
++ * Common Development and Distribution License ("CDDL"), version 1.0.
++ * You may only use this file in accordance with the terms of version
++ * 1.0 of the CDDL.
++ *
++ * A full copy of the text of the CDDL should have accompanied this
++ * source.  A copy of the CDDL is also available via the Internet at
++ * http://www.illumos.org/license/CDDL.
++ */
++
++/*
++ * Copyright 2026 John Ericson
++ */
++
++/*
++ * VIRTIO FS TRANSPORT DRIVER
++ *
++ * A Virtio FS device (PCI 1af4:105a) is a FUSE server reachable over a
++ * virtqueue: the payload of every descriptor chain is an ordinary FUSE
++ * message.  This driver owns the device and the queue; the FUSE protocol
++ * itself, and the file system built on top of it, live in the separate
++ * "virtiofs" module.  The split follows the shape of the module namespace
++ * rather than any deep layering: a driver has to live in kernel/drv so that
++ * the device tree can bind it, and a file system has to live in kernel/fs so
++ * that domount() can load it by name, and no single module can be in both
++ * places.
++ *
++ * Each device advertises a "tag" in its configuration space.  That tag is what
++ * a mount names as its special: "mount -F virtiofs <tag> /mnt".  Attached
++ * instances are kept on a global list and looked up by tag with
++ * vtfs_hold_by_tag().
++ *
++ * REQUEST CHAIN LAYOUT
++ *
++ * The Virtio FS specification requires that a request chain be split into a
++ * device-readable part followed by a device-writable part, and that the FUSE
++ * header begin each part.  We use at most three logical buffers:
++ *
++ *    +-0-----------------------------------------+
++ *    | struct fuse_in_header, then the in-args    |  device reads
++ *    |   (a per-slot bounce buffer)               |
++ *    +-1-----------------------------------------+
++ *    | struct fuse_out_header, then the out-args  |  device writes
++ *    |   (a per-slot bounce buffer)               |
++ *    +-2-----------------------------------------+
++ *    | bulk payload                               |  device writes
++ *    |   (caller's memory, bound for the duration |
++ *    |    of the request; may span many cookies)  |
++ *    +--------------------------------------------+
++ *
++ * Only FUSE_READ and FUSE_READDIR use the third buffer.  Everything else we
++ * send has a small fixed size body that fits comfortably in the bounce
++ * buffers, which keeps the DMA bookkeeping to one allocation per slot made
++ * once at attach time.
++ *
++ * Requests are synchronous.  A caller takes a free slot (blocking if there are
++ * none), submits, and sleeps on the slot's condition variable until the
++ * interrupt handler returns the chain.  This is not the last word in
++ * performance, but it is what a read-only file system serving a page fault
++ * needs, and it is simple enough to reason about.
++ */
++
++#include <sys/types.h>
++#include <sys/param.h>
++#include <sys/errno.h>
++#include <sys/kmem.h>
++#include <sys/conf.h>
++#include <sys/devops.h>
++#include <sys/ksynch.h>
++#include <sys/stat.h>
++#include <sys/modctl.h>
++#include <sys/debug.h>
++#include <sys/pci.h>
++#include <sys/list.h>
++#include <sys/sysmacros.h>
++#include <sys/sunddi.h>
++#include <sys/cmn_err.h>
++
++#include "virtio.h"
++#include "vtfs.h"
++
++/*
++ * We negotiate no device specific features.  VIRTIO_FS_F_NOTIFICATION (bit 0)
++ * would give us the notification queue, which a read-only client has no use
++ * for.
++ */
++#define	VTFS_WANTED_FEATURES		0
++
++/*
++ * How many requests may be in flight at once.  Capped again at attach time by
++ * the size of the virtqueue the device gives us.
++ */
++#define	VTFS_MAX_SLOTS			32
++
++typedef enum vtfs_slot_state {
++	VTFS_SLOT_FREE = 0,
++	VTFS_SLOT_INFLIGHT,
++	VTFS_SLOT_DONE
++} vtfs_slot_state_t;
++
++typedef struct vtfs_slot {
++	list_node_t		vs_link;
++	struct vtfs		*vs_vtfs;
++	virtio_chain_t		*vs_chain;
++
++	/*
++	 * The outbound and inbound bounce buffers are two halves of a single
++	 * DMA allocation, so that a slot costs one handle rather than two.
++	 */
++	virtio_dma_t		*vs_bounce;
++
++	/* Bound per request, when the caller supplies a bulk buffer. */
++	virtio_dma_t		*vs_data;
++	boolean_t		vs_data_bound;
++
++	vtfs_slot_state_t	vs_state;
++	size_t			vs_resid;
++} vtfs_slot_t;
++
++struct vtfs {
++	list_node_t		vtf_link;	/* vtfs_devices */
++	dev_info_t		*vtf_dip;
++	virtio_t		*vtf_virtio;
++	virtio_queue_t		*vtf_vq;
++
++	kmutex_t		vtf_mutex;
++	kcondvar_t		vtf_cv;		/* slot became free or done */
++
++	char			vtf_tag[VIRTIO_FS_TAG_LEN + 1];
++	uint32_t		vtf_nrequestq;
++
++	uint_t			vtf_nslots;
++	vtfs_slot_t		*vtf_slots;
++	list_t			vtf_free;
++
++	uint_t			vtf_refcnt;	/* held mounts */
++	boolean_t		vtf_detaching;
++};
++
++/*
++ * Every attached instance, so that a mount can find one by tag.  The lock also
++ * covers each instance's vtf_refcnt.
++ */
++static kmutex_t vtfs_devices_lock;
++static list_t vtfs_devices;
++
++static int vtfs_attach(dev_info_t *, ddi_attach_cmd_t);
++static int vtfs_detach(dev_info_t *, ddi_detach_cmd_t);
++static int vtfs_quiesce(dev_info_t *);
++static uint_t vtfs_int_handler(caddr_t, caddr_t);
++
++static struct dev_ops vtfs_dev_ops = {
++	.devo_rev =			DEVO_REV,
++	.devo_refcnt =			0,
++
++	.devo_attach =			vtfs_attach,
++	.devo_detach =			vtfs_detach,
++	.devo_quiesce =			vtfs_quiesce,
++
++	.devo_getinfo =			ddi_no_info,
++	.devo_identify =		nulldev,
++	.devo_probe =			nulldev,
++	.devo_reset =			nodev,
++	.devo_cb_ops =			NULL,
++	.devo_bus_ops =			NULL,
++	.devo_power =			NULL,
++};
++
++static struct modldrv vtfs_modldrv = {
++	.drv_modops =			&mod_driverops,
++	.drv_linkinfo =			"VIRTIO FS transport driver",
++	.drv_dev_ops =			&vtfs_dev_ops
++};
++
++static struct modlinkage vtfs_modlinkage = {
++	.ml_rev =			MODREV_1,
++	.ml_linkage =			{ &vtfs_modldrv, NULL }
++};
++
++/*
++ * Attributes for the per-slot bounce buffers: small, and we ask for a single
++ * cookie so that a bounce buffer is always one descriptor.
++ */
++static const ddi_dma_attr_t vtfs_bounce_dma_attr = {
++	.dma_attr_version =		DMA_ATTR_V0,
++	.dma_attr_addr_lo =		0x0000000000000000,
++	.dma_attr_addr_hi =		0xFFFFFFFFFFFFFFFF,
++	.dma_attr_count_max =		0x00000000FFFFFFFF,
++	.dma_attr_align =		1,
++	.dma_attr_burstsizes =		1,
++	.dma_attr_minxfer =		1,
++	.dma_attr_maxxfer =		0x00000000FFFFFFFF,
++	.dma_attr_seg =			0x00000000FFFFFFFF,
++	.dma_attr_sgllen =		1,
++	.dma_attr_granular =		1,
++	.dma_attr_flags =		0
++};
++
++/*
++ * Attributes for binding a caller's bulk buffer.  Such a buffer is a kernel
++ * mapping of an arbitrary set of pages, so it may need as many cookies as it
++ * has pages.
++ */
++static const ddi_dma_attr_t vtfs_data_dma_attr = {
++	.dma_attr_version =		DMA_ATTR_V0,
++	.dma_attr_addr_lo =		0x0000000000000000,
++	.dma_attr_addr_hi =		0xFFFFFFFFFFFFFFFF,
++	.dma_attr_count_max =		0x00000000FFFFFFFF,
++	.dma_attr_align =		1,
++	.dma_attr_burstsizes =		1,
++	.dma_attr_minxfer =		1,
++	.dma_attr_maxxfer =		0x00000000FFFFFFFF,
++	.dma_attr_seg =			0x00000000FFFFFFFF,
++	.dma_attr_sgllen =		VTFS_SEG_MAX,
++	.dma_attr_granular =		1,
++	.dma_attr_flags =		0
++};
++
++/*
++ * The exported interface.
++ */
++
++vtfs_t *
++vtfs_hold_by_tag(const char *tag)
++{
++	vtfs_t *vtf;
++
++	mutex_enter(&vtfs_devices_lock);
++	for (vtf = list_head(&vtfs_devices); vtf != NULL;
++	    vtf = list_next(&vtfs_devices, vtf)) {
++		if (vtf->vtf_detaching)
++			continue;
++		if (strcmp(vtf->vtf_tag, tag) == 0) {
++			vtf->vtf_refcnt++;
++			break;
++		}
++	}
++	mutex_exit(&vtfs_devices_lock);
++
++	return (vtf);
++}
++
++void
++vtfs_rele(vtfs_t *vtf)
++{
++	mutex_enter(&vtfs_devices_lock);
++	VERIFY3U(vtf->vtf_refcnt, >, 0);
++	vtf->vtf_refcnt--;
++	mutex_exit(&vtfs_devices_lock);
++}
++
++const char *
++vtfs_tag(vtfs_t *vtf)
++{
++	return (vtf->vtf_tag);
++}
++
++static vtfs_slot_t *
++vtfs_slot_get(vtfs_t *vtf)
++{
++	vtfs_slot_t *vs;
++
++	VERIFY(MUTEX_HELD(&vtf->vtf_mutex));
++
++	while ((vs = list_remove_head(&vtf->vtf_free)) == NULL) {
++		if (vtf->vtf_detaching)
++			return (NULL);
++		cv_wait(&vtf->vtf_cv, &vtf->vtf_mutex);
++	}
++
++	VERIFY3S(vs->vs_state, ==, VTFS_SLOT_FREE);
++	vs->vs_state = VTFS_SLOT_INFLIGHT;
++	vs->vs_resid = 0;
++
++	return (vs);
++}
++
++static void
++vtfs_slot_put(vtfs_t *vtf, vtfs_slot_t *vs)
++{
++	VERIFY(MUTEX_HELD(&vtf->vtf_mutex));
++
++	if (vs->vs_data_bound) {
++		virtio_dma_unbind(vs->vs_data);
++		vs->vs_data_bound = B_FALSE;
++	}
++	virtio_chain_clear(vs->vs_chain);
++	vs->vs_state = VTFS_SLOT_FREE;
++	vs->vs_resid = 0;
++
++	list_insert_head(&vtf->vtf_free, vs);
++	cv_broadcast(&vtf->vtf_cv);
++}
++
++int
++vtfs_xfer(vtfs_t *vtf, vtfs_xfer_t *vx)
++{
++	vtfs_slot_t *vs;
++	virtio_chain_t *vic;
++	uint64_t bpa;
++	int r = 0;
++
++	if (vx->vx_outlen > VTFS_BOUNCE_SIZE ||
++	    vx->vx_inlen > VTFS_BOUNCE_SIZE) {
++		return (EINVAL);
++	}
++	if (vx->vx_datalen > VTFS_DATA_MAX) {
++		return (EINVAL);
++	}
++
++	mutex_enter(&vtf->vtf_mutex);
++	if ((vs = vtfs_slot_get(vtf)) == NULL) {
++		mutex_exit(&vtf->vtf_mutex);
++		return (ENXIO);
++	}
++	mutex_exit(&vtf->vtf_mutex);
++
++	vic = vs->vs_chain;
++	bpa = virtio_dma_cookie_pa(vs->vs_bounce, 0);
++
++	bcopy(vx->vx_out, virtio_dma_va(vs->vs_bounce, 0), vx->vx_outlen);
++	bzero((caddr_t)virtio_dma_va(vs->vs_bounce, VTFS_BOUNCE_SIZE),
++	    VTFS_BOUNCE_SIZE);
++
++	/*
++	 * The device-readable part first, as the specification requires.
++	 */
++	if (virtio_chain_append(vic, bpa, vx->vx_outlen,
++	    VIRTIO_DIR_DEVICE_READS) != DDI_SUCCESS) {
++		r = ENOMEM;
++		goto out;
++	}
++
++	/*
++	 * A zero length inbound buffer means the request has no reply at all,
++	 * as is the case for FUSE_FORGET.  Such a chain is entirely
++	 * device-readable, which is legal, and the device still returns it to
++	 * us so that we can reclaim the slot.
++	 */
++	if (vx->vx_inlen > 0 &&
++	    virtio_chain_append(vic, bpa + VTFS_BOUNCE_SIZE, vx->vx_inlen,
++	    VIRTIO_DIR_DEVICE_WRITES) != DDI_SUCCESS) {
++		r = ENOMEM;
++		goto out;
++	}
++
++	if (vx->vx_data != NULL && vx->vx_datalen > 0) {
++		if (virtio_dma_bind(vs->vs_data, vx->vx_data, vx->vx_datalen,
++		    DDI_DMA_WRITE | DDI_DMA_STREAMING, KM_SLEEP) !=
++		    DDI_SUCCESS) {
++			r = ENOMEM;
++			goto out;
++		}
++		vs->vs_data_bound = B_TRUE;
++
++		for (uint_t n = 0; n < virtio_dma_ncookies(vs->vs_data); n++) {
++			if (virtio_chain_append(vic,
++			    virtio_dma_cookie_pa(vs->vs_data, n),
++			    virtio_dma_cookie_size(vs->vs_data, n),
++			    VIRTIO_DIR_DEVICE_WRITES) != DDI_SUCCESS) {
++				r = ENOMEM;
++				goto out;
++			}
++		}
++	}
++
++	virtio_dma_sync(vs->vs_bounce, DDI_DMA_SYNC_FORDEV);
++	if (vs->vs_data_bound)
++		virtio_dma_sync(vs->vs_data, DDI_DMA_SYNC_FORDEV);
++
++	mutex_enter(&vtf->vtf_mutex);
++	virtio_chain_submit(vic, B_TRUE);
++
++	while (vs->vs_state != VTFS_SLOT_DONE && !vtf->vtf_detaching)
++		cv_wait(&vtf->vtf_cv, &vtf->vtf_mutex);
++
++	if (vs->vs_state != VTFS_SLOT_DONE) {
++		/*
++		 * The device is going away underneath us.  virtio_fini() will
++		 * reset it and reclaim the descriptors; there is nothing to
++		 * copy back.
++		 */
++		vtfs_slot_put(vtf, vs);
++		mutex_exit(&vtf->vtf_mutex);
++		return (ENXIO);
++	}
++	mutex_exit(&vtf->vtf_mutex);
++
++	virtio_dma_sync(vs->vs_bounce, DDI_DMA_SYNC_FORCPU);
++	if (vs->vs_data_bound)
++		virtio_dma_sync(vs->vs_data, DDI_DMA_SYNC_FORCPU);
++
++	/*
++	 * The device reports the total number of bytes it wrote across the
++	 * whole device-writable part of the chain.  Some devices are known to
++	 * be careless with this value; the file system code treats a count
++	 * that is short of the fixed sized reply as a protocol error and
++	 * otherwise only uses it to size the variable length tail.
++	 */
++	vs->vs_resid = virtio_chain_received_length(vic);
++
++	if (vx->vx_inlen > 0) {
++		bcopy((caddr_t)virtio_dma_va(vs->vs_bounce, VTFS_BOUNCE_SIZE),
++		    vx->vx_in, vx->vx_inlen);
++	}
++	vx->vx_resid = vs->vs_resid;
++
++out:
++	mutex_enter(&vtf->vtf_mutex);
++	vtfs_slot_put(vtf, vs);
++	mutex_exit(&vtf->vtf_mutex);
++
++	return (r);
++}
++
++/*
++ * Device operation.
++ */
++
++static uint_t
++vtfs_poll(vtfs_t *vtf)
++{
++	virtio_chain_t *vic;
++	uint_t count = 0;
++
++	VERIFY(MUTEX_HELD(&vtf->vtf_mutex));
++
++	while ((vic = virtio_queue_poll(vtf->vtf_vq)) != NULL) {
++		vtfs_slot_t *vs = virtio_chain_data(vic);
++
++		VERIFY3S(vs->vs_state, ==, VTFS_SLOT_INFLIGHT);
++		vs->vs_state = VTFS_SLOT_DONE;
++		count++;
++	}
++
++	if (count > 0)
++		cv_broadcast(&vtf->vtf_cv);
++
++	return (count);
++}
++
++static uint_t
++vtfs_int_handler(caddr_t arg0, caddr_t arg1 __unused)
++{
++	vtfs_t *vtf = (vtfs_t *)arg0;
++
++	mutex_enter(&vtf->vtf_mutex);
++	(void) vtfs_poll(vtf);
++	mutex_exit(&vtf->vtf_mutex);
++
++	return (DDI_INTR_CLAIMED);
++}
++
++static void
++vtfs_free_slots(vtfs_t *vtf)
++{
++	if (vtf->vtf_slots == NULL)
++		return;
++
++	for (uint_t i = 0; i < vtf->vtf_nslots; i++) {
++		vtfs_slot_t *vs = &vtf->vtf_slots[i];
++
++		if (list_link_active(&vs->vs_link))
++			list_remove(&vtf->vtf_free, vs);
++
++		if (vs->vs_data_bound) {
++			virtio_dma_unbind(vs->vs_data);
++			vs->vs_data_bound = B_FALSE;
++		}
++		if (vs->vs_data != NULL) {
++			virtio_dma_free(vs->vs_data);
++			vs->vs_data = NULL;
++		}
++		if (vs->vs_chain != NULL) {
++			virtio_chain_free(vs->vs_chain);
++			vs->vs_chain = NULL;
++		}
++		if (vs->vs_bounce != NULL) {
++			virtio_dma_free(vs->vs_bounce);
++			vs->vs_bounce = NULL;
++		}
++	}
++
++	kmem_free(vtf->vtf_slots, sizeof (vtfs_slot_t) * vtf->vtf_nslots);
++	vtf->vtf_slots = NULL;
++	vtf->vtf_nslots = 0;
++}
++
++static int
++vtfs_alloc_slots(vtfs_t *vtf)
++{
++	vtf->vtf_nslots = MIN(virtio_queue_size(vtf->vtf_vq), VTFS_MAX_SLOTS);
++	vtf->vtf_slots = kmem_zalloc(
++	    sizeof (vtfs_slot_t) * vtf->vtf_nslots, KM_SLEEP);
++
++	for (uint_t i = 0; i < vtf->vtf_nslots; i++) {
++		vtfs_slot_t *vs = &vtf->vtf_slots[i];
++
++		vs->vs_vtfs = vtf;
++		vs->vs_state = VTFS_SLOT_FREE;
++
++		vs->vs_bounce = virtio_dma_alloc(vtf->vtf_virtio,
++		    2 * VTFS_BOUNCE_SIZE, &vtfs_bounce_dma_attr,
++		    DDI_DMA_RDWR | DDI_DMA_CONSISTENT, KM_SLEEP);
++		if (vs->vs_bounce == NULL)
++			goto fail;
++
++		vs->vs_data = virtio_dma_alloc_nomem(vtf->vtf_virtio,
++		    &vtfs_data_dma_attr, KM_SLEEP);
++		if (vs->vs_data == NULL)
++			goto fail;
++
++		vs->vs_chain = virtio_chain_alloc(vtf->vtf_vq, KM_SLEEP);
++		if (vs->vs_chain == NULL)
++			goto fail;
++		virtio_chain_data_set(vs->vs_chain, vs);
++
++		list_insert_tail(&vtf->vtf_free, vs);
++	}
++
++	return (0);
++
++fail:
++	vtfs_free_slots(vtf);
++	return (ENOMEM);
++}
++
++static void
++vtfs_read_tag(vtfs_t *vtf)
++{
++	uint_t i;
++
++	/*
++	 * The tag is a fixed size field padded with NUL bytes; it is only NUL
++	 * terminated if it is shorter than the field.
++	 */
++	for (i = 0; i < VIRTIO_FS_TAG_LEN; i++) {
++		vtf->vtf_tag[i] = (char)virtio_dev_get8(vtf->vtf_virtio,
++		    VIRTIO_FS_CONFIG_TAG + i);
++	}
++	vtf->vtf_tag[VIRTIO_FS_TAG_LEN] = '\0';
++}
++
++static int
++vtfs_attach(dev_info_t *dip, ddi_attach_cmd_t cmd)
++{
++	vtfs_t *vtf;
++	virtio_t *vio;
++	boolean_t did_mutex = B_FALSE;
++
++	if (cmd != DDI_ATTACH)
++		return (DDI_FAILURE);
++
++	if ((vio = virtio_init(dip)) == NULL) {
++		dev_err(dip, CE_WARN, "failed to start Virtio init");
++		return (DDI_FAILURE);
++	}
++	if (!virtio_init_features(vio, VTFS_WANTED_FEATURES, B_TRUE)) {
++		virtio_fini(vio, B_TRUE);
++		return (DDI_FAILURE);
++	}
++
++	vtf = kmem_zalloc(sizeof (*vtf), KM_SLEEP);
++	vtf->vtf_dip = dip;
++	vtf->vtf_virtio = vio;
++	ddi_set_driver_private(dip, vtf);
++	list_create(&vtf->vtf_free, sizeof (vtfs_slot_t),
++	    offsetof(vtfs_slot_t, vs_link));
++
++	vtfs_read_tag(vtf);
++
++	vtf->vtf_nrequestq = virtio_dev_get32(vio,
++	    VIRTIO_FS_CONFIG_NUM_REQ_VQ);
++	if (vtf->vtf_nrequestq == 0 ||
++	    vtf->vtf_nrequestq == PCI_EINVAL32) {
++		dev_err(dip, CE_WARN, "device advertises no request queues");
++		goto fail;
++	}
++
++	/*
++	 * Only the first request queue.  A read-only client gains nothing from
++	 * multiqueue that it does not gain more cheaply from having several
++	 * requests in flight on one queue.
++	 */
++	if ((vtf->vtf_vq = virtio_queue_alloc(vio, VIRTIO_FS_VIRTQ_REQUEST,
++	    "request", vtfs_int_handler, vtf, B_FALSE, VTFS_SEG_MAX)) == NULL) {
++		dev_err(dip, CE_WARN, "failed to allocate request queue");
++		goto fail;
++	}
++
++	if (virtio_init_complete(vio, VIRTIO_ANY_INTR_TYPE) != DDI_SUCCESS) {
++		dev_err(dip, CE_WARN, "failed to complete Virtio init");
++		goto fail;
++	}
++
++	mutex_init(&vtf->vtf_mutex, NULL, MUTEX_DRIVER, virtio_intr_pri(vio));
++	cv_init(&vtf->vtf_cv, NULL, CV_DRIVER, NULL);
++	did_mutex = B_TRUE;
++
++	if (vtfs_alloc_slots(vtf) != 0) {
++		dev_err(dip, CE_WARN, "failed to allocate request slots");
++		goto fail;
++	}
++
++	if (virtio_interrupts_enable(vio) != DDI_SUCCESS) {
++		dev_err(dip, CE_WARN, "failed to enable interrupts");
++		goto fail;
++	}
++
++	mutex_enter(&vtfs_devices_lock);
++	list_insert_tail(&vtfs_devices, vtf);
++	mutex_exit(&vtfs_devices_lock);
++
++	dev_err(dip, CE_CONT, "?Virtio FS tag \"%s\", %u request queue%s\n",
++	    vtf->vtf_tag, vtf->vtf_nrequestq,
++	    vtf->vtf_nrequestq == 1 ? "" : "s");
++
++	return (DDI_SUCCESS);
++
++fail:
++	vtfs_free_slots(vtf);
++	if (vio != NULL)
++		virtio_fini(vio, B_TRUE);
++	if (did_mutex) {
++		mutex_destroy(&vtf->vtf_mutex);
++		cv_destroy(&vtf->vtf_cv);
++	}
++	list_destroy(&vtf->vtf_free);
++	kmem_free(vtf, sizeof (*vtf));
++	return (DDI_FAILURE);
++}
++
++static int
++vtfs_detach(dev_info_t *dip, ddi_detach_cmd_t cmd)
++{
++	vtfs_t *vtf = ddi_get_driver_private(dip);
++
++	if (cmd != DDI_DETACH)
++		return (DDI_FAILURE);
++
++	mutex_enter(&vtfs_devices_lock);
++	if (vtf->vtf_refcnt > 0) {
++		mutex_exit(&vtfs_devices_lock);
++		return (DDI_FAILURE);
++	}
++	list_remove(&vtfs_devices, vtf);
++	mutex_exit(&vtfs_devices_lock);
++
++	mutex_enter(&vtf->vtf_mutex);
++	vtf->vtf_detaching = B_TRUE;
++	cv_broadcast(&vtf->vtf_cv);
++	mutex_exit(&vtf->vtf_mutex);
++
++	/*
++	 * Tear down the Virtio framework first, so that no interrupt handler
++	 * is running by the time we free the slots it would touch.
++	 */
++	virtio_fini(vtf->vtf_virtio, B_FALSE);
++
++	mutex_enter(&vtf->vtf_mutex);
++	vtfs_free_slots(vtf);
++	mutex_exit(&vtf->vtf_mutex);
++
++	mutex_destroy(&vtf->vtf_mutex);
++	cv_destroy(&vtf->vtf_cv);
++	list_destroy(&vtf->vtf_free);
++	kmem_free(vtf, sizeof (*vtf));
++
++	return (DDI_SUCCESS);
++}
++
++static int
++vtfs_quiesce(dev_info_t *dip)
++{
++	vtfs_t *vtf;
++
++	if ((vtf = ddi_get_driver_private(dip)) == NULL)
++		return (DDI_FAILURE);
++
++	return (virtio_quiesce(vtf->vtf_virtio));
++}
++
++int
++_init(void)
++{
++	int rv;
++
++
++	mutex_init(&vtfs_devices_lock, NULL, MUTEX_DRIVER, NULL);
++	list_create(&vtfs_devices, sizeof (vtfs_t),
++	    offsetof(vtfs_t, vtf_link));
++
++	if ((rv = mod_install(&vtfs_modlinkage)) != 0) {
++		list_destroy(&vtfs_devices);
++		mutex_destroy(&vtfs_devices_lock);
++	}
++
++	return (rv);
++}
++
++int
++_fini(void)
++{
++	int rv;
++
++	if ((rv = mod_remove(&vtfs_modlinkage)) == 0) {
++		list_destroy(&vtfs_devices);
++		mutex_destroy(&vtfs_devices_lock);
++	}
++
++	return (rv);
++}
++
++int
++_info(struct modinfo *modinfop)
++{
++	return (mod_info(&vtfs_modlinkage, modinfop));
++}
+diff --git a/usr/src/uts/common/io/virtiofs/vtfs.h b/usr/src/uts/common/io/virtiofs/vtfs.h
+new file mode 100644
+index 0000000000..98a167c38f
+--- /dev/null
++++ b/usr/src/uts/common/io/virtiofs/vtfs.h
+@@ -0,0 +1,110 @@
++/*
++ * This file and its contents are supplied under the terms of the
++ * Common Development and Distribution License ("CDDL"), version 1.0.
++ * You may only use this file in accordance with the terms of version
++ * 1.0 of the CDDL.
++ *
++ * A full copy of the text of the CDDL should have accompanied this
++ * source.  A copy of the CDDL is also available via the Internet at
++ * http://www.illumos.org/license/CDDL.
++ */
++
++/*
++ * Copyright 2026 John Ericson
++ */
++
++#ifndef _VTFS_H
++#define	_VTFS_H
++
++/*
++ * VIRTIO FS TRANSPORT
++ *
++ * This is the private interface between the "vtfs" driver, which owns the
++ * Virtio FS PCI devices, and the "virtiofs" file system module, which speaks
++ * the FUSE protocol over them.  See the block comment at the top of vtfs.c.
++ */
++
++#include <sys/types.h>
++#include <sys/list.h>
++#include <sys/ksynch.h>
++#include <sys/dditypes.h>
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++/*
++ * Virtio FS device configuration space, from the Virtio 1.2 specification,
++ * section 5.11.4.  Only "tag" and "num_request_queues" are of interest to us;
++ * "notify_buf_size" is only meaningful with VIRTIO_FS_F_NOTIFICATION, which we
++ * do not negotiate.
++ */
++#define	VIRTIO_FS_TAG_LEN		36
++
++#define	VIRTIO_FS_CONFIG_TAG		0x00	/* char[36] */
++#define	VIRTIO_FS_CONFIG_NUM_REQ_VQ	0x24	/* uint32_t */
++#define	VIRTIO_FS_CONFIG_NOTIFY_BUF_SZ	0x28	/* uint32_t */
++
++/*
++ * Virtqueue indices.  Queue 0 is the high priority queue, used only for
++ * FUSE_INTERRUPT and FUSE_FORGET; queues 1..n are the request queues.  We
++ * presently drive a single request queue.
++ */
++#define	VIRTIO_FS_VIRTQ_HIPRIO		0
++#define	VIRTIO_FS_VIRTQ_REQUEST		1
++
++/*
++ * The largest FUSE header-plus-body that we will send or receive out of the
++ * per-slot bounce buffer.  A FUSE_LOOKUP carries a NUL terminated name, so
++ * this has to comfortably exceed MAXNAMELEN; everything else we send is a
++ * fixed size structure of well under a hundred bytes.
++ */
++#define	VTFS_BOUNCE_SIZE		1024
++
++/*
++ * The number of scatter-gather cookies we are willing to use for one request:
++ * one each for the outbound and inbound bounce buffers, plus enough for a
++ * fully discontiguous large data buffer.
++ *
++ * PAGESIZE is not a compile time constant in the kernel, so the worst case
++ * page count is computed against the smallest page any supported platform
++ * has.
++ */
++#define	VTFS_DATA_MAX			(128 * 1024)
++#define	VTFS_MIN_PAGESIZE		4096
++#define	VTFS_SEG_MAX			\
++	((VTFS_DATA_MAX / VTFS_MIN_PAGESIZE) + 2)
++
++typedef struct vtfs vtfs_t;
++
++/*
++ * A single FUSE round trip.  The caller fills in the request fields and calls
++ * vtfs_xfer(); on success "vx_resid" holds the number of bytes the device
++ * wrote in total, across both the inbound bounce buffer and the data buffer.
++ *
++ * "vx_data" is an arbitrary kernel virtual address -- typically a page cache
++ * mapping established by bp_mapin(9F) -- which the transport binds for DMA for
++ * the duration of the request.  It is always written by the device; we have no
++ * write path.
++ */
++typedef struct vtfs_xfer {
++	const void	*vx_out;	/* device reads: header and in-args */
++	size_t		vx_outlen;
++	void		*vx_in;		/* device writes: header and out-args */
++	size_t		vx_inlen;
++	/* device writes: bulk payload, or NULL */
++	void		*vx_data;
++	size_t		vx_datalen;
++	size_t		vx_resid;	/* set on return */
++} vtfs_xfer_t;
++
++extern vtfs_t *vtfs_hold_by_tag(const char *);
++extern void vtfs_rele(vtfs_t *);
++extern const char *vtfs_tag(vtfs_t *);
++extern int vtfs_xfer(vtfs_t *, vtfs_xfer_t *);
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif /* _VTFS_H */
+diff --git a/usr/src/uts/intel/Makefile.intel b/usr/src/uts/intel/Makefile.intel
+index 08a5813c78..72cbe95ddf 100644
+--- a/usr/src/uts/intel/Makefile.intel
++++ b/usr/src/uts/intel/Makefile.intel
+@@ -411,6 +411,9 @@ DRV_KMODS	+= vioif
+ DRV_KMODS	+= viorand
+ DRV_KMODS	+= vioscsi
+ 
++# Virtio FS transport driver, for the "virtiofs" file system
++DRV_KMODS	+= vtfs
++
+ # Virtio 9P transport driver
+ DRV_KMODS	+= vio9p
+ 
+@@ -531,6 +534,7 @@ FS_KMODS	+= autofs ctfs dcfs dev devfs fdfs fifofs hsfs lofs
+ FS_KMODS	+= mntfs namefs nfs objfs zfs zut
+ FS_KMODS	+= pcfs procfs sockfs specfs tmpfs udfs ufs sharefs
+ FS_KMODS	+= smbfs bootfs
++FS_KMODS	+= virtiofs
+ 
+ #
+ #	Streams Modules (/kernel/strmod):
+diff --git a/usr/src/uts/intel/virtiofs/Makefile b/usr/src/uts/intel/virtiofs/Makefile
+new file mode 100644
+index 0000000000..dfb820fdd4
+--- /dev/null
++++ b/usr/src/uts/intel/virtiofs/Makefile
+@@ -0,0 +1,69 @@
++#
++# This file and its contents are supplied under the terms of the
++# Common Development and Distribution License ("CDDL"), version 1.0.
++# You may only use this file in accordance with the terms of version
++# 1.0 of the CDDL.
++#
++# A full copy of the text of the CDDL should have accompanied this
++# source.  A copy of the CDDL is also available via the Internet at
++# http://www.illumos.org/license/CDDL.
++#
++
++#
++# Copyright 2026 John Ericson
++#
++
++#
++#	Path to the base of the uts directory tree (usually /usr/src/uts).
++#
++UTSBASE	= ../..
++
++#
++#	Define the module and object file sets.
++#
++MODULE		= virtiofs
++OBJECTS		= $(VIRTIOFS_OBJS:%=$(OBJS_DIR)/%)
++ROOTMODULE	= $(ROOT_FS_DIR)/$(MODULE)
++
++#
++#	Include common rules.
++#
++include $(UTSBASE)/intel/Makefile.intel
++
++#
++#	Define targets
++#
++ALL_TARGET	= $(BINARY)
++INSTALL_TARGET	= $(BINARY) $(ROOTMODULE)
++
++#
++#	The FUSE messages go out over a Virtio FS device, which the "vtfs"
++#	driver owns; "specfs" is what every file system needs for the device
++#	vnodes it may have to make.
++#
++LDFLAGS		+= -N fs/specfs -N drv/vtfs
++
++#
++#	vtfs.h, the transport interface, lives with the driver.
++#
++INC_PATH	+= -I$(UTSBASE)/common/io/virtiofs
++
++#
++#	Default build targets.
++#
++.KEEP_STATE:
++
++def:		$(DEF_DEPS)
++
++all:		$(ALL_DEPS)
++
++clean:		$(CLEAN_DEPS)
++
++clobber:	$(CLOBBER_DEPS)
++
++install:	$(INSTALL_DEPS)
++
++#
++#	Include common targets.
++#
++include $(UTSBASE)/intel/Makefile.targ
+diff --git a/usr/src/uts/intel/vtfs/Makefile b/usr/src/uts/intel/vtfs/Makefile
+new file mode 100644
+index 0000000000..68ea079338
+--- /dev/null
++++ b/usr/src/uts/intel/vtfs/Makefile
+@@ -0,0 +1,68 @@
++#
++# This file and its contents are supplied under the terms of the
++# Common Development and Distribution License ("CDDL"), version 1.0.
++# You may only use this file in accordance with the terms of version
++# 1.0 of the CDDL.
++#
++# A full copy of the text of the CDDL should have accompanied this
++# source.  A copy of the CDDL is also available via the Internet at
++# http://www.illumos.org/license/CDDL.
++#
++
++#
++# Copyright 2026 John Ericson
++#
++
++#
++# Path to the base of the uts directory tree (usually /usr/src/uts).
++#
++UTSBASE =		../..
++
++#
++# Define the module and object file sets.
++#
++MODULE =		vtfs
++OBJECTS =		$(VTFS_OBJS:%=$(OBJS_DIR)/%)
++ROOTMODULE =		$(ROOT_DRV_DIR)/$(MODULE)
++
++#
++# Include common rules.
++#
++include $(UTSBASE)/intel/Makefile.intel
++
++#
++# Define targets
++#
++ALL_TARGET =		$(BINARY)
++INSTALL_TARGET =	$(BINARY) $(ROOTMODULE)
++
++#
++# Overrides
++#
++INC_PATH +=		-I$(UTSBASE)/common/io/virtio
++INC_PATH +=		-I$(UTSBASE)/common/io/virtiofs
++
++#
++# Driver depends on the virtio framework.
++#
++LDFLAGS +=		-N misc/virtio
++
++#
++# Default build targets.
++#
++.KEEP_STATE:
++
++def: $(DEF_DEPS)
++
++all: $(ALL_DEPS)
++
++clean: $(CLEAN_DEPS)
++
++clobber: $(CLOBBER_DEPS)
++
++install: $(INSTALL_DEPS)
++
++#
++# Include common targets.
++#
++include $(UTSBASE)/intel/Makefile.targ

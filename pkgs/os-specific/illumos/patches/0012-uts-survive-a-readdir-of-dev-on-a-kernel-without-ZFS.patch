@@ -1,0 +1,110 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Sat, 8 Aug 2026 21:14:10 -0400
+Subject: [PATCH] uts: survive a readdir of /dev on a kernel without ZFS
+
+Reading `/dev` on a system without the ZFS module panics the kernel, twice
+over, in two adjacent places in `uts/common/fs/dev/sdev_zvolops.c`. Both are
+reached the first time any process reads the directory -- a shell searching
+`$PATH` is enough.
+
+**1. Freeing a pointer that was never allocated.**
+`devzvol_update_zclist_cb()` (:377) is dispatched on a taskq whenever `/dev` is
+looked at. It declares `size_t size;` with no initialiser and passes `&size` to
+`devzvol_handle_ioctl()`, which returns `ENXIO` *before* it allocates anything
+if it cannot open `/dev/zfs`. On that return `size` has never been written, and
+`zc` -- from `kmem_zalloc()` -- still has `zc_nvlist_dst == NULL`. The
+`default:` arm then frees it unconditionally, i.e.
+`kmem_free(NULL, <uninitialised>)`:
+
+    panic[cpu0]: BAD TRAP: type=e (#pf Page fault) addr=c
+        occurred in module "genunix" due to a NULL pointer dereference
+      genunix:kmem_free+5d
+      dev:devzvol_update_zclist_cb+117
+      genunix:taskq_thread+2fa
+
+The `case 0:` arm already guards its equivalent free with
+`if (devzvol_zclist)`. This makes the error path match the success path, and
+initialises `size` so the freed length is well defined on every return.
+
+**2. An assertion that can only ever fire.**
+With no pool list to unpack, `devzvol_create_pool_dirs()` (:453) takes the
+`if (rc)` arm after `nvlist_unpack()` and immediately does `ASSERT(rc == 0)`
+(:469) -- inside a branch entered only when `rc != 0`:
+
+    panic[cpu0]: assertion failed: rc == 0,
+        file: ../../common/fs/dev/sdev_zvolops.c, line: 469
+      dev:devzvol_create_pool_dirs+1b0
+      dev:devzvol_readdir+cb
+      genunix:fop_readdir+61
+      genunix:getdents64+ff
+
+The recovery code beneath it is correct and does the right thing on a
+non-DEBUG kernel; only the assertion is wrong. Drop it, and guard its
+`kmem_free()` for the same reason as above -- `devzvol_zclist` is NULL in
+exactly this case.
+
+Neither is otherwise noticeable because ZFS is present on essentially every
+illumos system, so `devzvol_handle_ioctl()` almost never fails this way and
+both arms are close to unreachable in practice. It takes a deliberately
+minimal system -- one that wants `/dev` but not ZFS -- to reach them.
+
+Assisted-By: Claude <noreply@anthropic.com>
+---
+ usr/src/uts/common/fs/dev/sdev_zvolops.c | 28 +++++++++++++++++++-----
+ 1 file changed, 22 insertions(+), 6 deletions(-)
+
+diff --git a/usr/src/uts/common/fs/dev/sdev_zvolops.c b/usr/src/uts/common/fs/dev/sdev_zvolops.c
+index 8f22ef32f0..4be960af13 100644
+--- a/usr/src/uts/common/fs/dev/sdev_zvolops.c
++++ b/usr/src/uts/common/fs/dev/sdev_zvolops.c
+@@ -378,7 +378,7 @@ devzvol_update_zclist_cb(void *arg)
+ {
+ 	zfs_cmd_t	*zc;
+ 	int		rc;
+-	size_t		size;
++	size_t		size = 0;
+ 
+ 	zc = kmem_zalloc(sizeof (zfs_cmd_t), KM_SLEEP);
+ 	mutex_enter(&devzvol_mtx);
+@@ -404,9 +404,17 @@ devzvol_update_zclist_cb(void *arg)
+ 			 * catastrophic error.
+ 			 *
+ 			 * Give up memory and exit.
++			 *
++			 * devzvol_handle_ioctl() can fail before it has
++			 * allocated anything -- it returns ENXIO if /dev/zfs
++			 * cannot be opened at all -- in which case zc came
++			 * from kmem_zalloc() and zc_nvlist_dst is still NULL.
++			 * Guard the free the same way the success path above
++			 * guards its own.
+ 			 */
+-			kmem_free((void *)(uintptr_t)zc->zc_nvlist_dst,
+-			    size);
++			if (zc->zc_nvlist_dst != 0)
++				kmem_free((void *)(uintptr_t)zc->zc_nvlist_dst,
++				    size);
+ 			break;
+ 	}
+ 
+@@ -458,9 +466,17 @@ devzvol_create_pool_dirs(struct vnode *dvp)
+ 	rc = nvlist_unpack((char *)(uintptr_t)devzvol_zclist,
+ 	    devzvol_zclist_size, &nv, 0);
+ 	if (rc) {
+-		ASSERT(rc == 0);
+-		kmem_free((void *)(uintptr_t)devzvol_zclist,
+-		    devzvol_zclist_size);
++		/*
++		 * No assertion here: this arm is reached whenever there is no
++		 * pool list to unpack, which is the normal state of affairs on
++		 * a system with no ZFS at all -- devzvol_update_zclist() will
++		 * have left devzvol_zclist NULL because the ioctl failed. The
++		 * recovery below is correct; asserting rc == 0 inside `if (rc)'
++		 * could only ever fire.
++		 */
++		if (devzvol_zclist != 0)
++			kmem_free((void *)(uintptr_t)devzvol_zclist,
++			    devzvol_zclist_size);
+ 		devzvol_gen = 0;
+ 		devzvol_zclist = 0;
+ 		devzvol_zclist_size = 0;

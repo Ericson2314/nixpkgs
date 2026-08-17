@@ -1,0 +1,65 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Mon, 17 Aug 2026 14:19:37 -0400
+Subject: [PATCH] virtiofs: a private mapping may become writable
+
+`virtiofs_map()` cleared `PROT_WRITE` from the `maxprot` it handed to
+`segvn_create()`, for every mapping.  But `maxprot` is not a statement
+about the mapping being made; it is the ceiling that a later
+`mprotect(2)` is measured against, in `segvn_setprot()`:
+
+	if ((svd->maxprot & prot) != prot)
+		return (EACCES);			/* violated maxprot */
+
+A `MAP_PRIVATE` mapping is entitled to become writable.  That is what
+copy on write is for: `virtiofs_getpage()` never reports `PROT_WRITE`
+in `*protp`, so `segvn` faults such a page into anon memory belonging
+to the process, and nothing it then writes can reach the server or the
+page cache.  Clearing the bit only made a legal `mprotect(2)` fail --
+including the one `ld.so.1` issues when it has text relocations to
+apply to a mapped object.
+
+A `MAP_SHARED` mapping is the case the comment was really about, and
+that one keeps the old treatment: asking for `PROT_WRITE` up front is
+refused above, and clearing the bit here is what stops it being asked
+for again afterwards.
+
+`hsfs_map()`, which this file otherwise follows closely, passes
+`maxprot` through untouched.
+
+Assisted-By: Claude Opus 5 (claude-opus-5)
+---
+ .../uts/common/fs/virtiofs/virtiofs_vnops.c   | 20 ++++++++++++++++++-
+ 1 file changed, 19 insertions(+), 1 deletion(-)
+
+diff --git a/usr/src/uts/common/fs/virtiofs/virtiofs_vnops.c b/usr/src/uts/common/fs/virtiofs/virtiofs_vnops.c
+index fcbcd6b7ea..301eb5e73e 100644
+--- a/usr/src/uts/common/fs/virtiofs/virtiofs_vnops.c
++++ b/usr/src/uts/common/fs/virtiofs/virtiofs_vnops.c
+@@ -933,7 +933,25 @@ virtiofs_map(vnode_t *vp, offset_t off, struct as *as, caddr_t *addrp,
+ 	vn_a.offset = (u_offset_t)off;
+ 	vn_a.type = flags & MAP_TYPE;
+ 	vn_a.prot = prot;
+-	vn_a.maxprot = maxprot & ~PROT_WRITE;
++
++	/*
++	 * maxprot is the ceiling that a later mprotect(2) is measured against,
++	 * not a statement about this mapping.  A private mapping is entitled
++	 * to become writable -- that is what copy on write is for, and nothing
++	 * a private mapping does to its own pages can ever reach the server --
++	 * so withholding PROT_WRITE from it only makes a legal mprotect(2)
++	 * fail with EACCES.  ld.so.1 does exactly that mprotect() when it has
++	 * text relocations to apply.  hsfs, which this file otherwise follows,
++	 * passes maxprot through untouched.
++	 *
++	 * A shared mapping is the case actually worth defending against: it is
++	 * refused above when it asks for PROT_WRITE outright, and clearing the
++	 * bit here is what stops it from asking again later.
++	 */
++	if (flags & MAP_SHARED)
++		vn_a.maxprot = maxprot & ~PROT_WRITE;
++	else
++		vn_a.maxprot = maxprot;
+ 	vn_a.flags = flags & ~MAP_TYPE;
+ 	vn_a.cred = cr;
+ 	vn_a.amp = NULL;

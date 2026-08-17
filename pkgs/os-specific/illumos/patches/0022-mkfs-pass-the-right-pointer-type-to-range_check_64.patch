@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Sun, 16 Aug 2026 13:06:09 -0400
+Subject: [PATCH] mkfs: pass the right pointer type to `range_check_64()`
+
+`range_check_64()` takes a `uint64_t *`, but its only caller hands it
+`&fssize_db`, which is a `diskaddr_t`:
+
+    mkfs.c:1079:24: error: passing argument 1 of `range_check_64` from
+        incompatible pointer type [-Wincompatible-pointer-types]
+     1079 |  range_check_64(&fssize_db, "size", 1024LL, ...);
+    note: expected `uint64_t *` but argument is of type `diskaddr_t *`
+
+These are the same width but they are not the same type, on illumos as
+much as anywhere else: `<sys/int_types.h>` makes `uint64_t` an
+`unsigned long` under `_LP64`, while `<sys/types.h>` makes `diskaddr_t`
+a `u_longlong_t`. So this is a latent type error in the gate that only
+goes unnoticed because nothing here compiles at a warning level that
+would object -- not an artefact of building on a foreign host.
+
+Widen the parameter to `diskaddr_t *` rather than casting at the call
+site, since `diskaddr_t` is what the one caller has and what a
+filesystem size is. The `minimum`/`maximum`/`def_val` parameters stay
+`uint64_t`: those are passed by value, so they convert cleanly.
+
+Assisted-by: Claude Code (Claude Opus 5)
+---
+ usr/src/cmd/fs.d/ufs/mkfs/mkfs.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/usr/src/cmd/fs.d/ufs/mkfs/mkfs.c b/usr/src/cmd/fs.d/ufs/mkfs/mkfs.c
+index b8acb5fd51..94ed8b734f 100644
+--- a/usr/src/cmd/fs.d/ufs/mkfs/mkfs.c
++++ b/usr/src/cmd/fs.d/ufs/mkfs/mkfs.c
+@@ -416,7 +416,7 @@ static char checkopt(char *optim);
+ static char checkmtb(char *mtbarg);
+ static void range_check(long *varp, char *name, long minimum,
+     long maximum, long def_val, int user_supplied);
+-static void range_check_64(uint64_t *varp, char *name, uint64_t minimum,
++static void range_check_64(diskaddr_t *varp, char *name, uint64_t minimum,
+     uint64_t maximum, uint64_t def_val, int user_supplied);
+ static daddr32_t alloc(int size, int mode);
+ static diskaddr_t get_max_size(int fd);
+@@ -5412,7 +5412,7 @@ range_check(long *varp, char *name, long minimum, long maximum,
+  * When testing, can compare user_supplied to RC_KEYWORD or RC_POSITIONAL.
+  */
+ static void
+-range_check_64(uint64_t *varp, char *name, uint64_t minimum, uint64_t maximum,
++range_check_64(diskaddr_t *varp, char *name, uint64_t minimum, uint64_t maximum,
+     uint64_t def_val, int user_supplied)
+ {
+ 	if ((*varp < minimum) || (*varp > maximum)) {

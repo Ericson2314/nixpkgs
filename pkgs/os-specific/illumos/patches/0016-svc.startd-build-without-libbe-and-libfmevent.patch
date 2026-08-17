@@ -1,0 +1,169 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Sun, 9 Aug 2026 18:04:54 -0400
+Subject: [PATCH] svc.startd: build without libbe and libfmevent
+
+TIER 4 -- NOT UPSTREAMABLE, KEEP LOCAL. This removes functionality to avoid
+two dependency chains, and upstream should not take it as written. The shape
+a real submission would need is this same pair of macros wired to a build-time
+knob and *defaulted on*, so that a normal gate build is unchanged and only an
+explicitly reduced configuration opts out; that is not what this does -- here
+the macros are simply never defined.
+
+svc.startd links `-lbe` and `-lfmevent` for one call site each, and each drags
+in a stack far larger than the feature:
+
+  * `libbe` is used once, `be_get_boot_args()` in `graph.c`, and pulls in
+    `-lzfs -lficl-sys -lefi -lzfsbootenv -linstzones -luuid -ldevinfo` -- the
+    whole ZFS stack, in a VM whose entire premise is a root hsfs with no ZFS
+    at all.
+
+  * `libfmevent` publishes FMA "state-transition" telemetry, and pulls in
+    `-ltopo` and its plugins.
+
+Neither is load-bearing for starting a service, and both call sites already
+have supported failure paths, which is what makes omitting them equivalent to
+something the code already does rather than a new behaviour:
+
+  * `be_get_boot_args()` is reached only when `halting == AD_FASTREBOOT`, and
+    on failure startd already sets `halting = AD_BOOT` and warns "Failed to
+    get fast reboot arguments. Falling back to regular reboot." The
+    `#elif defined(__x86)` arm added here does exactly that, with a message
+    naming the real reason. Fast reboot is meaningless under qemu regardless.
+
+  * `dgraph_state_transition_notify()` exists only to publish that one event.
+    Its sole other effects are the `stev_ct_*` counters, which are documented
+    as "indicative only" and which nothing reads. A failed publish is already
+    just `log_framework(LOG_DEBUG, ...)`, so a build that never publishes is
+    the same outcome as one that never succeeds.
+
+The call sites are guarded rather than the `-l` flags merely dropped, so that
+a build without these libraries fails to compile the references rather than
+surprising the next person at link time.
+
+Assisted-By: Claude <noreply@anthropic.com>
+---
+ usr/src/cmd/svc/startd/Makefile | 13 ++++--------
+ usr/src/cmd/svc/startd/graph.c  | 35 ++++++++++++++++++++++++++++++---
+ 2 files changed, 36 insertions(+), 12 deletions(-)
+
+diff --git a/usr/src/cmd/svc/startd/Makefile b/usr/src/cmd/svc/startd/Makefile
+index b599e57c51..ace9be4935 100644
+--- a/usr/src/cmd/svc/startd/Makefile
++++ b/usr/src/cmd/svc/startd/Makefile
+@@ -100,16 +100,11 @@ LDLIBS += \
+ 	-luutil
+ 
+ #
+-# While svc.startd only searches for libfmevent, which is in
+-# $(ROOT)/lib/fm, when resolving dependencies it needs to know to search
+-# for those in $(ROOT)/usr/lib/fm. However, we don't need a runpath
+-# because libfmevent has that properly set already, but it doesn't help
+-# us during the build.
++# libbe and libfmevent are deliberately not linked here; see the
++# SMF_HAVE_LIBBE and SMF_HAVE_LIBFMEVENT guards in graph.c. Neither is
++# defined, so neither library is referenced.
+ #
+-LDLIBS_i386 +=	-lbe
+-LDLIBS +=	$(LDLIBS_$(MACH)) -L$(ROOT)/lib/fm -lfmevent \
+-		-L$(ROOT)/usr/lib/fm
+-LDFLAGS +=	-R/lib/fm
++LDLIBS +=	$(LDLIBS_$(MACH))
+ 
+ FILEMODE = 0555
+ 
+diff --git a/usr/src/cmd/svc/startd/graph.c b/usr/src/cmd/svc/startd/graph.c
+index bd272bb8d4..f1590be85d 100644
+--- a/usr/src/cmd/svc/startd/graph.c
++++ b/usr/src/cmd/svc/startd/graph.c
+@@ -145,7 +145,9 @@
+ #include <assert.h>
+ #include <errno.h>
+ #include <fcntl.h>
++#ifdef SMF_HAVE_LIBFMEVENT
+ #include <fm/libfmevent.h>
++#endif	/* SMF_HAVE_LIBFMEVENT */
+ #include <libscf.h>
+ #include <libscf_priv.h>
+ #include <librestart.h>
+@@ -162,9 +164,9 @@
+ #include <sys/statvfs.h>
+ #include <sys/uadmin.h>
+ #include <zone.h>
+-#if defined(__x86)
++#if defined(__x86) && defined(SMF_HAVE_LIBBE)
+ #include <libbe.h>
+-#endif	/* __x86 */
++#endif	/* __x86 && SMF_HAVE_LIBBE */
+ 
+ #include "startd.h"
+ #include "protocol.h"
+@@ -3612,7 +3614,7 @@ do_uadmin(void)
+ 	 * print warning and fall back to regular reboot.
+ 	 */
+ 	if (halting == AD_FASTREBOOT) {
+-#if defined(__x86)
++#if defined(__x86) && defined(SMF_HAVE_LIBBE)
+ 		if (be_get_boot_args(&fbarg, BE_ENTRY_DEFAULT) == 0) {
+ 			mdep = (uintptr_t)fbarg;
+ 		} else {
+@@ -3623,6 +3625,16 @@ do_uadmin(void)
+ 			uu_warn("Failed to get fast reboot arguments.\n"
+ 			    "Falling back to regular reboot.\n");
+ 		}
++#elif defined(__x86)	/* !SMF_HAVE_LIBBE */
++		/*
++		 * Built without libbe, so the default boot environment's boot
++		 * arguments cannot be read. This is the same outcome as
++		 * be_get_boot_args() failing, which the branch above already
++		 * falls back from.
++		 */
++		halting = AD_BOOT;
++		uu_warn("Fast reboot configured, but this svc.startd was "
++		    "built without libbe.\nFalling back to regular reboot.\n");
+ #else	/* __x86 */
+ 		halting = AD_BOOT;
+ 		uu_warn("Fast reboot configured, but not supported by "
+@@ -4651,6 +4663,7 @@ stn_restarter_state(restarter_instance_state_t rstate)
+ 	return (-1);
+ }
+ 
++#ifdef SMF_HAVE_LIBFMEVENT
+ /*
+  * State transition counters
+  * Not incremented atomically - indicative only
+@@ -4663,11 +4676,26 @@ static uint64_t stev_ct_noprefs;
+ static uint64_t stev_ct_from_uninit;
+ static uint64_t stev_ct_bad_state;
+ static uint64_t stev_ct_ovr_prefs;
++#endif	/* SMF_HAVE_LIBFMEVENT */
+ 
+ static void
+ dgraph_state_transition_notify(graph_vertex_t *v,
+     restarter_instance_state_t old_state, restarter_str_t reason)
+ {
++#ifndef SMF_HAVE_LIBFMEVENT
++	/*
++	 * Built without libfmevent. Everything this function does is in
++	 * service of publishing one FMA "state-transition" event; the only
++	 * other effects are the indicative stev_ct_* counters, which nothing
++	 * reads. Publishing already fails softly -- the error path below is a
++	 * log_framework(LOG_DEBUG, ...) and nothing more -- so omitting it is
++	 * the same outcome as a publish that never succeeds.
++	 */
++	(void) v;
++	(void) old_state;
++	(void) reason;
++}
++#else	/* SMF_HAVE_LIBFMEVENT */
+ 	restarter_instance_state_t new_state = v->gv_state;
+ 	int stn_transition, maint;
+ 	int from, to;
+@@ -4750,6 +4778,7 @@ dgraph_state_transition_notify(graph_vertex_t *v,
+ 		nvlist_free(attr);
+ 	}
+ }
++#endif	/* SMF_HAVE_LIBFMEVENT */
+ 
+ /*
+  * Find the vertex for inst_name.  If it doesn't exist, return ENOENT.

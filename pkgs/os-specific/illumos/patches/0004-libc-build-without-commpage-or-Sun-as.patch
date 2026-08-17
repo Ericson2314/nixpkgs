@@ -1,0 +1,169 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Fri, 7 Aug 2026 17:30:31 -0400
+Subject: [PATCH] libc: build without commpage or Sun `as`
+
+Several obstacles to building libc off illumos:
+
+- The comm page makefiles assume the full in-tree build; skip them for now.
+- `cerror.S` opens a comment with a bare `/`, which only the Sun assembler
+  accepts. `//` means the same to it and to the GNU assembler.
+- Keep `$(CPPFLAGS.first)` when redefining CPPFLAGS. Makefile.master
+  documents it as the hook for putting include directories ahead of
+  everything else, and replacing CPPFLAGS outright silently dropped it.
+- Drop the redundant `-I$(LIBCBASE)/../port/regex` from the regex rules in
+  Makefile.targ. Every local header in port/regex is included with quotes
+  ("regex.h", "regex2.h", "utils.h", "cname.h"), which already resolves
+  relative to the including file, so the -I adds nothing -- but it does put
+  libc private regex.h ahead of the public <regex.h>, which defines
+  regex_t and the REG_* codes that regcomp.c needs.
+- `BUILD.AR` orders members with `lorder(1) | tsort(1)`. lorder parses
+  `nm(1)` output in Solaris' format, which GNU nm does not quite match: the
+  dependency pairs come out unbalanced, tsort rejects the input, and the
+  archive silently comes out empty. The ordering is not needed -- `ar -ts`
+  runs immediately afterwards and writes a symbol index.
+- `plockstat_stub.c` supplies the `__dtrace_plockstat___*` symbols that
+  would otherwise come from a `dtrace -G`-generated `plockstat.o`.
+
+`assym.h` is left as upstream has it: `$(OFFSETS_CREATE)` from
+`$(MACH)/offsets.in` plus the `genassym` output appended.  That needs
+`ctfstabs`/`ctfconvert`/`genoffsets`, which are now built for a non-illumos
+host, so there is no reason to hand-write the struct offsets.
+
+Assisted-by: Claude Code (Claude Opus 5)
+---
+ usr/src/lib/libc/Makefile.targ                |  2 -
+ usr/src/lib/libc/amd64/Makefile               | 25 +++++++++---
+ usr/src/lib/libc/amd64/crt/cerror.S           |  2 +-
+ .../lib/libc/port/threads/plockstat_stub.c    | 38 +++++++++++++++++++
+ 4 files changed, 59 insertions(+), 8 deletions(-)
+ create mode 100644 usr/src/lib/libc/port/threads/plockstat_stub.c
+
+diff --git a/usr/src/lib/libc/Makefile.targ b/usr/src/lib/libc/Makefile.targ
+index ebb8af11e3..742aaa805f 100644
+--- a/usr/src/lib/libc/Makefile.targ
++++ b/usr/src/lib/libc/Makefile.targ
+@@ -141,7 +141,6 @@ pics/%64.o: $(LIBCBASE)/../port/print/%.c
+ 
+ pics/%64.o: $(LIBCBASE)/../port/regex/%.c
+ 	$(COMPILE.c) -DM_I18N_MB -DI18N \
+-	-I$(LIBCBASE)/../port/regex \
+ 	-I$(LIBCBASE)/../port/gen -o $@ $<
+ 	$(POST_PROCESS_O)
+ 
+@@ -208,7 +207,6 @@ pics/%.o: $(LIBCBASE)/../port/print/%.c
+ # regex rules
+ pics/%.o: $(LIBCBASE)/../port/regex/%.c
+ 	$(COMPILE.c) -DM_I18N_MB -DI18N \
+-	-I$(LIBCBASE)/../port/regex \
+ 	-I$(LIBCBASE)/../port/gen -o $@ $<
+ 	$(POST_PROCESS_O)
+ 
+diff --git a/usr/src/lib/libc/amd64/Makefile b/usr/src/lib/libc/amd64/Makefile
+index ba71bcfdbd..42b26cd444 100644
+--- a/usr/src/lib/libc/amd64/Makefile
++++ b/usr/src/lib/libc/amd64/Makefile
+@@ -870,7 +870,8 @@ THREADSOBJS=			\
+ 	thr.o			\
+ 	thread_interface.o	\
+ 	tls.o			\
+-	tsd.o
++	tsd.o			\
++	plockstat_stub.o
+ 
+ THREADSMACHOBJS=		\
+ 	machdep.o
+@@ -1072,7 +1073,13 @@ $(DYNLIB) := BUILD.SO = $(LD) -o $@ $(GSHARED) $(DYNFLAGS) $(PICS) $(ALTPICS) $(
+ 
+ MAPFILES =	$(LIBCDIR)/port/mapfile-vers
+ 
+-CPPFLAGS=	-D_REENTRANT -D$(MACH64) -D__$(MACH64) $(THREAD_DEBUG) \
++# $(CPPFLAGS.first) is kept: Makefile.master documents it as the hook for
++# lower makefiles to put include directories ahead of everything else, and
++# replacing CPPFLAGS outright would silently drop it. A cross-build needs it to
++# place the installed headers before the -I flags that individual rules in
++# Makefile.targ add -- notably ../port/regex, which holds a private regex.h.
++CPPFLAGS=	$(CPPFLAGS.first) \
++		-D_REENTRANT -D$(MACH64) -D__$(MACH64) $(THREAD_DEBUG) \
+ 		-I. -I$(LIBCBASE)/inc -I$(LIBCDIR)/inc $(CPPFLAGS.master)
+ 
+ # __XOPEN_OR_POSIX is necessary to avoid implicit _LARGEFILE_SOURCE which
+@@ -1107,10 +1114,18 @@ BUILD.s=	$(AS) $(ASFLAGS) $< -c -o $@
+ CSTD=	$(CSTD_GNU99)
+ 
+ # libc method of building an archive
+-# The "$(GREP) -v ' L '" part is necessary only until
+-# lorder is fixed to ignore thread-local variables.
++#
++# Upstream orders the members with lorder(1) | tsort(1) so that a single-pass
++# link resolves. lorder parses nm(1) output in Solaris' format, which a GNU nm
++# does not quite match: the dependency pairs come out unbalanced and tsort
++# rejects the input with "odd number of tokens", leaving an *empty* archive
++# and a build that appears to have succeeded.
++#
++# The ordering is not actually needed here. `ar -ts` runs immediately after
++# and writes a symbol table, and every linker we care about resolves archive
++# members through that index rather than by member order.
+ BUILD.AR= $(RM) $@ ; \
+-	$(AR) q $@ `$(LORDER) $(MOSTOBJS:%=$(DIR)/%) | $(GREP) -v ' L ' | $(TSORT)`
++	$(AR) q $@ $(MOSTOBJS:%=$(DIR)/%)
+ 
+ # extra files for the clean target
+ CLEANFILES +=			\
+diff --git a/usr/src/lib/libc/amd64/crt/cerror.S b/usr/src/lib/libc/amd64/crt/cerror.S
+index f019a4a1b1..f0604e0aae 100644
+--- a/usr/src/lib/libc/amd64/crt/cerror.S
++++ b/usr/src/lib/libc/amd64/crt/cerror.S
+@@ -26,7 +26,7 @@
+ 
+ 	.file	"cerror.s"
+ 
+-/ C return sequence which sets errno, returns -1.
++// C return sequence which sets errno, returns -1.
+ 
+ #include <SYS.h>
+ 
+diff --git a/usr/src/lib/libc/port/threads/plockstat_stub.c b/usr/src/lib/libc/port/threads/plockstat_stub.c
+new file mode 100644
+index 0000000000..75833a662d
+--- /dev/null
++++ b/usr/src/lib/libc/port/threads/plockstat_stub.c
+@@ -0,0 +1,38 @@
++/*
++ * This file and its contents are supplied under the terms of the
++ * Common Development and Distribution License ("CDDL"), version 1.0.
++ * You may only use this file in accordance with the terms of version
++ * 1.0 of the CDDL.
++ *
++ * A full copy of the text of the CDDL should have accompanied this
++ * source.  A copy of the CDDL is also available via the Internet at
++ * http://www.illumos.org/license/CDDL.
++ */
++
++/*
++ * Stub definitions for the plockstat USDT probes.
++ *
++ * Normally these symbols come from plockstat.o, which `dtrace -G` generates
++ * from port/threads/plockstat.d; dtrace patches the call sites into nops, so
++ * the probes cost nothing when not enabled. dtrace is not available when
++ * cross-building libc from a non-illumos host, so define the probe functions
++ * as empty instead. The result is a libc that behaves identically except that
++ * the plockstat provider reports nothing.
++ *
++ * The parameter lists are deliberately unspecified: the call sites pass
++ * varying numbers of arguments, and an empty function is a valid target for
++ * all of them under the SysV AMD64 calling convention.
++ */
++
++void __dtrace_plockstat___mutex__acquire() {}
++void __dtrace_plockstat___mutex__block() {}
++void __dtrace_plockstat___mutex__blocked() {}
++void __dtrace_plockstat___mutex__error() {}
++void __dtrace_plockstat___mutex__release() {}
++void __dtrace_plockstat___mutex__spin() {}
++void __dtrace_plockstat___mutex__spun() {}
++void __dtrace_plockstat___rw__acquire() {}
++void __dtrace_plockstat___rw__block() {}
++void __dtrace_plockstat___rw__blocked() {}
++void __dtrace_plockstat___rw__error() {}
++void __dtrace_plockstat___rw__release() {}

@@ -1,0 +1,69 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Mon, 17 Aug 2026 01:48:51 -0400
+Subject: [PATCH] ipadm: give the ofmt callback the signature its own typedef
+ declares
+
+`print_prop_cb` is declared through `ofmt_cb_t`:
+
+    static ofmt_cb_t print_prop_cb;                       /* ipadm.c:219 */
+    typedef boolean_t ofmt_cb_t(ofmt_arg_t *, char *, uint_t);
+                                            /* libofmt/common/ofmt.h:171 */
+
+but defined taking a `size_t`:
+
+    static boolean_t
+    print_prop_cb(ofmt_arg_t *ofarg, char *buf, size_t bufsize)
+
+On LP64 those are different types -- eight bytes against four -- so this is a
+real conflict, not a spelling difference. It has been benign in practice
+because the value is a small buffer size and the ABI passes both in the same
+register, but the declaration and the definition disagree, and a compiler is
+entitled to say so. Ones that enforce it do:
+
+    error: conflicting types for 'print_prop_cb'; have
+        'boolean_t(ofmt_arg_t *, char *, size_t)'
+
+`print_prop()`, which is only called from that callback and forwards the same
+argument, changes with it -- along with the `propsize` it passes to
+`ipadm_get_ifprop()`, `ipadm_get_prop()` and `ipadm_get_addrprop()`. All
+three take `uint_t *`, so `&propsize` on a `size_t` handed them a pointer to
+an eight-byte object they write four bytes of, leaving the upper half as
+whatever the initialiser left behind.
+
+No functional change: every value involved is bounded by MAXPROPVALLEN.
+
+Assisted-by: Claude <noreply@anthropic.com>
+---
+ usr/src/cmd/cmd-inet/usr.sbin/ipadm/ipadm.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/usr/src/cmd/cmd-inet/usr.sbin/ipadm/ipadm.c b/usr/src/cmd/cmd-inet/usr.sbin/ipadm/ipadm.c
+index 17481bc4b7..022577c34f 100644
+--- a/usr/src/cmd/cmd-inet/usr.sbin/ipadm/ipadm.c
++++ b/usr/src/cmd/cmd-inet/usr.sbin/ipadm/ipadm.c
+@@ -733,13 +733,13 @@ do_disable_if(int argc, char *argv[], const char *use)
+  * Print individual columns for the show-*prop subcommands.
+  */
+ static void
+-print_prop(show_prop_state_t *statep, uint_t flags, char *buf, size_t bufsize)
++print_prop(show_prop_state_t *statep, uint_t flags, char *buf, uint_t bufsize)
+ {
+ 	const char		*prop_name = statep->sps_pname;
+ 	char			*ifname = statep->sps_ifname;
+ 	char			*propval = statep->sps_propval;
+ 	uint_t			proto = statep->sps_proto;
+-	size_t			propsize = MAXPROPVALLEN;
++	uint_t			propsize = MAXPROPVALLEN;
+ 	ipadm_status_t		status;
+ 
+ 	if (statep->sps_ifprop) {
+@@ -772,7 +772,7 @@ cont:
+  * Callback function for show-*prop subcommands.
+  */
+ static boolean_t
+-print_prop_cb(ofmt_arg_t *ofarg, char *buf, size_t bufsize)
++print_prop_cb(ofmt_arg_t *ofarg, char *buf, uint_t bufsize)
+ {
+ 	show_prop_state_t	*statep = ofarg->ofmt_cbarg;
+ 	const char		*propname = statep->sps_pname;

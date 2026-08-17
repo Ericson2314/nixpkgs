@@ -1,0 +1,356 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Fri, 7 Aug 2026 17:29:10 -0400
+Subject: [PATCH] Makefile.master: look build tools up on `$PATH`
+
+Cross-building illumos from a non-illumos host (here, Nixpkgs on Linux)
+means none of the tools the build shells out to live at the absolute paths
+`Makefile.master` hardcodes: there is no `/usr/bin/nawk`, no
+`$(ONBLD_TOOLS)/bin/$(MACH)/ctfconvert`, and no `/usr/gcc/10`. Every one of
+them is on `$PATH` instead, put there by the package manager.
+
+So:
+
+- Reduce the hardcoded `/usr/bin/...` and `$(ONBLD_TOOLS)/...` tool paths to
+  bare command names, letting `$PATH` resolve them.
+- Take the primary C and C++ compilers, and the linker, from the `$CC`,
+  `$CXX`, `$LD` and `$LD_FOR_BUILD` environment variables. These are
+  environment variables, not make macros -- the `:sh` assignments run a
+  shell, which is where they are read. `|| :` keeps a missing compiler from
+  failing the whole build, since not every component needs every compiler.
+- `BUILD_CPP`/`NATIVEBUILD_CPP`: use the C compiler's own `-E` rather than
+  `/usr/lib/cpp`, which does not exist off illumos.
+- `ROOT=/`: Nix builds each component into its own prefix and needs no proto
+  area.
+- Drop `-errwarn=%all`: building against a different compiler and different
+  libc headers than illumos itself uses turns up warnings the in-tree build
+  never sees.
+- Disable `PROCESS_COMMENT` and `STRIP`, which need `mcs` and an
+  illumos-aware `strip`.
+
+This is deliberately blunt -- it changes the defaults rather than making
+them overridable -- and so is not upstreamable as-is. Making each tool
+overridable via the `$(POUND_SIGN)` idiom already used elsewhere in this
+file would be the upstreamable form.
+
+The environment variables read here are `$ILLUMOS_CC`/`$ILLUMOS_LD` rather
+than the obvious `$CC`/`$LD`, and that is not cosmetic. SunPro make records
+which macros it imported from the environment and re-exports them, with
+their *new* value, every time the makefile reassigns one
+(`cmd/make/lib/mksh/macro.cc:1220`). `Makefile.master` reassigns both `CC`
+and `LD` a little further down, so a recursive `$(MAKE)` -- e.g. the bare
+`$(MAKE) all.targ` that `uts/i86pc/unix/Makefile:199` uses to reach
+`assym.h` -- receives `CC` in its environment as the whole expanded
+`cw --tag target ... --` command line. `command -v $CC` then resolves to
+`cw`, and `cw` is handed itself as its own primary compiler. Names that are
+never make macros are immune to that at any depth of recursion.
+
+Assisted-by: Claude Code (Claude Opus 5)
+---
+ usr/src/Makefile.master | 195 ++++++++++++++++++++++------------------
+ 1 file changed, 110 insertions(+), 85 deletions(-)
+
+diff --git a/usr/src/Makefile.master b/usr/src/Makefile.master
+index 1fcfccae63..9a6324f3f4 100644
+--- a/usr/src/Makefile.master
++++ b/usr/src/Makefile.master
+@@ -37,7 +37,7 @@
+ #
+ # Makefile.master, global definitions for system source
+ #
+-ROOT=		/proto
++ROOT=		/
+ 
+ #
+ # Adjunct root, containing an additional proto area to be searched for headers
+@@ -118,17 +118,9 @@ JAVA_ROOT=	/usr/java
+ # string in the environment to override.
+ BLD_JAVA_11=	$(POUND_SIGN)
+ 
+-GNUC_ROOT=	/usr/gcc/10
+-GCCLIBDIR=	$(GNUC_ROOT)/lib
+-GCCLIBDIR64=	$(GNUC_ROOT)/lib/$(MACH64)
+-
+-NATIVE_GNUC_ROOT=	$(GNUC_ROOT)
+-NATIVE_GCCLIBDIR=	$(NATIVE_GNUC_ROOT)/lib
+-NATIVE_GCCLIBDIR64=	$(NATIVE_GNUC_ROOT)/lib/$(MACH64)
+-
+ DOCBOOK_XSL_ROOT=	/usr/share/sgml/docbook/xsl-stylesheets
+ 
+-RPCGEN=		$(ONBLD_TOOLS)/bin/$(MACH)/rpcgen
++RPCGEN=		rpcgen
+ ELFEXTRACT=	$(ONBLD_TOOLS)/bin/$(MACH)/elfextract
+ MBH_PATCH=	$(ONBLD_TOOLS)/bin/$(MACH)/mbh_patch
+ BTXLD=		$(ONBLD_TOOLS)/bin/$(MACH)/btxld
+@@ -144,51 +136,51 @@ YACC=		$(ONBLD_TOOLS)/bin/$(MACH)/yacc -P \
+ # which ksh93, /bin/sh, and bash will all provide.
+ ECHO=		echo
+ TRUE=		true
+-INS=		$(ONBLD_TOOLS)/bin/$(MACH)/install
+-ED=		/usr/bin/ed
+-SYMLINK=	/usr/bin/ln -s
+-LN=		/usr/bin/ln
+-MKDIR=		/usr/bin/mkdir
+-CHMOD=		/usr/bin/chmod
+-MV=		/usr/bin/mv -f
+-RM=		/usr/bin/rm -f
+-CUT=		/usr/bin/cut
+-NM=		/usr/bin/nm
+-DIFF=		/usr/bin/diff
+-GREP=		/usr/bin/grep
+-EGREP=		/usr/bin/egrep
+-ELFWRAP=	/usr/bin/elfwrap
+-KSH93=		/usr/bin/ksh93
+-SED=		/usr/bin/sed
+-AWK=		/usr/bin/nawk
+-CP=		/usr/bin/cp -f
+-MCS=		/usr/bin/mcs
+-CAT=            /usr/bin/cat
+-ELFDUMP=	/usr/bin/elfdump
+-M4=		/usr/bin/m4
+-GM4=		/usr/bin/gm4
+-STRIP=		/usr/bin/strip
++INS=		install
++ED=		ed
++SYMLINK=	ln -s
++LN=		ln
++MKDIR=		mkdir
++CHMOD=		chmod
++MV=		mv -f
++RM=		rm -f
++CUT=		cut
++NM=		nm
++DIFF=		diff
++GREP=		grep
++EGREP=		egrep
++ELFWRAP=	elfwrap
++KSH93=		ksh93
++SED=		sed
++AWK=		nawk
++CP=		cp -f
++MCS=		mcs
++CAT=            cat
++ELFDUMP=	elfdump
++M4=		m4
++GM4=		gm4
++#STRIP=		strip
+ LEX=		$(ONBLD_TOOLS)/bin/$(MACH)/lex -Y $(ONBLD_TOOLS)/share/lib/ccs
+-FLEX=		/usr/bin/flex
+-BISON=		/usr/bin/bison
++FLEX=		flex
++BISON=		bison
+ CPP=		/usr/lib/cpp
+-SH=		/usr/bin/sh
+-ANSI_CPP=	$(GNUC_ROOT)/bin/cpp
+-JAVAC=		$(JAVA_ROOT)/bin/javac
+-JAVADOC=	$(JAVA_ROOT)/bin/javadoc
+-JAR=		$(JAVA_ROOT)/bin/jar
+-CTFCONVERT=	$(ONBLD_TOOLS)/bin/$(MACH)/ctfconvert
+-CTFDIFF=	$(ONBLD_TOOLS)/bin/$(MACH)/ctfdiff
+-CTFMERGE=	$(ONBLD_TOOLS)/bin/$(MACH)/ctfmerge
+-CTFSTABS=	$(ONBLD_TOOLS)/bin/$(MACH)/ctfstabs
+-CTFSTRIP=	$(ONBLD_TOOLS)/bin/$(MACH)/ctfstrip
+-CHECK_TEST_RUNFILES=	$(ONBLD_TOOLS)/bin/check_test_runfiles -m $(MACH)
+-MANLINK=	$(ONBLD_TOOLS)/bin/$(MACH)/manlink
+-NDRGEN=		$(ONBLD_TOOLS)/bin/$(MACH)/ndrgen
+-GENOFFSETS=	$(ONBLD_TOOLS)/bin/genoffsets
+-XREF=		$(ONBLD_TOOLS)/bin/xref
+-FIND=		/usr/bin/find
+-PERL=		/usr/bin/perl
++SH=		sh
++ANSI_CPP=	cpp
++JAVAC=		javac
++JAVADOC=	javadoc
++JAR=		jar
++CTFCONVERT=	ctfconvert
++CTFDIFF=	ctfdiff
++CTFMERGE=	ctfmerge
++CTFSTABS=	ctfstabs
++CTFSTRIP=	ctfstrip
++CHECK_TEST_RUNFILES=	check_test_runfiles -m $(MACH)
++MANLINK=	manlink
++NDRGEN=		ndrgen
++GENOFFSETS=	genoffsets
++XREF=		xref
++FIND=		find
++PERL=		perl
+ PERL_VERSION=	5.10.0
+ PERL_PKGVERS=	-510
+ PERL_MACH=	i86pc
+@@ -199,7 +191,7 @@ PERL_ARCH64=	$(PERL_MACH)-solaris$(PERL_VARIANT)-64
+ PYTHON3_VERSION=	3.9
+ PYTHON3_PKGVERS=	-39
+ PYTHON3_SUFFIX=
+-PYTHON3=		/usr/bin/python$(PYTHON3_VERSION)
++PYTHON3=		python$(PYTHON3_VERSION)
+ # BUILDPY3b should be overridden in the env file in order to build python
+ # modules with a secondary python to aid migration between versions.
+ BUILDPY3b=		$(POUND_SIGN)
+@@ -207,24 +199,24 @@ PYTHON3b_VERSION=	3.5
+ PYTHON3b_PKGVERS=	-35
+ PYTHON3b_SUFFIX=	m
+ #
+-$(BUILDPY3b)PYTHON3b=	/usr/bin/python$(PYTHON3b_VERSION)
++$(BUILDPY3b)PYTHON3b=	python$(PYTHON3b_VERSION)
+ TOOLS_PYTHON=		$(PYTHON3)
+-SORT=		/usr/bin/sort
+-TR=		/usr/bin/tr
+-TOUCH=		/usr/bin/touch
+-WC=		/usr/bin/wc
+-XARGS=		/usr/bin/xargs
+-ELFEDIT=	/usr/bin/elfedit
++SORT=		sort
++TR=		tr
++TOUCH=		touch
++WC=		wc
++XARGS=		xargs
++ELFEDIT=	elfedit
+ DTRACE=		/usr/sbin/dtrace -xnolibs
+-UNIQ=		/usr/bin/uniq
+-TAR=		/usr/bin/tar
++UNIQ=		uniq
++TAR=		tar
+ ASTBINDIR=	/usr/ast/bin
+ MSGCC=		$(ASTBINDIR)/msgcc
+-MSGFMT=		/usr/bin/msgfmt -s
++MSGFMT=		msgfmt -s
+ LCDEF=		$(ONBLD_TOOLS)/bin/$(MACH)/localedef
+ TIC=		$(ONBLD_TOOLS)/bin/$(MACH)/tic
+ ZIC=		$(ONBLD_TOOLS)/bin/$(MACH)/zic
+-OPENSSL=	/usr/bin/openssl
++OPENSSL=	openssl
+ CPCGEN=		$(ONBLD_TOOLS)/bin/$(MACH)/cpcgen
+ GENICONVTBL=	$(ONBLD_TOOLS)/bin/$(MACH)/geniconvtbl
+ SVCCONFIGD=	$(ONBLD_TOOLS)/bin/$(MACH)/svc.configd
+@@ -339,8 +331,7 @@ CCNOAUTOINLINE= \
+ 	-_gcc=-fno-inline-small-functions \
+ 	-_gcc=-fno-inline-functions-called-once \
+ 	-_gcc=-fno-ipa-cp \
+-	-_gcc=-fno-ipa-icf \
+-	-_gcc=-fno-clone-functions
++	-_gcc=-fno-ipa-icf
+ 
+ # GCC may put functions in different named sub-sections of .text based on
+ # their presumed calling frequency.  At least in the kernel, where we actually
+@@ -436,7 +427,11 @@ STAND_FLAGS_64 = $($(MACH64)_STAND_FLAGS)
+ 
+ #
+ # turn warnings into errors (C)
+-CERRWARN = -errtags=yes -errwarn=%all
++#
++# Cross-building against a different compiler and libc headers than the ones
++# illumos itself uses turns up warnings the in-tree build never sees, so
++# -errwarn=%all is dropped here.
++CERRWARN = -errtags=yes
+ 
+ CERRWARN += -_gcc=-Wno-missing-braces
+ CERRWARN += -_gcc=-Wno-sign-compare
+@@ -453,7 +448,7 @@ include $(SRC)/Makefile.smatch
+ 
+ #
+ # turn warnings into errors (C++)
+-CCERRWARN = -errtags=yes -errwarn=%all
++CCERRWARN = -errtags=yes
+ 
+ CCERRWARN += -_gcc=-Wno-missing-braces
+ CCERRWARN += -_gcc=-Wno-sign-compare
+@@ -611,9 +606,9 @@ DCMSGDOMAINPOFILE = $(DCMSGDOMAIN)/$(DCFILE:.dc=.po)
+ 
+ CLOBBERFILES += $(POFILE) $(POFILES)
+ COMPILE.cpp= $(CC) -E -C $(CFLAGS) $(CPPFLAGS)
+-XGETTEXT= /usr/bin/xgettext
++XGETTEXT= xgettext
+ XGETFLAGS= -c TRANSLATION_NOTE
+-GNUXGETTEXT= /usr/gnu/bin/xgettext
++GNUXGETTEXT= xgettext
+ GNUXGETFLAGS= --add-comments=TRANSLATION_NOTE --keyword=_ \
+ 	--strict --no-location --omit-header
+ BUILD.po= $(XGETTEXT) $(XGETFLAGS) -d $(<F) $<.i ;\
+@@ -745,34 +740,64 @@ NATIVE_MACH64=	$(MACH64)
+ # environment.
+ GNU_ROOT=		/usr
+ 
+-PRIMARY_CC=	gcc10,$(GNUC_ROOT)/bin/gcc,gnu
+-PRIMARY_CCC=	gcc10,$(GNUC_ROOT)/bin/g++,gnu
++# Note that these read *environment* variables, not make macros.
++#
++# The names are deliberately not $CC/$LD. SunPro make remembers which macros
++# it imported from the environment, and re-exports them with their new value
++# whenever the makefile reassigns them (lib/mksh/macro.cc:1220, "For
++# environment variables we also set the environment value each time"). Since
++# this file goes on to define the macros CC and LD (below, "Makefile.master.64
++# overrides these settings"), a recursive $(MAKE) inherits $CC in its
++# environment as the whole expanded "cw --tag target ... --" command line --
++# and `command -v $CC` then resolves to cw, which cw is duly handed as its own
++# primary compiler. $ILLUMOS_CC and $ILLUMOS_LD are never make macros, so they
++# survive any depth of recursion unchanged.
++PRIMARY_CC_PATH:sh = command -v "$ILLUMOS_CC" 2>/dev/null || :
++PRIMARY_CCC_PATH:sh = command -v "$CXX" 2>/dev/null || :
++
++PRIMARY_CC=	gcc10,$(PRIMARY_CC_PATH),gnu
++PRIMARY_CCC=	gcc10,$(PRIMARY_CCC_PATH),gnu
+ 
+ CW_CC_COMPILERS=	$(PRIMARY_CC:%=--primary %) $(SHADOW_CCS:%=--shadow %)
+ CW_CCC_COMPILERS=	$(PRIMARY_CCC:%=--primary %) $(SHADOW_CCCS:%=--shadow %)
+ 
+ CW_LINKER=		--linker $(LD)
+ 
++# The NATIVE* compilers build programs that run on the machine doing the
++# build, not on the target. When cross-compiling these are different
++# compilers, so they come from $CC_FOR_BUILD/$CXX_FOR_BUILD rather than
++# $CC/$CXX. They fall back to the target compiler, which is correct for a
++# native build where the two coincide.
++NATIVE_PRIMARY_CC_PATH:sh = command -v "$CC_FOR_BUILD" 2>/dev/null || command -v "$ILLUMOS_CC" 2>/dev/null || :
++NATIVE_PRIMARY_CCC_PATH:sh = command -v "$CXX_FOR_BUILD" 2>/dev/null || command -v "$CXX" 2>/dev/null || :
++
++NATIVE_PRIMARY_CC=	gcc10,$(NATIVE_PRIMARY_CC_PATH),gnu
++NATIVE_PRIMARY_CCC=	gcc10,$(NATIVE_PRIMARY_CCC_PATH),gnu
++
++CW_NATIVE_CC_COMPILERS=		$(NATIVE_PRIMARY_CC:%=--primary %)
++CW_NATIVE_CCC_COMPILERS=	$(NATIVE_PRIMARY_CCC:%=--primary %)
++
++
+ # Specify platform compiler versions for languages
+ # that we use (currently only c and c++).
+ #
+-CW=			$(ONBLD_TOOLS)/bin/$(MACH)/cw
+-NATIVE_CW=		$(ONBLD_TOOLS)/bin/$(MACH)/cw
++CW=			cw
++NATIVE_CW=		cw
+ 
+ BUILD_CC=		$(CW) $(CWOPTS) --tag target $(CW_LINKER) \
+ 	$(CW_CC_COMPILERS) --
+ BUILD_CCC=		$(CW) $(CWOPTS) --tag target -C $(CW_LINKER) \
+ 	$(CW_CCC_COMPILERS) --
+-BUILD_CPP=		/usr/lib/cpp
+-BUILD_LD=		$(ONBLD_TOOLS)/bin/$(MACH64)/ld
++BUILD_CPP=		$(BUILD_CC) -E
++BUILD_LD:sh=		command -v "$ILLUMOS_LD" 2>/dev/null || :
+ BUILD_AS=		$(BUILD_CC)
+ 
+-NATIVEBUILD_CC=		$(NATIVE_CW) $(CWOPTS) --tag native $(CW_LINKER) \
+-	$(CW_CC_COMPILERS) --
+-NATIVEBUILD_CCC=	$(NATIVE_CW) $(CWOPTS) --tag native -C $(CW_LINKER) \
+-	$(CW_CCC_COMPILERS) --
+-NATIVEBUILD_CPP=	/usr/lib/cpp
+-NATIVEBUILD_LD=		$(ONBLD_TOOLS)/bin/$(MACH64)/ld
++NATIVEBUILD_CC=		$(NATIVE_CW) $(CWOPTS) --tag native \
++	$(CW_NATIVE_CC_COMPILERS) --
++NATIVEBUILD_CCC=	$(NATIVE_CW) $(CWOPTS) --tag native -C \
++	$(CW_NATIVE_CCC_COMPILERS) --
++NATIVEBUILD_CPP=	$(NATIVEBUILD_CC) -E
++NATIVEBUILD_LD:sh=		command -v "$LD_FOR_BUILD" 2>/dev/null || :
+ NATIVEBUILD_AS=		$(NATIVEBUILD_CC)
+ 
+ $(MACH)_CC=		$(BUILD_CC)
+@@ -959,8 +984,8 @@ BOOTBANNER3=
+ BOOTBANNER4=
+ BOOTBANNER5=
+ 
+-PROCESS_COMMENT=  @?${MCS} -d -a $(RELEASE_CM) -a $(DEV_CM)
+-$(RELEASE_BUILD)PROCESS_COMMENT=   @?${MCS} -d -a $(RELEASE_CM)
++PROCESS_COMMENT=  :
++#$(RELEASE_BUILD)PROCESS_COMMENT=   @?${MCS} -d -a $(RELEASE_CM)
+ 
+ STRIP_STABS=			   $(STRIP) -x $@
+ $(SRCDBGBLD)STRIP_STABS=	   :

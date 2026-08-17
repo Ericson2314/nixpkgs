@@ -1,0 +1,1082 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Sat, 8 Aug 2026 02:22:51 -0400
+Subject: [PATCH] tools/ctf: build the CTF tools on a non-illumos host
+
+`unix` links against `libgenunix.so`, and `genunix` cannot be built without
+CTF, so `ctfconvert`/`ctfmerge` gate the entire kernel path. They are
+build-host programs, so -- like `tools/sgs` -- they have to be made to build
+against a foreign libc and a foreign link-editor.
+
+- `Makefile.ctf`: the `-nostdinc` plus explicit `-I/usr/include` dance only
+  makes sense when the host's `/usr/include` *is* illumos'. Drop it, along with
+  `$(NATIVE_ADJUNCT)/include`, which names the same directory, and let the host
+  compiler find its own libc headers. `$(SRC)/uts/common` moves out entirely,
+  to an `-idirafter` (below). `$(SRC)/lib/libctf/common` is added, since a
+  foreign host has no installed `<libctf.h>` to fall back on.
+
+- `Makefile.ctf.native` (new): empty the macros that feed illumos-`ld`-only
+  options and mapfiles into `LDFLAGS`/`DYNFLAGS`, reduce the CTF/`mcs`/`strip`
+  post-processing to no-ops, name `install.bin` rather than `install` (a
+  foreign host has a coreutils `install`, which has no `-f`), and rebind the
+  compilation macros to their 64-bit forms -- these tools live in `$(MACH)`
+  (i.e. `i386`) directories, and a cross-build host is not required to have a
+  32-bit libc.
+
+  It also fixes the header search order. `$(SRC)/uts/common` holds both headers
+  illumos does not ship (`<sys/ctf.h>`, `<sys/ctf_api.h>`, `<sys/list.h>`) and
+  headers every libc has (`<sys/types.h>`); only the first kind is wanted, so
+  it becomes an `-idirafter` -- searched *behind* the host's own directories,
+  where an `-I` would have shadowed them. `tools/ctf/native` goes ahead of
+  them, for the handful of headers where the host has an opinion and it is the
+  wrong one.
+
+  This is deliberately a separate file from `Makefile.ctf`. That one is
+  included early, and each leaf makefile then includes `Makefile.lib` /
+  `Makefile.tools` again, which re-runs `Makefile.master` and would undo every
+  assignment. `Makefile.ctf.native` is included last instead.
+
+- `tools/ctf/native/` (new): the shims. `native_compat.h` supplies the `_t`
+  integer spellings, `boolean_t` and the `sysmacros.h` arithmetic that illumos'
+  `<sys/types.h>` would have given the headers above. `thread.h`/`synch.h` map
+  the Solaris threads API onto pthreads -- using illumos' own is not an option,
+  they drag in `<sys/int_types.h>` and `<sys/time_impl.h>`, which collide
+  head-on with the host libc. `sys/elf.h` forwards to the host's `<elf.h>`;
+  glibc ships a `<sys/elf.h>` whose entire content is an `#error`.
+  `native_support.c` provides `assfail()`, `assfail3()`, `strtonum()` and
+  `getexecname()`.
+
+- `common/ctf_headers.h`: pull `native_compat.h` in from the top, under
+  `-DCTF_NATIVE_COMPAT`. `-include` options are processed in the order given
+  and the leaf makefiles force-include this header themselves, so the shims
+  cannot get ahead of it from the command line.
+
+- `stabs/Makefile.com`: same, for `ctfstabs`, which $(OFFSETS_CREATE) needs.
+
+- `dwarf/`, `libctf/`, `ctfconvert/`, `ctfmerge/`: `-R` is illumos `ld`'s
+  spelling of what GNU `ld` calls `-rpath`. `libctf` additionally builds in
+  `common/avl/avl.c` rather than linking `-lavl`, which is illumos', and
+  `native_support.c`, which the two programs then pick up from it.
+
+- `lib/libctf/common/ctf_lib.c`: two things that are only wrong off illumos.
+
+  `#pragma init` is a Sun/illumos compiler directive; gcc on a foreign host
+  ignores it -- silently, and catastrophically. `_PAGEMASK` would stay 0, so
+  `ctf_sect_munmap()`'s `addr & ~_PAGEMASK` would be the whole address and it
+  would `munmap()` from 0 to the end of the section, taking the heap with it.
+  Add `__attribute__((constructor))` under the same `-DCTF_NATIVE_COMPAT`.
+
+  The decompressor is `dlopen()`ed by absolute path, `/usr/lib/64/libz.so.1`,
+  which does not exist here; `-DCTF_ZLIB_PATH` lets the build name it.
+  `$LIBCTF_DECOMPRESSOR` still overrides at run time either way.
+
+- `lib/libctf/common/ctf_elfwrite.c`: elfutils' libelf checks, in
+  `elf_update()`, that every section with a non-zero, non-one `sh_entsize`
+  has an `sh_size` that is a multiple of it -- including sections it is only
+  copying through. illumos' link-editor emits `.rodata` as `SHF_MERGE` with
+  `sh_entsize` 8 and a size that is not a multiple of 8, so writing merged
+  CTF into `libc.so.1` failed with `ELF_E_INVALID_SHENTSIZE`, which libctf
+  reports as the opaque "Elf library failure". Set `ELF_F_PERMISSIVE`, the
+  escape hatch elfutils provides for exactly this; illumos' own libelf has
+  no such check. Relocatable kernel modules never hit it, which is why the
+  kernel build was unaffected.
+
+The vendored libdwarf needs no source changes: its `config.h` is autoconf
+output whose only illumos-specific entries (`HAVE_SYS_ELF_386_H` and friends)
+are never tested, and the one place that includes `<sys/elf_386.h>`,
+`pro_incl.h`, guards it with `#if defined(sun)`.
+
+Assisted-by: Claude Code (Claude Opus 5)
+---
+ usr/src/lib/libctf/common/ctf_elfwrite.c  |  20 +++
+ usr/src/lib/libctf/common/ctf_lib.c       |  20 ++-
+ usr/src/tools/ctf/Makefile.ctf            |  14 +-
+ usr/src/tools/ctf/Makefile.ctf.native     | 138 +++++++++++++++++
+ usr/src/tools/ctf/common/ctf_headers.h    |  11 ++
+ usr/src/tools/ctf/ctfconvert/Makefile.com |   9 +-
+ usr/src/tools/ctf/ctfmerge/Makefile.com   |   9 +-
+ usr/src/tools/ctf/dwarf/Makefile.com      |   9 +-
+ usr/src/tools/ctf/libctf/Makefile.com     |  35 ++++-
+ usr/src/tools/ctf/native/native_compat.h  | 123 ++++++++++++++++
+ usr/src/tools/ctf/native/native_support.c | 124 ++++++++++++++++
+ usr/src/tools/ctf/native/synch.h          | 172 ++++++++++++++++++++++
+ usr/src/tools/ctf/native/sys/elf.h        |  31 ++++
+ usr/src/tools/ctf/native/thread.h         |  83 +++++++++++
+ usr/src/tools/ctf/stabs/Makefile.com      |   7 +
+ 15 files changed, 794 insertions(+), 11 deletions(-)
+ create mode 100644 usr/src/tools/ctf/Makefile.ctf.native
+ create mode 100644 usr/src/tools/ctf/native/native_compat.h
+ create mode 100644 usr/src/tools/ctf/native/native_support.c
+ create mode 100644 usr/src/tools/ctf/native/synch.h
+ create mode 100644 usr/src/tools/ctf/native/sys/elf.h
+ create mode 100644 usr/src/tools/ctf/native/thread.h
+
+diff --git a/usr/src/lib/libctf/common/ctf_elfwrite.c b/usr/src/lib/libctf/common/ctf_elfwrite.c
+index dfefbf6861..629f9b7a0d 100644
+--- a/usr/src/lib/libctf/common/ctf_elfwrite.c
++++ b/usr/src/lib/libctf/common/ctf_elfwrite.c
+@@ -68,6 +68,26 @@ ctf_write_elf(ctf_file_t *fp, Elf *src, Elf *dst, int flags)
+ 		goto out;
+ 	}
+ 
++#ifdef CTF_NATIVE_COMPAT
++	/*
++	 * elfutils' libelf validates, in elf_update(), that every section with
++	 * a non-zero, non-one sh_entsize has an sh_size that is a multiple of
++	 * it -- and it applies that to sections it is merely copying through,
++	 * not just to ones it has been asked to lay out.  illumos' link-editor
++	 * emits .rodata as SHF_MERGE with sh_entsize 8 while letting sh_size
++	 * be whatever the merged contents came to, so libc.so.1 trips the
++	 * check and the whole write fails with ELF_E_INVALID_SHENTSIZE, which
++	 * libctf reports as the far less helpful "Elf library failure".
++	 *
++	 * ELF_F_PERMISSIVE is exactly the escape hatch elfutils provides for
++	 * this: it suppresses the consistency checks on data libelf did not
++	 * generate itself.  Nothing here depends on those sections' contents,
++	 * so there is nothing to get wrong.  illumos' own libelf never had the
++	 * check, which is why this is needed only for the foreign-host build.
++	 */
++	(void) elf_flagelf(dst, ELF_C_SET, ELF_F_PERMISSIVE);
++#endif
++
+ 	if (gelf_newehdr(dst, gelf_getclass(src)) == 0) {
+ 		ret = ctf_set_errno(fp, ECTF_ELF);
+ 		goto out;
+diff --git a/usr/src/lib/libctf/common/ctf_lib.c b/usr/src/lib/libctf/common/ctf_lib.c
+index 4cb5ce0ac5..a7a153da4d 100644
+--- a/usr/src/lib/libctf/common/ctf_lib.c
++++ b/usr/src/lib/libctf/common/ctf_lib.c
+@@ -39,7 +39,14 @@
+ #include <zlib.h>
+ #include <sys/debug.h>
+ 
+-#ifdef _LP64
++/*
++ * The decompression library is dlopen()ed by absolute path.  On a host that is
++ * not illumos there is no /usr/lib/64 to find it in, so let the build name it;
++ * $LIBCTF_DECOMPRESSOR still overrides at run time either way.
++ */
++#ifdef	CTF_ZLIB_PATH
++static const char *_libctf_zlib = CTF_ZLIB_PATH;
++#elif defined(_LP64)
+ static const char *_libctf_zlib = "/usr/lib/64/libz.so.1";
+ #else
+ static const char *_libctf_zlib = "/usr/lib/libz.so.1";
+@@ -69,7 +76,18 @@ typedef struct ctf_zdata {
+ 	z_stream	czd_zstr;
+ } ctf_zdata_t;
+ 
++/*
++ * `#pragma init' is a Sun/illumos compiler directive.  gcc on a foreign host
++ * ignores it -- silently, and catastrophically: _PAGEMASK would stay 0, so
++ * ctf_sect_munmap()'s `addr & ~_PAGEMASK' would be the whole address and it
++ * would munmap() from 0 to the end of the section, taking the heap with it.
++ * -DCTF_NATIVE_COMPAT is set only by tools/ctf/Makefile.ctf.native; on illumos
++ * the pragma is honoured and nothing changes.
++ */
+ #pragma init(_libctf_init)
++#ifdef	CTF_NATIVE_COMPAT
++__attribute__((__constructor__))
++#endif
+ void
+ _libctf_init(void)
+ {
+diff --git a/usr/src/tools/ctf/Makefile.ctf b/usr/src/tools/ctf/Makefile.ctf
+index c07310eddf..b764c65946 100644
+--- a/usr/src/tools/ctf/Makefile.ctf
++++ b/usr/src/tools/ctf/Makefile.ctf
+@@ -36,14 +36,20 @@ include ../../../Makefile.tools
+ # in $(SRC)/tools/ctf/common/ctf_headers.h.
+ #
+ 
++# The `-nostdinc' plus explicit `-I/usr/include' dance only makes sense when
++# the host's /usr/include *is* illumos'.  On a foreign host it is not, and the
++# host compiler has to be left to find its own libc headers -- so both are
++# dropped, along with $(NATIVE_ADJUNCT)/include, which names the same place.
++#
++# $(SRC)/uts/common moves to Makefile.ctf.native, as an -idirafter: any -I is
++# searched ahead of the host's own directories, where illumos' <sys/types.h>
++# would shadow the host's.
++#
+ HDRDIRS= \
+-	-_gcc=-nostdinc \
+ 	-I../../common \
+ 	-I$(SRC) \
+-	-I/usr/include \
+-	-I$(SRC)/uts/common \
+ 	-I$(SRC)/common/ctf \
+-	-I$(NATIVE_ADJUNCT)/include
++	-I$(SRC)/lib/libctf/common
+ 
+ CPPFLAGS += $(HDRDIRS)
+ CFLAGS += $(CCVERBOSE)
+diff --git a/usr/src/tools/ctf/Makefile.ctf.native b/usr/src/tools/ctf/Makefile.ctf.native
+new file mode 100644
+index 0000000000..5be6d11259
+--- /dev/null
++++ b/usr/src/tools/ctf/Makefile.ctf.native
+@@ -0,0 +1,138 @@
++#
++# This file and its contents are supplied under the terms of the
++# Common Development and Distribution License ("CDDL"), version 1.0.
++# You may only use this file in accordance with the terms of version
++# 1.0 of the CDDL.
++#
++# A full copy of the text of the CDDL should have accompanied this
++# source.  A copy of the CDDL is also available via the Internet at
++# http://www.illumos.org/license/CDDL.
++#
++
++#
++# What it takes to build the CTF tools on a host that is not illumos.  This is
++# the sibling of tools/sgs/Makefile.com; see the comments there.
++#
++# Unlike tools/sgs -- whose entire purpose is to produce an illumos ld -- these
++# tools have no reason to be linked by one, so the host link-editor and the
++# host's libelf are used throughout.
++#
++# This is deliberately a separate file from Makefile.ctf, and is included
++# *last* by each leaf makefile.  Makefile.ctf is included early, and the leaf
++# makefiles then include Makefile.lib / Makefile.tools again -- which re-runs
++# Makefile.master and would undo every assignment below.
++#
++
++#
++# The force-include covers the translation units that reach illumos headers on
++# their own (libdwarf, avl.c, list.c, mergeq).  -DCTF_NATIVE_COMPAT covers the
++# rest: they are force-included with common/ctf_headers.h by their own
++# makefiles, and -include options are processed in the order given, so the
++# shims have to be pulled in from inside that header to land ahead of it.
++#
++CPPFLAGS +=	-include $(SRC)/tools/ctf/native/native_compat.h
++CPPFLAGS +=	-DCTF_NATIVE_COMPAT
++
++#
++# Ahead of the host's own directories, unlike the -idirafter below: this holds
++# the handful of headers where the host has an opinion and it is the wrong one.
++#
++CPPFLAGS +=	-I$(SRC)/tools/ctf/native
++
++#
++# $(SRC)/uts/common holds both headers illumos does not ship (<sys/ctf.h>,
++# <sys/ctf_api.h>, <sys/list.h>) and headers every libc has (<sys/types.h>).
++# Only the first kind is wanted.  -idirafter searches it *after* the host's own
++# directories, so the host wins wherever it has an opinion and illumos supplies
++# the rest.  This is why Makefile.ctf no longer lists it as a -I.
++#
++CPPFLAGS +=	-idirafter$(SRC)/uts/common
++
++#
++# ...and likewise $(SRC)/head, for the handful of userland headers illumos
++# ships that the host has no equivalent of, <macros.h> among them.
++#
++CPPFLAGS +=	-idirafter$(SRC)/head
++
++#
++# $(INS.file) passes `-f <dir>', which is illumos install(1)'s spelling and not
++# GNU coreutils'.  A foreign host has a coreutils `install' of its own, and
++# which one a bare `install' resolves to depends on how the build environment
++# happens to order its PATH.  Name the unambiguous one.
++#
++INS=		install.bin
++
++BDIRECT=
++BLOCAL=
++BREDUCE=
++ZDEFS=
++ZDIRECT=
++ZIGNORE=
++ZINTERPOSE=
++ZLAZYLOAD=
++ZLOADFLTR=
++ZNOLAZYLOAD=
++ZNOLDYNSYM=
++ZRECORD=
++ZREDLOCSYM=
++ZTEXT=
++ZVERBOSE=
++ZASSERTDEFLIB=
++ZGUIDANCE=
++ZFATALWARNINGS=
++ZASLR=
++LDCHECKS=
++NATIVE_LIBS=
++
++# cw turns $(SAVEARGS) into gcc's -msave-args, which only illumos' gcc has.
++SAVEARGS=
++
++#
++# illumos mapfiles are precisely what a foreign link-editor cannot read.  For
++# a build tool the only thing they buy is symbol scoping, so drop them.
++#
++MAPFILE.NED=
++MAPFILE.PGA=
++MAPFILE.NES=
++MAPFILE.FLT=
++MAPFILE.NGB=
++MAPFILE.INT=
++MAPFILES=
++DYNFLAGS_MAPFILES=
++VERSREF=
++
++#
++# There is no CTF, no mcs and no strip for the CTF tools themselves -- they are
++# what *produces* CTF.  Reduce every post-processing step to a no-op, and to
++# `:' rather than nothing, since the shared makefiles splice these into
++# compound `a ; b' command lines.
++#
++CTFCONVERT_POST=	:
++CTFMERGE_POST=		:
++CTFCONVERT_O=		:
++POST_PROCESS_O=		:
++POST_PROCESS_S_O=	:
++POST_PROCESS_CC_O=	:
++POST_PROCESS_A=		:
++POST_PROCESS_SO=	:
++POST_PROCESS=		:
++PROCESS_CTF=		:
++STRIP_STABS=		:
++
++#
++# These tools live in $(MACH) (i.e. i386) directories, which on illumos means a
++# 32-bit build.  A cross-build host is not required to have a 32-bit libc, so
++# rebind the compilation macros to their 64-bit forms.  Makefile.native has to
++# come after Makefile.master.64 so that the *native* 64-bit flags win; this is
++# the same ordering tools/sgs/ld/Makefile uses.
++#
++include $(SRC)/Makefile.master.64
++include $(SRC)/Makefile.native
++
++#
++# Restated rather than patched up piecemeal: Makefile.lib builds DYNFLAGS out
++# of the macros emptied above, and the leaf makefiles then append illumos ld's
++# `-R' (which GNU ld spells `-rpath').  $$ORIGIN survives because the loader,
++# not the link-editor, expands it.
++#
++DYNFLAGS=	$(HSONAME) -Wl,-rpath,'$$ORIGIN/../../lib/$(MACH)'
+diff --git a/usr/src/tools/ctf/common/ctf_headers.h b/usr/src/tools/ctf/common/ctf_headers.h
+index 572fb03d4d..409559a478 100644
+--- a/usr/src/tools/ctf/common/ctf_headers.h
++++ b/usr/src/tools/ctf/common/ctf_headers.h
+@@ -70,6 +70,17 @@
+  * kernel, and we can't easily pick it up otherwise.
+  */
+ 
++/*
++ * On a host whose libc is not illumos', the headers below want the "_t"
++ * integer spellings and boolean_t that illumos' <sys/types.h> would have
++ * supplied.  This has to come first, ahead of them.  -DCTF_NATIVE_COMPAT is
++ * set only by tools/ctf/Makefile.ctf.native; on illumos the real headers
++ * already provide all of it.
++ */
++#ifdef	CTF_NATIVE_COMPAT
++#include "../native/native_compat.h"
++#endif
++
+ #include <uts/common/sys/ccompile.h>
+ #include <uts/common/sys/ctf.h>
+ #include <uts/common/sys/ctf_api.h>
+diff --git a/usr/src/tools/ctf/ctfconvert/Makefile.com b/usr/src/tools/ctf/ctfconvert/Makefile.com
+index dd79ce02b0..277a9a1933 100644
+--- a/usr/src/tools/ctf/ctfconvert/Makefile.com
++++ b/usr/src/tools/ctf/ctfconvert/Makefile.com
+@@ -20,7 +20,7 @@ NATIVE_LIBS += libelf.so libc.so
+ 
+ LDFLAGS = \
+ 	-L$(ROOTONBLDLIBMACH) \
+-	'-R$$ORIGIN/../../lib/$(MACH)' \
++	-Wl,-rpath,'$$ORIGIN/../../lib/$(MACH)' \
+ 	$(BDIRECT) $(ZLAZYLOAD)
+ 
+ CPPFLAGS += -include ../../common/ctf_headers.h
+@@ -43,4 +43,11 @@ install: $(ROOTONBLDMACHPROG)
+ clean:
+ 	$(RM) $(OBJS) $(LINTFILES)
+ 
++#
++# -R is illumos ld's spelling of what GNU ld calls -rpath.  Makefile.ctf.native
++# also empties the illumos-ld-only macros that feed LDFLAGS.  It must come
++# after every include that pulls in Makefile.master.
++#
++include ../../Makefile.ctf.native
++
+ include $(SRC)/tools/Makefile.targ
+diff --git a/usr/src/tools/ctf/ctfmerge/Makefile.com b/usr/src/tools/ctf/ctfmerge/Makefile.com
+index 84eb3c5969..fe43843801 100644
+--- a/usr/src/tools/ctf/ctfmerge/Makefile.com
++++ b/usr/src/tools/ctf/ctfmerge/Makefile.com
+@@ -19,7 +19,7 @@ LDLIBS += -lctf -lelf
+ 
+ LDFLAGS += \
+ 	-L$(ROOTONBLDLIBMACH) \
+-	'-R$$ORIGIN/../../lib/$(MACH)' \
++	-Wl,-rpath,'$$ORIGIN/../../lib/$(MACH)' \
+ 
+ NATIVE_LIBS += libelf.so
+ CPPFLAGS += -include ../../common/ctf_headers.h
+@@ -44,4 +44,11 @@ install: $(ROOTONBLDMACHPROG)
+ clean:
+ 	$(RM) $(OBJS) $(LINTFILES)
+ 
++#
++# -R is illumos ld's spelling of what GNU ld calls -rpath.  Makefile.ctf.native
++# also empties the illumos-ld-only macros that feed LDFLAGS.  It must come
++# after every include that pulls in Makefile.master.
++#
++include ../../Makefile.ctf.native
++
+ include $(SRC)/tools/Makefile.targ
+diff --git a/usr/src/tools/ctf/dwarf/Makefile.com b/usr/src/tools/ctf/dwarf/Makefile.com
+index bcee5f0e9d..7d7589e435 100644
+--- a/usr/src/tools/ctf/dwarf/Makefile.com
++++ b/usr/src/tools/ctf/dwarf/Makefile.com
+@@ -103,10 +103,17 @@ CERRWARN +=	-_gcc=-Wno-implicit-function-declaration
+ # libdwarf not clean
+ SMATCH=off
+ 
+-DYNFLAGS += '-R$$ORIGIN/../../lib/$(MACH)'
+ LDLIBS = -lelf -lc -lz
+ NATIVE_LIBS += libelf.so libc.so libz.so
+ 
++#
++# The `-R' that used to be appended to DYNFLAGS here is restated as GNU ld's
++# -rpath by Makefile.ctf.native, which also empties the illumos-ld-only macros
++# Makefile.lib feeds into DYNFLAGS.  It has to be included after Makefile.lib
++# and Makefile.tools above, both of which pull in Makefile.master.
++#
++include ../../Makefile.ctf.native
++
+ .KEEP_STATE:
+ .PARALLEL:
+ 
+diff --git a/usr/src/tools/ctf/libctf/Makefile.com b/usr/src/tools/ctf/libctf/Makefile.com
+index 60fd36ee9c..fcc0fc0160 100644
+--- a/usr/src/tools/ctf/libctf/Makefile.com
++++ b/usr/src/tools/ctf/libctf/Makefile.com
+@@ -24,9 +24,30 @@ CPPFLAGS +=	-I$(SRC)/lib/libctf/common/ \
+ 		-include ../../common/ctf_headers.h \
+ 		-DCTF_OLD_VERSIONS \
+ 		-DCTF_TOOLS_BUILD
+-LDLIBS += -lc -lelf -L$(ROOTONBLDLIBMACH) -ldwarf -lavl
+-NATIVE_LIBS += libelf.so libavl.so libc.so
+-DYNFLAGS += '-R$$ORIGIN/../../lib/$(MACH)'
++#
++# -lavl is illumos'.  Only ctf_dwarf.c uses the AVL interfaces, and the
++# implementation is plain C in $(SRC)/common/avl, so build it in rather than
++# ask a foreign host for a library it does not have.
++#
++#
++# ...and, since this library is what ctfconvert and ctfmerge link against, the
++# stand-ins for the libc entry points a foreign host does not have.  Nothing
++# scopes libctf's symbols here (MAPFILES is empty), so the programs pick these
++# up from it too.
++#
++OBJECTS +=	native_support.o
++
++OBJECTS +=	avl.o
++LDLIBS += -lc -lelf -L$(ROOTONBLDLIBMACH) -ldwarf
++NATIVE_LIBS += libelf.so libc.so
++
++pics/native_support.o:	$(SRC)/tools/ctf/native/native_support.c
++	$(COMPILE.c) $(C_PICFLAGS) -o $@ $(SRC)/tools/ctf/native/native_support.c
++	$(POST_PROCESS_O)
++
++pics/avl.o:	$(SRC)/common/avl/avl.c
++	$(COMPILE.c) $(C_PICFLAGS) -o $@ $(SRC)/common/avl/avl.c
++	$(POST_PROCESS_O)
+ 
+ # As a bootstrapping issue, we can't use the real mapfile because we build
+ # early in tools and thus don't have support for assertions.
+@@ -51,5 +72,13 @@ $(ROOTONBLDLIBMACH)/$(LIBLINKS): $(ROOTONBLDLIBMACH)/$(LIBLINKS)$(VERS)
+ $(DYNLIB) := CTFMERGE_POST= :
+ CTFCONVERT_O= :
+ 
++#
++# The `-R' that used to be appended to DYNFLAGS here is restated as GNU ld's
++# -rpath by Makefile.ctf.native, which also empties the illumos-ld-only macros
++# Makefile.lib feeds into DYNFLAGS.  It must come after every include that
++# pulls in Makefile.master, which would otherwise undo it.
++#
++include ../../Makefile.ctf.native
++
+ include $(SRC)/lib/Makefile.targ
+ include $(SRC)/lib/libctf/Makefile.shared.targ
+diff --git a/usr/src/tools/ctf/native/native_compat.h b/usr/src/tools/ctf/native/native_compat.h
+new file mode 100644
+index 0000000000..0e88de6d32
+--- /dev/null
++++ b/usr/src/tools/ctf/native/native_compat.h
+@@ -0,0 +1,123 @@
++/*
++ * This file and its contents are supplied under the terms of the
++ * Common Development and Distribution License ("CDDL"), version 1.0.
++ * You may only use this file in accordance with the terms of version
++ * 1.0 of the CDDL.
++ *
++ * A full copy of the text of the CDDL should have accompanied this
++ * source.  A copy of the CDDL is also available via the Internet at
++ * http://www.illumos.org/license/CDDL.
++ */
++
++/*
++ * Compatibility shims for building the CTF tools on a host whose libc is not
++ * illumos'.  Force-included (via -include) from tools/ctf/Makefile.ctf.native,
++ * so it must be safe to include before anything else.
++ *
++ * The CTF sources reach for illumos headers that illumos does not ship --
++ * <sys/ctf.h>, <sys/ctf_api.h>, <sys/list.h>, <sys/avl.h> -- which
++ * Makefile.ctf.native supplies with an -idirafter on $(SRC)/uts/common.  Those
++ * headers expect illumos' <sys/types.h> to have already supplied the "_t"
++ * spellings of the base integer types; a foreign libc supplies none of it.
++ *
++ * Nothing here is illumos-specific behaviour.  It is purely the vocabulary the
++ * illumos headers assume.  Compare tools/sgs/native/native_compat.h, which
++ * does the same job for the native link-editor.
++ */
++
++#ifndef	_CTF_NATIVE_COMPAT_H
++#define	_CTF_NATIVE_COMPAT_H
++
++/*
++ * <sys/ctf_api.h> uses off64_t, which glibc only declares under this feature
++ * test macro.  It has to be defined before any libc header is included, which
++ * is why this file is force-included first.
++ */
++#ifndef	_LARGEFILE64_SOURCE
++#define	_LARGEFILE64_SOURCE
++#endif
++
++/*
++ * On illumos every sys header reaches <sys/isa_defs.h> by way of
++ * <sys/param.h>.  Here <sys/param.h> is the host's, so the illumos headers
++ * would never see _BIT_FIELDS_LTOH, _LP64 and friends.  Pull it in up front.
++ * <sys/ccompile.h> likewise supplies __GNU_INLINE and the __sun_attr__ family.
++ */
++#include <sys/isa_defs.h>
++#include <sys/ccompile.h>
++
++#include <stddef.h>
++/*
++ * illumos' <sys/types.h> declares the <stdint.h> types; glibc's does not.
++ * libdwarf (dwarf_frame2.c, among others) includes only <sys/types.h> and then
++ * uses uintptr_t.
++ */
++#include <stdint.h>
++#include <sys/types.h>
++/*
++ * illumos' <strings.h> pulls in <string.h>; the host's does not.
++ */
++#include <string.h>
++#include <strings.h>
++
++#ifdef	__cplusplus
++extern "C" {
++#endif
++
++#ifndef	_BOOLEAN_T
++#define	_BOOLEAN_T
++typedef enum { B_FALSE, B_TRUE } boolean_t;
++#endif
++
++typedef unsigned char		uchar_t;
++typedef unsigned short		ushort_t;
++typedef unsigned int		uint_t;
++typedef unsigned long		ulong_t;
++typedef long long		longlong_t;
++typedef unsigned long long	u_longlong_t;
++typedef long long		hrtime_t;
++
++/*
++ * illumos' <sys/sysmacros.h> carries these; the host's has only the
++ * major/minor/makedev trio, so a bare #include silently loses them.
++ */
++#ifndef	MAX
++#define	MAX(a, b)	((a) < (b) ? (b) : (a))
++#endif
++#ifndef	MIN
++#define	MIN(a, b)	((a) > (b) ? (b) : (a))
++#endif
++#ifndef	ABS
++#define	ABS(a)		((a) < 0 ? -(a) : (a))
++#endif
++#ifndef	howmany
++#define	howmany(x, y)	(((x) + ((y) - 1)) / (y))
++#endif
++#ifndef	roundup
++#define	roundup(x, y)	((((x) + ((y) - 1)) / (y)) * (y))
++#endif
++#ifndef	P2ROUNDUP
++#define	P2ROUNDUP(x, align)	(-(-(x) & -(align)))
++#endif
++#ifndef	IS_P2ALIGNED
++#define	IS_P2ALIGNED(v, a)	((((uintptr_t)(v)) & ((uintptr_t)(a) - 1)) == 0)
++#endif
++
++/*
++ * illumos' <sys/int_types.h> announces the availability of 64-bit integer
++ * types this way.  We are not using illumos' <sys/int_types.h> -- it redefines
++ * the whole intN_t family and collides with the host's <stdint.h> -- so state
++ * the fact directly.
++ */
++#ifndef	_INT64_TYPE
++#define	_INT64_TYPE
++#endif
++#ifndef	_LONGLONG_TYPE
++#define	_LONGLONG_TYPE
++#endif
++
++#ifdef	__cplusplus
++}
++#endif
++
++#endif	/* _CTF_NATIVE_COMPAT_H */
+diff --git a/usr/src/tools/ctf/native/native_support.c b/usr/src/tools/ctf/native/native_support.c
+new file mode 100644
+index 0000000000..2e976de74f
+--- /dev/null
++++ b/usr/src/tools/ctf/native/native_support.c
+@@ -0,0 +1,124 @@
++/*
++ * This file and its contents are supplied under the terms of the
++ * Common Development and Distribution License ("CDDL"), version 1.0.
++ * You may only use this file in accordance with the terms of version
++ * 1.0 of the CDDL.
++ *
++ * A full copy of the text of the CDDL should have accompanied this
++ * source.  A copy of the CDDL is also available via the Internet at
++ * http://www.illumos.org/license/CDDL.
++ */
++
++/*
++ * The handful of libc entry points that the CTF sources use and that a foreign
++ * libc does not have.  Built into the native libctf, which ctfconvert(1) and
++ * ctfmerge(1) both link against, so one copy serves all three.
++ */
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <errno.h>
++#include <limits.h>
++#include <inttypes.h>
++#include <unistd.h>
++
++/*
++ * Declared rather than reached through <errno.h>, which only exposes it under
++ * _GNU_SOURCE -- and this file is compiled with the same flags as the rest of
++ * libctf, where turning that on would quietly swap strerror_r() and friends
++ * for their GNU variants.
++ */
++extern char *program_invocation_name;
++
++/*
++ * ASSERT()/VERIFY() and ASSERT3*()/VERIFY3*() from <sys/debug.h>.  On illumos
++ * both live in libc.
++ */
++void
++assfail(const char *a, const char *f, int l)
++{
++	(void) fprintf(stderr, "assertion failed: %s, file: %s, line: %d\n",
++	    a, f, l);
++	abort();
++}
++
++void
++assfail3(const char *a, uintmax_t lv, const char *op, uintmax_t rv,
++    const char *f, int l)
++{
++	(void) fprintf(stderr,
++	    "assertion failed: %s (0x%jx %s 0x%jx), file: %s, line: %d\n",
++	    a, lv, op, rv, f, l);
++	abort();
++}
++
++/*
++ * getexecname(3C).  tools/ctf/common/utils.c uses it to derive the program
++ * name for diagnostics.  glibc's nearest equivalent is program_invocation_name,
++ * which is the argv[0] the process was started with rather than the resolved
++ * path; that is the same thing for every caller here, and /proc/self/exe is
++ * the fallback when it is unset.
++ */
++const char *
++getexecname(void)
++{
++	static char path[PATH_MAX];
++	ssize_t n;
++
++	if (program_invocation_name != NULL && *program_invocation_name != '\0')
++		return (program_invocation_name);
++
++	n = readlink("/proc/self/exe", path, sizeof (path) - 1);
++	if (n < 0)
++		return (NULL);
++	path[n] = '\0';
++
++	return (path);
++}
++
++/*
++ * strtonum(3C), which illumos took from OpenBSD.  ctfconvert(1) uses it to
++ * parse -b/-j.  This is the documented behaviour: on success the value is
++ * returned and *errstrp is set to NULL; on failure 0 is returned and *errstrp
++ * names the problem, with errno set to EINVAL or ERANGE.
++ */
++long long
++strtonum(const char *numstr, long long minval, long long maxval,
++    const char **errstrp)
++{
++	const char *errstr = NULL;
++	long long val = 0;
++	char *end;
++	int saved_errno = errno;
++
++	if (minval > maxval) {
++		errstr = "invalid";
++		errno = EINVAL;
++		goto out;
++	}
++
++	errno = 0;
++	val = strtoll(numstr, &end, 10);
++	if (end == numstr || *end != '\0') {
++		errstr = "invalid";
++		errno = EINVAL;
++		val = 0;
++	} else if ((val == LLONG_MIN && errno == ERANGE) || val < minval) {
++		errstr = "too small";
++		errno = ERANGE;
++		val = 0;
++	} else if ((val == LLONG_MAX && errno == ERANGE) || val > maxval) {
++		errstr = "too large";
++		errno = ERANGE;
++		val = 0;
++	}
++
++out:
++	if (errstrp != NULL)
++		*errstrp = errstr;
++	if (errstr == NULL)
++		errno = saved_errno;
++
++	return (val);
++}
+diff --git a/usr/src/tools/ctf/native/synch.h b/usr/src/tools/ctf/native/synch.h
+new file mode 100644
+index 0000000000..f260e49e8d
+--- /dev/null
++++ b/usr/src/tools/ctf/native/synch.h
+@@ -0,0 +1,172 @@
++/*
++ * This file and its contents are supplied under the terms of the
++ * Common Development and Distribution License ("CDDL"), version 1.0.
++ * You may only use this file in accordance with the terms of version
++ * 1.0 of the CDDL.
++ *
++ * A full copy of the text of the CDDL should have accompanied this
++ * source.  A copy of the CDDL is also available via the Internet at
++ * http://www.illumos.org/license/CDDL.
++ */
++
++/*
++ * illumos' <synch.h> over POSIX threads, for the native build of the CTF
++ * tools.  See the comment in thread.h for why this is a shim rather than the
++ * real header.
++ */
++
++#ifndef	_CTF_NATIVE_SYNCH_H
++#define	_CTF_NATIVE_SYNCH_H
++
++#include <pthread.h>
++#include <stdlib.h>
++#include <errno.h>
++
++#ifdef	__cplusplus
++extern "C" {
++#endif
++
++typedef pthread_mutex_t		mutex_t;
++typedef pthread_rwlock_t	rwlock_t;
++typedef pthread_cond_t		cond_t;
++
++#define	DEFAULTMUTEX	PTHREAD_MUTEX_INITIALIZER
++#define	DEFAULTRWLOCK	PTHREAD_RWLOCK_INITIALIZER
++#define	DEFAULTCV	PTHREAD_COND_INITIALIZER
++
++#define	USYNC_THREAD	0
++#define	USYNC_PROCESS	1
++
++/*
++ * The lock "types" illumos ORs into the mutex_init() type argument.  Only
++ * LOCK_ERRORCHECK is used here (lib/mergeq/mergeq.c), and it has a direct
++ * pthread equivalent.
++ */
++#define	LOCK_NORMAL		0x0
++#define	LOCK_ERRORCHECK		0x2
++#define	LOCK_RECURSIVE		0x4
++
++/*
++ * illumos' ERRORCHECKMUTEX is a statically initialised mutex of type
++ * LOCK_ERRORCHECK; PTHREAD_ERRORCHECK_MUTEX_INITIALIZER_NP is the same thing
++ * on glibc.
++ */
++#ifdef	PTHREAD_ERRORCHECK_MUTEX_INITIALIZER_NP
++#define	ERRORCHECKMUTEX	PTHREAD_ERRORCHECK_MUTEX_INITIALIZER_NP
++#else
++#define	ERRORCHECKMUTEX	PTHREAD_MUTEX_INITIALIZER
++#endif
++
++static inline int
++mutex_init(mutex_t *mp, int type, void *arg __attribute__((__unused__)))
++{
++	pthread_mutexattr_t attr;
++	int ret;
++
++	if ((type & ~(USYNC_THREAD | LOCK_ERRORCHECK | LOCK_RECURSIVE)) != 0)
++		return (EINVAL);
++
++	if ((type & (LOCK_ERRORCHECK | LOCK_RECURSIVE)) == 0)
++		return (pthread_mutex_init(mp, NULL));
++
++	if ((ret = pthread_mutexattr_init(&attr)) != 0)
++		return (ret);
++	ret = pthread_mutexattr_settype(&attr,
++	    (type & LOCK_RECURSIVE) != 0 ? PTHREAD_MUTEX_RECURSIVE :
++	    PTHREAD_MUTEX_ERRORCHECK);
++	if (ret == 0)
++		ret = pthread_mutex_init(mp, &attr);
++	(void) pthread_mutexattr_destroy(&attr);
++
++	return (ret);
++}
++
++static inline int
++mutex_destroy(mutex_t *mp)
++{
++	return (pthread_mutex_destroy(mp));
++}
++
++static inline int
++mutex_lock(mutex_t *mp)
++{
++	return (pthread_mutex_lock(mp));
++}
++
++static inline int
++mutex_trylock(mutex_t *mp)
++{
++	return (pthread_mutex_trylock(mp));
++}
++
++static inline int
++mutex_unlock(mutex_t *mp)
++{
++	return (pthread_mutex_unlock(mp));
++}
++
++static inline int
++cond_init(cond_t *cvp, int type __attribute__((__unused__)),
++    void *arg __attribute__((__unused__)))
++{
++	return (pthread_cond_init(cvp, NULL));
++}
++
++static inline int
++cond_destroy(cond_t *cvp)
++{
++	return (pthread_cond_destroy(cvp));
++}
++
++static inline int
++cond_wait(cond_t *cvp, mutex_t *mp)
++{
++	return (pthread_cond_wait(cvp, mp));
++}
++
++static inline int
++cond_signal(cond_t *cvp)
++{
++	return (pthread_cond_signal(cvp));
++}
++
++static inline int
++cond_broadcast(cond_t *cvp)
++{
++	return (pthread_cond_broadcast(cvp));
++}
++
++/*
++ * illumos' <synch.h> also spells lock/unlock the kernel way, aborting rather
++ * than returning an error.  ctf_dwarf.c's DWARF_LOCK()/DWARF_UNLOCK() use
++ * those.
++ */
++static inline void
++mutex_enter(mutex_t *mp)
++{
++	if (pthread_mutex_lock(mp) != 0)
++		abort();
++}
++
++static inline void
++mutex_exit(mutex_t *mp)
++{
++	if (pthread_mutex_unlock(mp) != 0)
++		abort();
++}
++
++/*
++ * POSIX exposes no way to ask whether the calling thread holds a
++ * pthread_mutex_t, so these can only answer "yes" -- the assertions that use
++ * them become vacuous rather than wrong.
++ */
++#define	MUTEX_HELD(mp)		(1)
++#define	RW_LOCK_HELD(rw)	(1)
++#define	RW_READ_HELD(rw)	(1)
++#define	RW_WRITE_HELD(rw)	(1)
++
++#ifdef	__cplusplus
++}
++#endif
++
++#endif	/* _CTF_NATIVE_SYNCH_H */
+diff --git a/usr/src/tools/ctf/native/sys/elf.h b/usr/src/tools/ctf/native/sys/elf.h
+new file mode 100644
+index 0000000000..3dfb76269d
+--- /dev/null
++++ b/usr/src/tools/ctf/native/sys/elf.h
+@@ -0,0 +1,31 @@
++/*
++ * This file and its contents are supplied under the terms of the
++ * Common Development and Distribution License ("CDDL"), version 1.0.
++ * You may only use this file in accordance with the terms of version
++ * 1.0 of the CDDL.
++ *
++ * A full copy of the text of the CDDL should have accompanied this
++ * source.  A copy of the CDDL is also available via the Internet at
++ * http://www.illumos.org/license/CDDL.
++ */
++
++/*
++ * On illumos, <sys/elf.h> is where the ELF type and constant definitions live,
++ * and $(SRC)/common/ctf/ctf_impl.h includes it by that name.  glibc puts them
++ * in <elf.h> and ships a <sys/elf.h> whose entire content is
++ *
++ *	#error This header is unsupported on x86-64.
++ *
++ * Because a -I is searched ahead of the host's own directories and the
++ * -idirafter on $(SRC)/uts/common is searched behind them, this shim is what
++ * <sys/elf.h> resolves to for the CTF tools -- and illumos' own <sys/elf.h>
++ * is deliberately not used, since it would drag in the illumos <sys/types.h>
++ * chain that collides head-on with the host libc.
++ */
++
++#ifndef	_CTF_NATIVE_SYS_ELF_H
++#define	_CTF_NATIVE_SYS_ELF_H
++
++#include <elf.h>
++
++#endif	/* _CTF_NATIVE_SYS_ELF_H */
+diff --git a/usr/src/tools/ctf/native/thread.h b/usr/src/tools/ctf/native/thread.h
+new file mode 100644
+index 0000000000..10f9601760
+--- /dev/null
++++ b/usr/src/tools/ctf/native/thread.h
+@@ -0,0 +1,83 @@
++/*
++ * This file and its contents are supplied under the terms of the
++ * Common Development and Distribution License ("CDDL"), version 1.0.
++ * You may only use this file in accordance with the terms of version
++ * 1.0 of the CDDL.
++ *
++ * A full copy of the text of the CDDL should have accompanied this
++ * source.  A copy of the CDDL is also available via the Internet at
++ * http://www.illumos.org/license/CDDL.
++ */
++
++/*
++ * illumos' <thread.h> over POSIX threads, for the native build of the CTF
++ * tools.
++ *
++ * Using illumos' own <thread.h> is not an option: it reaches <synch.h>,
++ * <sys/machlock.h>, <sys/time_impl.h> and <sys/int_types.h>, i.e. the whole
++ * illumos type system, which then collides head-on with the host libc's.  The
++ * CTF tools' use of the Solaris threads API is confined to lib/mergeq/workq.c
++ * -- create N workers, join them -- and maps onto pthreads directly.
++ */
++
++#ifndef	_CTF_NATIVE_THREAD_H
++#define	_CTF_NATIVE_THREAD_H
++
++#include <pthread.h>
++#include <synch.h>
++#include <errno.h>
++
++#ifdef	__cplusplus
++extern "C" {
++#endif
++
++typedef pthread_t	thread_t;
++typedef pthread_key_t	thread_key_t;
++
++#define	THR_BOUND	0x00000001
++#define	THR_DETACHED	0x00000040
++
++/*
++ * illumos' thr_create() takes a stack address and size up front and returns
++ * the new thread's id through its last argument.  workq.c passes NULL/0 for
++ * the stack and 0 for the flags, which is "give me the defaults" in both
++ * spellings, so the shim only has to handle that case honestly: a non-default
++ * request is refused rather than silently ignored.
++ */
++static inline int
++thr_create(void *stack_base, size_t stack_size, void *(*start)(void *),
++    void *arg, long flags, thread_t *new_thread)
++{
++	if (stack_base != NULL || stack_size != 0 || flags != 0)
++		return (EINVAL);
++
++	return (pthread_create(new_thread, NULL, start, arg));
++}
++
++/*
++ * illumos' thr_join() can wait for "any thread" when passed 0, and reports
++ * which one it reaped through its second argument.  workq.c always names a
++ * thread and does not ask, which is exactly pthread_join().
++ */
++static inline int
++thr_join(thread_t wait_for, thread_t *departed, void **status)
++{
++	if (wait_for == 0)
++		return (EINVAL);
++	if (departed != NULL)
++		*departed = wait_for;
++
++	return (pthread_join(wait_for, status));
++}
++
++static inline thread_t
++thr_self(void)
++{
++	return (pthread_self());
++}
++
++#ifdef	__cplusplus
++}
++#endif
++
++#endif	/* _CTF_NATIVE_THREAD_H */
+diff --git a/usr/src/tools/ctf/stabs/Makefile.com b/usr/src/tools/ctf/stabs/Makefile.com
+index 06a2622d18..3c269f60b0 100644
+--- a/usr/src/tools/ctf/stabs/Makefile.com
++++ b/usr/src/tools/ctf/stabs/Makefile.com
+@@ -67,4 +67,11 @@ install: $(ROOTONBLDMACHPROG)
+ clean:
+ 	$(RM) $(OBJS) $(LINTFILES)
+ 
++#
++# Everything it takes to build this against a foreign libc and a foreign
++# link-editor.  It must come after every include that pulls in Makefile.master,
++# which would otherwise undo it.
++#
++include ../../Makefile.ctf.native
++
+ include ../../Makefile.ctf.targ

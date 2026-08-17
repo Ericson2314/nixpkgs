@@ -1,0 +1,66 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Sun, 9 Aug 2026 20:17:40 -0400
+Subject: [PATCH] init: do not fprintf() to a NULL FILE when /etc is not
+ writable
+
+`write_ioctl_syscon()` opens /etc/ioctl.syscon and then uses the result
+without checking it:
+
+    fp = fopen(IOCTLSYSCON, "w");
+    (void) fprintf(fp, "%x:%x:%x:%x:0", ...);
+
+On a read-only root -- or one not yet remounted read-write -- that fopen()
+returns NULL and the fprintf() faults immediately. Because this is init, the
+consequence is not a crash anybody can see: the kernel restarts init, init
+reaches the same call and faults again, and the machine sits in a silent loop
+at a couple of hundred restarts per second. The only external symptom is
+
+    WARNING: init(8) exited on fatal signal 11: restarting automatically
+
+which names neither the file nor the reason.
+
+The file only caches the console's termios settings across boots and init
+runs perfectly well without it, so the fix is to report and return. The
+`umask(cmask)` is repeated in the early return because the function raises
+the mask to 022 before opening and every other exit restores it.
+
+Found by booting a cross-built illumos with an hsfs root, which is read-only;
+`boot_init()` calls this whenever /etc/ioctl.syscon is absent or unparsable,
+which on such a root is every boot.
+
+Assisted-By: Claude <noreply@anthropic.com>
+---
+ usr/src/cmd/init/init.c | 19 +++++++++++++++++++
+ 1 file changed, 19 insertions(+)
+
+diff --git a/usr/src/cmd/init/init.c b/usr/src/cmd/init/init.c
+index caeb08bda3..a87b427d0b 100644
+--- a/usr/src/cmd/init/init.c
++++ b/usr/src/cmd/init/init.c
+@@ -2921,6 +2921,25 @@ write_ioctl_syscon()
+ 	(void) link(SYSTTY, SYSCON);
+ 	(void) umask(022);
+ 	fp = fopen(IOCTLSYSCON, "w");
++	if (fp == NULL) {
++		/*
++		 * Not being able to write this is not fatal: it caches the
++		 * console's termios settings across boots, and init works
++		 * without it. Returning matters a great deal, though --
++		 * every call below would otherwise be made on a NULL FILE,
++		 * and `fprintf(NULL, ...)` is an immediate SIGSEGV. For init
++		 * that is not a crash anybody can see, it is a silent restart
++		 * loop: the kernel restarts init, init faults again, forever.
++		 *
++		 * Reachable on any system whose /etc is not writable when
++		 * init runs -- a read-only root, or one not yet remounted
++		 * read-write.
++		 */
++		console(B_TRUE, "Cannot write %s: %s\n", IOCTLSYSCON,
++		    strerror(errno));
++		(void) umask(cmask);
++		return;
++	}
+ 
+ 	(void) fprintf(fp, "%x:%x:%x:%x:0", stored_syscon_termios.c_iflag,
+ 	    stored_syscon_termios.c_oflag, stored_syscon_termios.c_cflag,

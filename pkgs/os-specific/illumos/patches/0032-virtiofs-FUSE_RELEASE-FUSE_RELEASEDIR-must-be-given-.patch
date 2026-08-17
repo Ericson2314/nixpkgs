@@ -1,0 +1,67 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Mon, 17 Aug 2026 12:48:40 -0400
+Subject: [PATCH] virtiofs: `FUSE_RELEASE`/`FUSE_RELEASEDIR` must be given a
+ reply buffer
+
+`virtiofs_call()` inferred "this request has no reply" from the shape of
+its arguments: `outbodylen == 0 && data == NULL`.  That is true of
+`FUSE_FORGET`, which really is unanswered, but it is also true of
+`FUSE_RELEASE` and `FUSE_RELEASEDIR`, which are answered with a bare
+`struct fuse_out_header`.  For those two we therefore built a chain with
+no device-writable descriptor at all.
+
+virtiofsd handles `FUSE_RELEASEDIR` with `reply_ok(None::<u8>, None,
+..)`, which does `w.write_all(header.as_slice())` into a `Writer` built
+from the chain's writable descriptors -- of which there were none.  The
+write consumes zero bytes, `write_all` fails with `WriteZero`, and the
+whole thing comes back as
+
+    failed to encode fuse message: failed to write whole buffer
+
+That is not a per-request error: virtiofsd propagates it out of
+`process_message()` and tears the vhost-user connection down, so qemu
+then dies with "Unexpected end-of-file before all data were read".
+
+`ls` is the first thing that trips it, because closedir(3C) is the first
+`FUSE_RELEASEDIR` we ever send -- mounting only needs `FUSE_INIT`,
+`FUSE_GETATTR`, `FUSE_STATFS` and friends, all of which have fixed size
+replies and so were given a bounce buffer.  `FUSE_READDIR` itself is
+fine: it supplies a 16 byte writable bounce descriptor followed by the
+8 KiB data descriptor, and virtiofsd's `readdir()` splits exactly
+`size_of::<OutHeader>()` off the front of the writer, so the header and
+the dirent stream land where we expect.  The descriptor granularity
+question is a red herring; virtiofsd's `Writer` treats the writable
+section as a byte stream, as the author guessed.
+
+Decide "no reply" from the opcode instead, which is the only thing that
+actually determines it.
+
+Assisted-By: Claude Opus 5 (claude-opus-5)
+---
+ usr/src/uts/common/fs/virtiofs/virtiofs_subr.c | 12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/usr/src/uts/common/fs/virtiofs/virtiofs_subr.c b/usr/src/uts/common/fs/virtiofs/virtiofs_subr.c
+index e699013d37..2dfd81dbdd 100644
+--- a/usr/src/uts/common/fs/virtiofs/virtiofs_subr.c
++++ b/usr/src/uts/common/fs/virtiofs/virtiofs_subr.c
+@@ -118,7 +118,17 @@ virtiofs_call(vfsmnt_t *vfs, uint32_t opcode, uint64_t nodeid,
+ 	char *obuf, *ibuf;
+ 	size_t obuflen = sizeof (*ihdr) + inbodylen;
+ 	size_t ibuflen;
+-	boolean_t noreply = (outbodylen == 0 && data == NULL);
++	/*
++	 * FUSE_FORGET is the only request we send that the server does not
++	 * answer at all.  Every other opcode is answered with at least a
++	 * fuse_out_header even when it has no out-args of its own --
++	 * FUSE_RELEASE and FUSE_RELEASEDIR are the ones we send -- so a
++	 * device-writable buffer has to be supplied for it.  Leaving one out
++	 * does not merely lose the reply: the server has nowhere at all to
++	 * write, which it treats as a fatal encoding failure and drops the
++	 * connection.
++	 */
++	boolean_t noreply = (opcode == FUSE_FORGET);
+ 	size_t got;
+ 	int r;
+ 

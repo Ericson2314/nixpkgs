@@ -1,0 +1,47 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Fri, 7 Aug 2026 17:30:31 -0400
+Subject: [PATCH] cmd/Makefile.cmd: make the /usr/ccs/bin compat links no-ops
+
+`INS.ccsbinlink` removes and recreates a symlink under `/usr/ccs/bin`
+pointing at `../../bin/$(PROG)`. With `ROOT=` empty -- which is what a Nix
+build wants, since each component installs into its own prefix -- the rule
+resolves to the real `/usr/ccs/bin` and fails outright:
+
+    ln: failed to create symbolic link '/usr/ccs/bin/lorder': No such file or directory
+
+The links are a compatibility shim for a unified filesystem root that a
+per-component build does not have, so reduce both macros to no-ops.
+
+Assisted-by: Claude Code (Claude Opus 5)
+---
+ usr/src/cmd/Makefile.cmd | 16 ++++++++--------
+ 1 file changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/usr/src/cmd/Makefile.cmd b/usr/src/cmd/Makefile.cmd
+index 1cd26a9a31..4785ef3fa7 100644
+--- a/usr/src/cmd/Makefile.cmd
++++ b/usr/src/cmd/Makefile.cmd
+@@ -158,14 +158,14 @@ ROOTUSRSBINPROG32=	$(PROG:%=$(ROOTUSRSBIN32)/%)
+ ROOTUSRSBINPROG64=	$(PROG:%=$(ROOTUSRSBIN64)/%)
+ ROOTLIBSVCBINPROG=	$(PROG:%=$(ROOTLIBSVCBIN)/%)
+ 
+-# Note that commands in usr/src/cmd/sgs have separate targets for this
+-INS.ccsbinlink= \
+-	$(RM) $(ROOTCCSBINPROG); \
+-	$(SYMLINK) ../../bin/$(PROG) $(ROOTCCSBINPROG)
+-
+-INS.ccsbinlink64= \
+-	$(RM) $(ROOTCCSBINPROG64); \
+-	$(SYMLINK) ../../../bin/$(MACH64)/$(PROG) $(ROOTCCSBINPROG64)
++# Note that commands in usr/src/cmd/sgs have separate targets for this.
++#
++# The /usr/ccs/bin compatibility symlinks cannot be installed when each
++# component is built into its own prefix, as it is under Nix: the link target
++# lives in a different prefix, and $(ROOT) is empty, so the rule would try to
++# write to the real /usr/ccs/bin. Reduce both to no-ops.
++INS.ccsbinlink=
++INS.ccsbinlink64=
+ 
+ ROOTETCDEFAULT=	$(ROOTETC)/default
+ ROOTETCDEFAULTFILES=	$(DEFAULTFILES:%.dfl=$(ROOTETCDEFAULT)/%)

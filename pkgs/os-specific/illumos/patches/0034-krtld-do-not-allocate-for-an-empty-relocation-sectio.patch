@@ -1,0 +1,62 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Mon, 17 Aug 2026 13:59:59 -0400
+Subject: [PATCH] krtld: do not allocate for an empty relocation section
+
+`get_syms()` reads every `SHT_RELA`/`SHT_REL` section into a temporary
+buffer sized by `sh_size`, without first checking that the section has
+any content.  For a zero length section that is a `kobj_alloc(0)`, and
+once krtld is out of its standalone phase `kobj_alloc()` is
+`kmem_alloc()`, so a DEBUG kernel prints
+
+    WARNING: kmem_alloc(): sleeping allocation with size of 0; see
+    kmem_zerosized_log for details
+
+once for every such section in every module loaded after boot.
+
+Empty relocation sections are ordinary ELF: they appear whenever an
+object's DWARF is *emptied* rather than removed -- the usual way to
+strip an illumos module without disturbing the section table, since
+removing sections breaks `sh_link`, the `DT_NEEDED` strings the link
+editor parks past the end of `.strtab`, and the layout of `unix` --
+which leaves each `.rela.debug_*` present with `sh_size` of zero.  A
+kernel built that way carries four to six of them per module; a boot
+that loads ~90 modules past `kmem_ready` therefore emits ~400 of these
+warnings, each a synchronous `cmn_err()` to the console.  On an
+emulated 16550 that measured at 3.1ms a line, or 1.27s of a 15s boot.
+
+Skip the allocation and the read, which is what the section deserves
+either way: `do_relocations()` computes `nreloc` as zero for it and,
+for the `.rela.debug_*` case, skips it outright because the section it
+relocates is not `SHF_ALLOC`.  Nothing observes `sh_addr` in between,
+and `kmem_alloc(0)` returned `NULL` for it before this change anyway.
+
+Assisted-By: Claude Opus 5 (claude-opus-5)
+---
+ usr/src/uts/common/krtld/kobj.c | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/usr/src/uts/common/krtld/kobj.c b/usr/src/uts/common/krtld/kobj.c
+index 63170de612..a75b32a8a4 100644
+--- a/usr/src/uts/common/krtld/kobj.c
++++ b/usr/src/uts/common/krtld/kobj.c
+@@ -2571,6 +2571,19 @@ get_syms(struct module *mp, struct _buf *file)
+ 			if (shp->sh_addr)
+ 				continue;
+ 
++			/*
++			 * An empty relocation section has nothing to read
++			 * and nothing for do_relocations() to apply, and
++			 * kobj_alloc() of zero bytes is a deprecated
++			 * kmem_alloc(9F) that a DEBUG kernel warns about
++			 * once per call.  Such sections are common in
++			 * objects whose DWARF has been emptied rather than
++			 * removed, since that leaves the matching
++			 * ".rela.debug_*" section present but zero length.
++			 */
++			if (shp->sh_size == 0)
++				continue;
++
+ 			/* KM_TMP since kobj_free'd in do_relocations */
+ 			shp->sh_addr = (Addr)
+ 			    kobj_alloc(shp->sh_size, KM_WAIT|KM_TMP);

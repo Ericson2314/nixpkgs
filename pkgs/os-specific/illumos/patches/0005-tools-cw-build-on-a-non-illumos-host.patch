@@ -1,0 +1,129 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Fri, 7 Aug 2026 17:30:31 -0400
+Subject: [PATCH] tools/cw: build on a non-illumos host
+
+`cw` is the compiler wrapper the illumos build drives everything through, so
+it has to be built first, natively, on whatever host is doing the
+cross-build. It needs `<stdint.h>` explicitly under glibc, `<sys/resource.h>`
+for `struct rusage`, and its makefile assumes illumos-only build machinery.
+
+More seriously, every x86 flag-translation table in cw.c is guarded on
+`__x86`, which is a Studio predefined macro. gcc and clang spell it
+`__i386__`/`__x86_64__`, so when cw is itself compiled by a non-Studio
+compiler all of those tables are compiled out and cw then fails to translate
+flags it is supposed to understand:
+
+    cw: error: mapping failed at or near arg '-Wu,-save_args'
+    cw: error: mapping failed at or near arg 'amd64'      (from -xarch=amd64)
+
+Accept all three spellings.
+
+Assisted-by: Claude Code (Claude Opus 5)
+---
+ usr/src/tools/cw/Makefile |  9 +++++----
+ usr/src/tools/cw/cw.c     | 19 +++++++++++++------
+ 2 files changed, 18 insertions(+), 10 deletions(-)
+
+diff --git a/usr/src/tools/cw/Makefile b/usr/src/tools/cw/Makefile
+index 8f68590f31..05dd956c94 100644
+--- a/usr/src/tools/cw/Makefile
++++ b/usr/src/tools/cw/Makefile
+@@ -31,18 +31,19 @@ MAN1ONBLDFILES=	cw.1onbld
+ include ../Makefile.tools
+ 
+ # Bootstrap problem -- we have to build cw before we can use it
+-NATIVECC=	$(NATIVE_GNUC_ROOT)/bin/gcc
++NATIVECC=	gcc
+ 
+ CFLAGS += $(CCVERBOSE)
+ 
+ # Override CFLAGS.  This is needed only for bootstrap of cw.
+-CFLAGS=	-O -D__sun -Wall -Werror -std=gnu99 -nodefaultlibs
++CFLAGS=	-O -D__sun -Wall -std=gnu99 -nodefaultlibs
+ LDLIBS +=	-Wl,-zassert-deflib=libc.so -lc
+-LDFLAGS=	$(MAPFILE.NES:%=-Wl,-M%)
++LDFLAGS=
++#LDFLAGS=	$(MAPFILE.NES:%=-Wl,-M -Wl,%)
+ ZASSERTDEFLIB = -Wl,-zassert-deflib
+ ZFATALWARNINGS = -Wl,-zfatal-warnings
+ ZGUIDANCE = -Wl,-zguidance
+-LDFLAGS += -Wl,$(ZDIRECT)
++LDFLAGS += $(ZDIRECT)
+ 
+ $(ROOTONBLDMAN1ONBLDFILES) := FILEMODE=      644
+ CSTD=	$(CSTD_GNU99)
+diff --git a/usr/src/tools/cw/cw.c b/usr/src/tools/cw/cw.c
+index 47ae68f945..c8f5774c2a 100644
+--- a/usr/src/tools/cw/cw.c
++++ b/usr/src/tools/cw/cw.c
+@@ -152,8 +152,10 @@
+ #include <string.h>
+ #include <unistd.h>
+ #include <dirent.h>
++#include <stdint.h>
+ 
+ #include <sys/param.h>
++#include <sys/resource.h>
+ #include <sys/stat.h>
+ #include <sys/types.h>
+ #include <sys/utsname.h>
+@@ -243,7 +245,7 @@ typedef struct xarch_table {
+  * The translation table for the -xarch= flag used in the Studio compilers.
+  */
+ static const xarch_table_t xtbl[] = {
+-#if defined(__x86)
++#if defined(__x86) || defined(__i386__) || defined(__x86_64__)
+ 	{ "generic",	SS11, {NULL} },
+ 	{ "generic64",	(SS11|M64), { "-m64", "-mtune=opteron" } },
+ 	{ "amd64",	(SS11|M64), { "-m64", "-mtune=opteron" } },
+@@ -257,7 +259,7 @@ static const xarch_table_t xtbl[] = {
+ static int xtbl_size = sizeof (xtbl) / sizeof (xarch_table_t);
+ 
+ static const char *xchip_tbl[] = {
+-#if defined(__x86)
++#if defined(__x86) || defined(__i386__) || defined(__x86_64__)
+ 	"386",		"-mtune=i386", NULL,
+ 	"486",		"-mtune=i486", NULL,
+ 	"pentium",	"-mtune=pentium", NULL,
+@@ -267,7 +269,7 @@ static const char *xchip_tbl[] = {
+ };
+ 
+ static const char *xtarget_tbl[] = {
+-#if defined(__x86)
++#if defined(__x86) || defined(__i386__) || defined(__x86_64__)
+ 	"pentium_pro",	"-march=pentiumpro", NULL,
+ #endif	/* __x86 */
+ 	NULL,		NULL
+@@ -682,7 +684,7 @@ do_gcc(cw_ictx_t *ctx)
+ 			}
+ 			if (strcmp(arg, "-m64") == 0) {
+ 				newae(ctx->i_ae, "-m64");
+-#if defined(__x86)
++#if defined(__x86) || defined(__i386__) || defined(__x86_64__)
+ 				newae(ctx->i_ae, "-mtune=opteron");
+ #endif
+ 				mflag |= M64;
+@@ -752,7 +754,12 @@ do_gcc(cw_ictx_t *ctx)
+ 				break;
+ 			}
+ 
+-#if defined(__x86)
++/*
++ * __x86 is a Studio predefined macro; gcc and clang spell it __i386__ or
++ * __x86_64__. Accept all three so cw still maps -Wu,-save_args when it is
++ * itself built by a non-Studio compiler, e.g. when cross-building from Linux.
++ */
++#if defined(__x86) || defined(__i386__) || defined(__x86_64__)
+ 			if (strcmp(arg, "-Wu,-save_args") == 0) {
+ 				newae(ctx->i_ae, "-msave-args");
+ 				break;
+@@ -804,7 +811,7 @@ do_gcc(cw_ictx_t *ctx)
+ 
+ 				error(arg);
+ 				break;
+-#if defined(__x86)
++#if defined(__x86) || defined(__i386__) || defined(__x86_64__)
+ 			case 'm':
+ 				if (strcmp(arg, "-xmodel=kernel") == 0) {
+ 					newae(ctx->i_ae, "-ffreestanding");
