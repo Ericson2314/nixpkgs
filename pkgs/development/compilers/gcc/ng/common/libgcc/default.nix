@@ -351,10 +351,29 @@ stdenv.mkDerivation (finalAttrs: {
     # The question it was trying to ask is answered properly in `postConfigure`
     # below, from configure's own recorded answer rather than from a
     # reconstruction of configure's search.
-  ''
-  + lib.optionalString stdenv.hostPlatform.isMusl ''
-    NIX_CFLAGS_COMPILE_OLD=$NIX_CFLAGS_COMPILE
-    NIX_CFLAGS_COMPILE+=' -isystem ${stdenv.cc.cc}/lib/gcc/${stdenv.hostPlatform.config}/${version}/include-fixed'
+    # THE MUSL `-isystem .../include-fixed` DANCE THAT WAS HERE IS GONE, AND IT
+    # HAD NEVER ADDED A DIRECTORY THAT EXISTS.
+    #
+    # It saved `NIX_CFLAGS_COMPILE`, appended
+    # `-isystem $cc/lib/gcc/<triple>/<version>/include-fixed` for the configure
+    # run, and restored it in `postConfigure`. The path is wrong on two counts,
+    # and each alone is fatal:
+    #
+    #   * the layout is `lib/gcc/<version>/<triple>/`, not
+    #     `lib/gcc/<triple>/<version>/` -- one compiler serves every back end,
+    #     so the version comes first (`gcc/Makefile.in:859`);
+    #   * `${version}` is the nixpkgs version (`17.0.0-multi-target-<rev>`),
+    #     while every `lib/gcc/` path gcc writes is keyed by `gcc/BASE-VER`.
+    #
+    # Measured on the built compiler: `lib/gcc/` contains exactly `17.0.0`, and
+    # there is no `include-fixed` anywhere under it -- fixed headers are
+    # `../include-fixed`'s output now, and gcc's own `stmp-fixinc` rule is gone.
+    # `-isystem` on a nonexistent directory is silently ignored, so this flag
+    # had no effect on any build, ever.
+    #
+    # It is exactly the shape already found in the plugin-header `postInstall`
+    # of `../gcc`: a path assembled from `<triple>` and the wrong `version`,
+    # which cannot match, in a construct that cannot complain.
   '';
 
   # ASK THE COMPILER WHAT IT ANSWERED, BECAUSE CONFIGURE'S OWN CHECK CANNOT
@@ -390,9 +409,6 @@ stdenv.mkDerivation (finalAttrs: {
          exit 1 ;;
     esac
     echo "libgcc: generated headers from $incdir"
-  ''
-  + lib.optionalString stdenv.hostPlatform.isMusl ''
-    NIX_CFLAGS_COMPILE=$NIX_CFLAGS_COMPILE_OLD
   '';
 
   # `--build` and `--host` ONLY. No `--target`: this is one machine's library,

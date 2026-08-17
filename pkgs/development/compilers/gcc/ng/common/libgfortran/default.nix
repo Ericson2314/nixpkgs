@@ -113,10 +113,13 @@ stdenv.mkDerivation (finalAttrs: {
     cd "$buildRoot"
     configureScript=$sourceRoot/configure
     chmod +x "$configureScript"
-  ''
-  + lib.optionalString stdenv.hostPlatform.isMusl ''
-    NIX_CFLAGS_COMPILE_OLD=$NIX_CFLAGS_COMPILE
-    NIX_CFLAGS_COMPILE+=' -isystem ${stdenv.cc.cc}/lib/gcc/${stdenv.hostPlatform.config}/${version}/include-fixed'
+
+    # THE MUSL `-isystem .../include-fixed` DANCE IS GONE. It added a directory
+    # that has never existed: the path was `lib/gcc/<triple>/<version>/`, and
+    # gcc writes `lib/gcc/<version>/<triple>/` with `<version>` taken from
+    # `gcc/BASE-VER` rather than the nixpkgs version -- wrong on both counts,
+    # and `-isystem` on a missing directory is silently ignored. See the longer
+    # note at the same deletion in `../libgcc`.
   '';
 
   configurePlatforms = [
@@ -141,11 +144,6 @@ stdenv.mkDerivation (finalAttrs: {
     "--with-system-libbacktrace"
   ];
 
-  # Set the variable back the way it was, see corresponding code in
-  # `preConfigure`.
-  postConfigure = lib.optionalString stdenv.hostPlatform.isMusl ''
-    NIX_CFLAGS_COMPILE=$NIX_CFLAGS_COMPILE_OLD
-  '';
 
   # NO `MULTIBUILDTOP`. It is the top level's variable: it tells an in-tree
   # target library how many directories deep the multilib machinery put it, so

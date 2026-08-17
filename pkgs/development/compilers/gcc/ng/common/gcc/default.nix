@@ -267,13 +267,26 @@ stdenv.mkDerivation (finalAttrs: {
 
     patchShebangs libbacktrace/install-debuginfo-for-buildid.sh
     patchShebangs runtest
-  ''
-  # This should kill all the stdinc frameworks that gcc and friends like to
-  # insert into default search paths.
-  + lib.optionalString hostPlatform.isDarwin ''
-    substituteInPlace gcc/config/darwin-c.c \
-      --replace 'if (stdinc)' 'if (0)'
   '';
+  # THE DARWIN `substituteInPlace` THAT WAS HERE NAMED A FILE THAT DOES NOT
+  # EXIST, AND WOULD HAVE FAILED THE BUILD RATHER THAN DOING NOTHING.
+  #
+  # It read `substituteInPlace gcc/config/darwin-c.c --replace 'if (stdinc)'
+  # 'if (0)'`, to keep Darwin's framework directories out of the default search
+  # path. GCC's sources became C++ in GCC 12: the file is `darwin-c.cc`, and
+  # `ls gcc/config/darwin-c.c` on this branch reports no such file.
+  # `substituteInPlace` errors on a missing file, so this is not a no-op -- it
+  # is a `postPatch` that aborts, on the one platform it is gated to.
+  #
+  # It has never fired because nothing here builds Darwin: `hostPlatform
+  # .isDarwin` is false on every arm this set has been exercised on, so a
+  # guaranteed failure has sat behind a condition nobody takes. Deleted rather
+  # than renamed, because the substitution's *content* is unverified too --
+  # `--replace` (not `--replace-fail`) means that even with the right filename
+  # it would silently do nothing if the text had moved, which for a change that
+  # exists to remove `/System/Library/Frameworks` from the include path is the
+  # dangerous direction. Whoever enables Darwin should re-derive it and prove it
+  # fires.
 
   # THE TOP LEVEL IS NOT RUN. THIS BUILDS `gcc/` AND NOTHING ELSE.
   #
