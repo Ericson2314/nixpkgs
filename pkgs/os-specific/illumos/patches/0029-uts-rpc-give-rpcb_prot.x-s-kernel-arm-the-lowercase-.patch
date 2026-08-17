@@ -1,0 +1,62 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Mon, 17 Aug 2026 10:01:12 -0400
+Subject: [PATCH] uts/rpc: give rpcb_prot.x's kernel arm the lowercase typedefs
+
+Building `strmod/rpcmod` -- which nothing did until the NFS client was wanted
+-- fails in the generated header:
+
+    rpcb_prot.h:470: error: unknown type name 'rpcb'
+    rpcb_prot.h:471: error: unknown type name 'rp__list'
+
+rpcb_prot.x carries two hand-written arms. The `#ifndef _KERNEL` arm is
+rpcgen's own output and declares both spellings of each type; the `#else`
+kernel arm is written out by hand in %-passthrough and declares only the
+uppercase ones, plus it names one struct differently:
+
+    userland:  struct rpcb;      typedef struct rpcb rpcb;    /* and RPCB */
+               struct rp__list;  typedef struct rp__list rpcblist;
+    kernel:    struct rpcb;      typedef struct rpcb RPCB;    /* only */
+               struct rpcblist;  typedef struct rpcblist RPCBLIST;
+
+The prototypes rpcgen appends after the guard use the *lowercase* names, so
+the kernel arm is missing exactly two typedefs. Everything else the appended
+block names -- rpcb_rmtcallargs, rpcblist_ptr, rpcb_entry_list and the rest --
+the kernel arm already spells correctly.
+
+Adding the two typedefs is the whole fix. It is preferable to guarding the
+appended prototypes out of the kernel, which was the first thing tried: the
+kernel genuinely uses one of them, `rpc_subr.c` calling xdr_rpcb() when it
+talks to rpcbind, so hiding the block only trades "unknown type name" for
+"'xdr_rpcb' undeclared".
+
+Both are pure typedefs of structs the kernel arm already defines, so nothing
+changes for a build whose rpcgen does not append the block. illumos' own
+rpcgen emits each prototype beside its definition and never reaches this;
+NetBSD's, which is what a Linux build host has, appends them at the end.
+
+Assisted-by: Claude <noreply@anthropic.com>
+---
+ usr/src/uts/common/rpc/rpcb_prot.x | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/usr/src/uts/common/rpc/rpcb_prot.x b/usr/src/uts/common/rpc/rpcb_prot.x
+index d69838c91b..61f647617a 100644
+--- a/usr/src/uts/common/rpc/rpcb_prot.x
++++ b/usr/src/uts/common/rpc/rpcb_prot.x
+@@ -424,6 +424,7 @@ program RPCBPROG {
+ %	char *r_owner;			/* owner of the mapping */
+ %};
+ %typedef struct rpcb RPCB;
++%typedef struct rpcb rpcb;
+ %
+ %/*
+ % * A list of mappings
+@@ -433,6 +434,7 @@ program RPCBPROG {
+ %	struct rpcblist *rpcb_next;
+ %};
+ %typedef struct rpcblist RPCBLIST;
++%typedef struct rpcblist rp__list;
+ %typedef struct rpcblist *rpcblist_ptr;
+ %
+ %/*

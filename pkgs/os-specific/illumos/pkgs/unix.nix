@@ -296,6 +296,30 @@ let
 
     "intel/sockfs"
 
+    # The NFS *client*, so the store can be served read-only from the host
+    # instead of being copied into a per-build image and then into RAM.
+    #
+    # The dependency chain is declared, so this list is taken from the module
+    # makefiles rather than guessed -- guessing a hand-picked module list is
+    # what cost a full day of driver debugging when net_dacf turned out to be
+    # missing:
+    #
+    #     nfs     -N fs/specfs -N strmod/rpcmod -N misc/rpcsec
+    #     rpcmod  -N misc/tlimod
+    #
+    # specfs is already above. `klmmod`/`klmops` are deliberately absent: they
+    # are the NLM lock manager, which NFSv3 needs and NFSv4 does not -- v4
+    # carries locking in the protocol itself with leases. Add them only if
+    # something turns out to want v3.
+    #
+    # nfssrv is also absent, on purpose. We are the client; the server runs on
+    # the host as an ordinary user process (nfs-ganesha), which is what keeps
+    # this from needing root anywhere.
+    "intel/tlimod"
+    "intel/rpcsec"
+    "intel/rpcmod"
+    "intel/nfs"
+
     # AF_UNIX is *not* self-contained in sockfs. sockfs implements the socket
     # layer, but the unix-domain transport underneath it is TPI: soconfig(8)'s
     # table (cmd/cmd-inet/etc/sock2path.d/system%2Fkernel) maps family 1 onto
