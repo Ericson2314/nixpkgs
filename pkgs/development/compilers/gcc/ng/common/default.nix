@@ -183,6 +183,12 @@ makeScopeWithSplicing' {
       libsanitizer = callPackage ./libsanitizer { };
       libquadmath = callPackage ./libquadmath { };
 
+      # `ld`'s LTO plugin. A host artefact, not a target one, and absent from
+      # this set until now because `lto-plugin` is a top-level `host_module`
+      # that `gcc/` never builds -- which made every shared-library link fail
+      # with `ld` complaining that `lto-wrapper` is not a plugin. See the file.
+      lto-plugin = callPackage ./lto-plugin { };
+
       # THE TWO COMPONENTS THAT TURN A BACK END INTO A TARGET.
       #
       # `gcc-unwrapped` is one store path serving 47 back ends and naming no
@@ -273,6 +279,10 @@ makeScopeWithSplicing' {
       gcc-composed = callPackage ./gcc-composed {
         gcc-unwrapped = buildGccPackages.gcc-unwrapped;
         target-specs = targetGccPackages.target-specs;
+        # `lto-plugin` is a HOST artefact -- it is loaded by the linker, which
+        # runs where the compiler runs -- so it comes from the same set as
+        # `gcc-unwrapped`, not from `targetGccPackages`.
+        lto-plugin = buildGccPackages.lto-plugin;
       };
 
       # `fixincludes` runs on the build machine, so it is taken from

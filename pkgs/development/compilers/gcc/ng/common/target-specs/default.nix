@@ -220,6 +220,39 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     # `specs-config`.
     "--with-tools-dir=${bintools}/bin"
 
+    # `collect2` NEEDS ABSOLUTE PATHS, AND THIS SCRIPT WILL NOT GUESS THEM.
+    #
+    # `--with-tools-dir` above governs PROBING; these govern what the finished
+    # compiler RUNS. `REAL_{LD,NM,STRIP}_FILE_NAME` used to be compiled into
+    # `collect2` from gcc's configure -- one machine's answer for every target --
+    # and on this branch they are per-target keys of `specs-config` instead.
+    #
+    # They are emitted ONLY if named here: `target-specs/configure.ac:476-505`
+    # leaves `ts_emit_real_tools=no` unless one of `--with-real-{ld,nm,strip}`
+    # is passed, and the comment above them says why it is not probed -- "a
+    # probe would have to decide that some ld it found on PATH is *this
+    # target's real ld*, which is exactly the guess that put the host's tools in
+    # front of every target in the first place."
+    #
+    # So this is not a workaround; it is supplying an input the component asks
+    # for by name and deliberately declines to infer. nixpkgs is the one party
+    # that knows the answer without guessing: it is the same wrapped bintools
+    # already named above, and the prefix comes from that package rather than
+    # being spelled again here.
+    #
+    # MEASURED CONSEQUENCE OF OMITTING THEM: `libgcc` compiles every object and
+    # then dies linking the shared library with
+    #
+    #     collect2: fatal error: cannot find 'ld'
+    #
+    # -- `collect2` asking for the UNPREFIXED name, with only
+    # `<triple>-ld` on PATH. `libgcc.a` is unaffected, so the failure appears
+    # only at `libgcc_s.so` and looks like a linker problem rather than a
+    # missing capability key.
+    "--with-real-ld=${bintools}/bin/${bintools.targetPrefix}ld"
+    "--with-real-nm=${bintools}/bin/${bintools.targetPrefix}nm"
+    "--with-real-strip=${bintools}/bin/${bintools.targetPrefix}strip"
+
     "--with-specs-file=${placeholder "out"}/${specsDir}/specs"
   ]
   # NO `--with-native-system-header-dir`, AND ITS REMOVAL IS THE FIX FOR #256.

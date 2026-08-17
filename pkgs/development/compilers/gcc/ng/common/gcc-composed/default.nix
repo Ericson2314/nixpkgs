@@ -6,6 +6,7 @@
   release_version,
   version,
   gcc-unwrapped,
+  lto-plugin,
   target-specs,
 }:
 # ONE TARGET, COMPOSED: the target-agnostic compiler and that target's probed
@@ -81,7 +82,39 @@ runCommand "gcc-${target}-${version}"
     chmod -R u+w "$out/bin"
 
     # Everything else may be shared.
-    ln -s "${gcc-unwrapped}/libexec" "$out/libexec"
+    # `libexec/gcc/<version>/` HAS TWO PRODUCERS TOO, so it is merged rather
+    # than linked wholesale -- the same lesson as the per-target directory
+    # below, learned the same way.
+    #
+    # `gcc` puts `cc1`, `collect2`, `lto-wrapper` and `install-tools` there;
+    # `../lto-plugin` puts `liblto_plugin.so` there, because that is where
+    # `find_a_file (&exec_prefixes, LTOPLUGINSONAME)` looks. Symlinking gcc's
+    # whole `libexec` would hide the plugin, and the failure would be a link
+    # error blaming `lto-wrapper` -- see `../lto-plugin` for why that is what it
+    # looks like.
+    mkdir -p "$out/libexec/gcc/${release_version}"
+    for src in "${gcc-unwrapped}/libexec/gcc/${release_version}" \
+               "${lto-plugin}/libexec/gcc/${release_version}"; do
+      test -d "$src" || continue
+      for e in "$src"/*; do
+        name=$(basename "$e")
+        test -e "$out/libexec/gcc/${release_version}/$name" && {
+          echo "gcc-composed: both producers supply libexec/gcc/*/$name;" >&2
+          echo "  one of them would silently win." >&2
+          exit 1; }
+        ln -s "$e" "$out/libexec/gcc/${release_version}/$name"
+      done
+    done
+
+    for f in cc1 lto-wrapper liblto_plugin.so; do
+      test -e "$out/libexec/gcc/${release_version}/$f" || {
+        echo "gcc-composed: no libexec/gcc/${release_version}/$f." >&2
+        echo "  cc1 and lto-wrapper come from gcc; liblto_plugin.so comes" >&2
+        echo "  from lto-plugin. An absent plugin is not an error anywhere:" >&2
+        echo "  the driver emits a bare -plugin, which swallows the next" >&2
+        echo "  argument on the link line." >&2
+        exit 1; }
+    done
     for d in "${gcc-unwrapped}"/lib/gcc/${release_version}/*; do
       ln -s "$d" "$out/lib/gcc/${release_version}/$(basename "$d")"
     done
