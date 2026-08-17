@@ -7,8 +7,44 @@ This set separates them — `gcc`, `libgcc`, `libstdcxx` and the rest are indivi
 That someday has arrived: this set builds the `multi-target-0` branch, where 47 back ends link into one `cc1` and the compiler carries no target of its own.
 `gcc-unwrapped` is a single derivation with a single store path, shared by every target — measured by `mt-compare.nix` at the repository root, which asks three different cross package sets for it and compares.
 What used to be "rebuild the compiler per target" is now "one compiler, N wrappers": the per-target facts belong to the wrapper that composes a target out of the compiler, that target's spec file, its libc and its binutils.
+The next section says which derivations those are; they exist now rather than being planned.
 
 A platform opts in with `useGccNG`, in the same way it would opt into `useLLVM`.
+
+## How a target gets made
+
+`gcc-unwrapped` ships **back ends**. It cannot compile for any of them:
+
+```
+$ aarch64-unknown-linux-gnu-gcc -S t.c
+fatal error: no configuration file for target `aarch64-unknown-linux-gnu'.
+  Looked in: .../lib/gcc/17.0.0/aarch64-unknown-linux-gnu/specs-config
+```
+
+A **target** is composed, out of four derivations, and each of them is
+per-target except the first:
+
+| derivation | one per | what it is |
+|---|---|---|
+| `gcc-unwrapped` | host | 47 back ends, one store path, no target |
+| `target-specs` | target | that target's spec file and capability config, from probing its *actual* assembler and linker |
+| `fixincludes` | host | `fixincl`, `fixinc.sh`, `mkheaders` — a `--host` and no target |
+| `include-fixed` | target | runs `mkheaders <target>` to fix *that* target's system headers |
+| `gcc-composed` | target | the join: `gcc-unwrapped` + that target's `specs-config`, in one prefix |
+
+`gcc-composed` is what every `wrapCCWith` in the set wraps, and it is **not** a
+`symlinkJoin`. `find_target_config` (`gcc/gcc.cc:8694`) searches
+`$GCC_EXEC_PREFIX`, then the prefix implied by where the driver binary *really*
+is, then the configured-in one — so a symlinked driver sends it looking in
+`gcc-unwrapped`'s prefix, and `GCC_EXEC_PREFIX` cannot be used because it
+redirects the `cc1` search too. Copying the driver binaries and symlinking the
+rest is what works, and the derivation checks it by asking the driver
+(`-dumpspecs`) rather than by checking that the files were placed.
+
+`target-specs` must be given the target's real binutils. Without them its
+configure writes **no file at all** and exits 0 (`skipping ...: target tools
+unavailable, nothing probed`), which is why the derivation checks for the file
+rather than the status.
 
 ## The bootstrap chain
 
