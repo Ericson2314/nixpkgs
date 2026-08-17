@@ -442,115 +442,116 @@ stdenv.mkDerivation (finalAttrs: {
   postInstall = ''
     install -c -m 644 gthr-default.h "$dev/include"
   ''
-  # THE `inhibit_libc` GUARD. It is the whole reason the sysroot flags were
-  # here, and it is decidable, so decide it.
+  # THE `inhibit_libc` GUARD -- REWRITTEN, BECAUSE THE FIRST VERSION WAS ASKING
+  # THE WRONG ARCHIVES AND ITS CONTROL PASSED VACUOUSLY.
   #
-  # `-Dinhibit_libc` drops split-stack entirely (`generic-morestack.c`,
-  # `-thread.c`), most of libgcov (`libgcov-profiler/-interface/-merge/
-  # -driver.c`) and the `dl_iterate_phdr` FDE lookup in `unwind-dw2-fde-dip.c`
-  # -- **with no change to the installed file names**, which is exactly why a
-  # crippled libgcc looks like a good one. Nothing about the build's exit
-  # status, its output paths or its file list distinguishes the two.
+  # `-Dinhibit_libc` drops split-stack, most of libgcov and the dynamic FDE
+  # lookup **with no change to any installed file name**, so a crippled libgcc
+  # and a complete one differ only under `nm`. That is still exactly why this
+  # check exists. What was wrong was where it looked, and it could not have been
+  # noticed until `libgcc` built at all -- which it never did until now:
   #
-  # So ask the archive. Zero versus non-zero is decidable, and the same probe
-  # run on the `no-libc` build reports the opposite, which is the control: if
-  # this ever passed on both, it would be measuring nothing.
+  #   * `__gcov_*` lives in `libgcov.a`, NEVER in `libgcc.a`. The old check
+  #     counted in `libgcc.a`, where the answer is 0 on BOTH arms. So the
+  #     with-libc assertion fired on every build that reached it, and the
+  #     no-libc control "passed" for the wrong reason -- a two-sided check that
+  #     was measuring nothing on either side.
+  #   * `dl_iterate_phdr` IS THE WRONG SYMBOL on any modern glibc. Measured:
+  #     `unwind-dw2-fde-dip.o` references `_dl_find_object`, glibc 2.35+'s
+  #     faster replacement for walking `dl_iterate_phdr`, and no
+  #     `dl_iterate_phdr` at all. It also lives in `libgcc_eh.a`, not
+  #     `libgcc.a`. So the old probe reported "crippled unwinder" for a
+  #     perfectly good libgcc -- a false alarm in the direction that stops good
+  #     builds.
+  #
+  # THE DISCRIMINATORS BELOW ARE MEASURED ON BOTH ARMS, aarch64, this tree:
+  #
+  #                       no-libc     with-libc
+  #     libgcov.a  __gcov_*      8            47
+  #     libgcov.a  __gcov_execv  0             1
+  #     libgcc_eh.a _dl_find_object 0           1
+  #
+  # Note `__gcov_dump` is present on BOTH (1 and 1), which is why the count is
+  # not the test and why a symbol had to be chosen rather than a threshold:
+  # `__gcov_execv` comes from `libgcov-interface.c`, which `-Dinhibit_libc`
+  # removes entirely.
   + ''
-    libgcc_a="$out/lib/libgcc.a"
-    test -f "$libgcc_a"
+    libgcov_a="$out/lib/libgcov.a"
+    libgcc_eh_a="$out/lib/libgcc_eh.a"
+    for f in "$out/lib/libgcc.a" "$libgcov_a" "$libgcc_eh_a"; do
+      test -f "$f" || { echo "libgcc: $f was not installed" >&2; exit 1; }
+    done
 
-    # A tool that is not there scores 0, in the direction that makes the
-    # with-libc arm look broken and the no-libc arm look correct. Assert it
-    # runs before believing any count it produces.
+    # A tool that is not there scores 0 on every probe below, which reads as
+    # "crippled" on one arm and "correct" on the other. Assert it runs.
     "''${NM:-nm}" --version > /dev/null
 
-    count() {
-      "''${NM:-nm}" --defined-only "$libgcc_a" > libgcc-syms.txt
-      grep -c "$1" libgcc-syms.txt || true
-    }
+    ngcov=$("''${NM:-nm}" --defined-only "$libgcov_a" | grep -c '__gcov_' || true)
+    nexecv=$("''${NM:-nm}" --defined-only "$libgcov_a" | grep -cw '__gcov_execv' || true)
+    nsplit=$("''${NM:-nm}" --defined-only "$out/lib/libgcc.a" | grep -c '__splitstack_' || true)
+    nfde=$("''${NM:-nm}" --undefined-only "$libgcc_eh_a" \
+             | grep -cE '_dl_find_object|dl_iterate_phdr' || true)
 
-    ngcov=$(count '__gcov_')
-    nsplit=$(count '__splitstack_')
-
-    # THE `dl_iterate_phdr` FDE LOOKUP, WHICH IS A DIFFERENT DEFECT WITH THE
-    # SAME SIGNATURE AND HAS TO BE ASKED SEPARATELY.
-    #
-    # `inhibit_libc` drops it, and so does a failed `HAVE_LD_EH_FRAME_HDR` --
-    # and that probe fails whenever `gcc/configure` could not RUN the target
-    # linker, because a probe it cannot run records "no". Either way
-    # `unwind-dw2-fde-dip.c` compiles with `USE_PT_GNU_EH_FRAME` undefined,
-    # leaving only the `__register_frame` registry, which nothing populates for
-    # normally linked objects. libgcc and libstdc++ then build, link and install
-    # perfectly cleanly under the same file names, and every C++ `throw` finds
-    # no FDE and calls `std::terminate`.
-    #
-    # It is decidable from the archive: with the lookup compiled in,
-    # `dl_iterate_phdr` is an UNDEFINED symbol of `unwind-dw2-fde-dip.o`. So ask
-    # the undefined set, not the defined one -- the counting function above
-    # would report zero for a good build.
-    "''${NM:-nm}" --undefined-only "$libgcc_a" > libgcc-undef.txt
-    ndip=$(grep -c 'dl_iterate_phdr' libgcc-undef.txt || true)
-
-    # Reported, not asserted: split-stack exists only where the back end builds
-    # `generic-morestack.c` (i386 and a few others), so zero is the correct
-    # answer on most targets and an assertion on it would fire for the wrong
-    # reason. `__gcov_*` is the one libgcov builds everywhere.
-    echo "libgcc: __gcov_* = $ngcov, __splitstack_* = $nsplit (reported only)," \
-         "dl_iterate_phdr = $ndip"
+    echo "libgcc: libgcov.a __gcov_*=$ngcov (__gcov_execv=$nexecv)," \
+         "libgcc.a __splitstack_*=$nsplit (reported only)," \
+         "libgcc_eh.a dynamic-FDE=$nfde"
   ''
   + (
     if libc == null then
       ''
-        # The control arm. These MUST be absent: this libgcc was built with
-        # `inhibit_libc=true`, and if the symbols showed up here the assertion
-        # on the other arm would be proving nothing.
-        if [ "$ngcov" -ne 0 ]; then
-          echo "libgcc: built with inhibit_libc=true, yet libgcc.a defines" >&2
-          echo "libgcc: $ngcov __gcov_* symbols." >&2
-          echo "libgcc: that means inhibit_libc did not take effect, and the" >&2
-          echo "libgcc: check on the with-libc build is not measuring anything." >&2
+        # THE CONTROL. Both of these MUST be absent here, and that is what makes
+        # the assertions on the other arm mean anything: if either were present
+        # on a build with `inhibit_libc`, the corresponding with-libc check
+        # would be true of every build and could never fail.
+        if [ "$nexecv" -ne 0 ]; then
+          echo "libgcc: built without a libc, yet libgcov.a defines" >&2
+          echo "libgcc: __gcov_execv -- which comes from libgcov-interface.c," >&2
+          echo "libgcc: the file -Dinhibit_libc removes. So inhibit_libc did" >&2
+          echo "libgcc: not take effect, and the check on the with-libc build" >&2
+          echo "libgcc: is not measuring anything." >&2
           exit 1
         fi
-        # The control for the unwinder half, and it is the reason the assertion
-        # on the other arm means something. `inhibit_libc` also drops the
-        # `dl_iterate_phdr` lookup, so this build MUST NOT have it. If it did,
-        # `ndip -ne 0` would be true of every build and the with-libc check
-        # could not fail.
-        if [ "$ndip" -ne 0 ]; then
-          echo "libgcc: built with inhibit_libc=true, yet libgcc.a references" >&2
-          echo "libgcc: dl_iterate_phdr $ndip time(s). Either inhibit_libc did" >&2
-          echo "libgcc: not take effect, or this probe answers yes regardless" >&2
-          echo "libgcc: -- and in that case the check on the with-libc build" >&2
-          echo "libgcc: is measuring nothing." >&2
+        if [ "$nfde" -ne 0 ]; then
+          echo "libgcc: built without a libc, yet libgcc_eh.a references a" >&2
+          echo "libgcc: dynamic FDE lookup. Either inhibit_libc did not take" >&2
+          echo "libgcc: effect, or this probe answers yes regardless -- and in" >&2
+          echo "libgcc: that case the with-libc check cannot fail." >&2
           exit 1
         fi
       ''
     else
       ''
-        if [ "$ngcov" -eq 0 ]; then
+        if [ "$nexecv" -eq 0 ]; then
           echo "libgcc: this libgcc was built against a real libc, so" >&2
-          echo "libgcc: libgcov must be present -- but __gcov_* = 0." >&2
-          echo "libgcc: something set inhibit_libc, and the result installs" >&2
-          echo "libgcc: under the same file names as a good one." >&2
+          echo "libgcc: libgcov-interface.c must be compiled in -- but" >&2
+          echo "libgcc: libgcov.a defines no __gcov_execv." >&2
+          echo "libgcc: Something set inhibit_libc, and the result installs" >&2
+          echo "libgcc: under exactly the same file names as a good one." >&2
           exit 1
         fi
       ''
       # THE UNWINDER ASSERTION, ELF ONLY. `USE_PT_GNU_EH_FRAME` is an ELF
-      # mechanism: `PT_GNU_EH_FRAME` is an ELF program header and
-      # `dl_iterate_phdr` is the ELF loader's interface. A PE/COFF or Mach-O
-      # target finds its FDEs another way, so requiring the symbol there would
-      # fail for the wrong reason -- which is how a real check gets deleted.
+      # mechanism -- `PT_GNU_EH_FRAME` is an ELF program header and both
+      # `_dl_find_object` and `dl_iterate_phdr` are ELF loader interfaces. A
+      # PE/COFF or Mach-O target finds its FDEs another way, so requiring the
+      # symbol there would fail for the wrong reason, which is how a real check
+      # gets deleted.
+      #
+      # EITHER symbol counts. glibc 2.35 added `_dl_find_object` and
+      # `unwind-dw2-fde-dip.c` prefers it; older libcs, musl and the BSDs still
+      # take the `dl_iterate_phdr` path. Naming only one is what made the first
+      # version of this check cry wolf.
       + lib.optionalString stdenv.hostPlatform.isElf ''
-        if [ "$ndip" -eq 0 ]; then
-          echo "libgcc: this is an ELF target with a real libc, so the" >&2
-          echo "libgcc: dl_iterate_phdr FDE lookup must be compiled in -- but" >&2
-          echo "libgcc: libgcc.a references dl_iterate_phdr 0 times." >&2
+        if [ "$nfde" -eq 0 ]; then
+          echo "libgcc: this is an ELF target with a real libc, so the dynamic" >&2
+          echo "libgcc: FDE lookup must be compiled in -- but libgcc_eh.a" >&2
+          echo "libgcc: references neither _dl_find_object nor dl_iterate_phdr." >&2
           echo "libgcc:" >&2
-          echo "libgcc: USE_PT_GNU_EH_FRAME is off, so unwind-dw2-fde-dip.c" >&2
+          echo "libgcc: USE_PT_GNU_EH_FRAME is off, so unwind-dw2-fde-dip.c was" >&2
           echo "libgcc: built with only the __register_frame registry, which" >&2
           echo "libgcc: nothing populates for normally linked objects. This" >&2
-          echo "libgcc: library installs under exactly the same file names as" >&2
-          echo "libgcc: a good one and every C++ throw will call std::terminate." >&2
+          echo "libgcc: library installs under exactly the same file names as a" >&2
+          echo "libgcc: good one and every C++ throw will call std::terminate." >&2
           echo "libgcc:" >&2
           echo "libgcc: The usual cause is not inhibit_libc but a configure" >&2
           echo "libgcc: that could not RUN the target linker: HAVE_LD_EH_FRAME_HDR" >&2
