@@ -199,8 +199,29 @@ static const char *const consoles[] = {
 	0
 };
 
+/*
+ * No `--norc --noprofile`, so a configuration can have something run before
+ * the prompt appears -- /etc/profile is the hook.
+ *
+ * There is otherwise none at all: this is pid 1, so there is no service
+ * manager and nothing between the kernel exec'ing init and a bare
+ * interactive shell. That means bringing the network up by hand on every
+ * boot, and the sequence is long enough -- devfsadm, soconfig, dlmgmtd,
+ * plumb, address -- to be the slow part of the very edit-boot-look cycle this
+ * init exists to make fast.
+ *
+ * It has to be /etc/profile, and `--rcfile` does *not* work: argv[0] is
+ * "-bash", whose leading dash makes this a login shell, and a login shell
+ * reads /etc/profile and ~/.bash_profile. `--rcfile` names what an
+ * interactive *non-login* shell reads instead of ~/.bashrc, so bash accepts
+ * the option and silently ignores it -- a boot where nothing ran and nothing
+ * said why.
+ *
+ * Bash skips /etc/profile silently when absent, so a configuration that
+ * writes none behaves as before.
+ */
 static const char *const prog_argv[] = {
-	"-bash", "--norc", "--noprofile", "-i", 0
+	"-bash", "-i", 0
 };
 
 static const char *const prog_envp[] = {
