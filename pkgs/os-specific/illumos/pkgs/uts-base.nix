@@ -28,6 +28,9 @@ mkDerivation (
 
     outputs = [
       "out"
+      # The DWARF split out of `unix` and `genunix` by uts-common.nix's
+      # postFixup.
+      "debug"
       "buildtree"
     ];
 

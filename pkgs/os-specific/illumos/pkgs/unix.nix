@@ -610,8 +610,14 @@ runCommand "unix-illumos-${version}"
     #
     # --no-preserve=mode because the store paths are read-only and the second
     # cp into an existing directory would otherwise have nowhere to write.
+    #
+    # --preserve=links because a module installed under two names is one file
+    # with two links, not two files: uts/intel/ip/Makefile:119 is
+    # `ln $(ROOTMODULE) $@`, so kernel/drv/amd64/ip and kernel/strmod/amd64/ip
+    # are the same inode, and nfs does the same across kernel/fs and kernel/sys.
+    # Plain `cp -r` breaks the link and doubles them in the boot archive.
     mkdir -p "$out"
     for d in ${uts-base} ${lib.concatMapStringsSep " " (m: "${kmod m}") kmodNames}; do
-      cp -r --no-preserve=mode "$d/." "$out/"
+      cp -r --preserve=links --no-preserve=mode "$d/." "$out/"
     done
   ''

@@ -143,9 +143,12 @@
     # result is an ELF whose contents are correct but which no loader will
     # recognise as bootable.
     #
-    # illumos' own strip preserves the layout; nothing here needs stripping
-    # anyway (see dontStrip below), so skip the step, exactly as upstream does
-    # for source-debug builds (Makefile.master:980).
+    # illumos' own strip preserves the layout, but it is mcs(1) from
+    # cmd/sgs -- cross-built here, and absent from the tools/sgs NATIVE_BUILD
+    # tree that gives us a build-machine `ld` -- so it cannot run on the build
+    # machine at all. Skip the step, exactly as upstream does for source-debug
+    # builds (Makefile.master:980). DWARF is removed later, by the
+    # layout-preserving strip-dwarf.py in postFixup below.
     "STRIP_STABS=:"
 
     "NM=${buildPackages.writeShellScript "illumos-nm" ''
@@ -220,4 +223,61 @@
   # applies and RPATH shrinking would only confuse matters.
   dontStrip = true;
   dontPatchELF = true;
+
+  # Split DWARF out of every kernel object into a `debug` output, the way
+  # nixpkgs' separateDebugInfo does: the full debug info stays in the store
+  # under $debug/lib/debug/<same path>, and $out keeps only what the running
+  # kernel needs. Both `uts-base` and every `kmod` derivation get this; each
+  # declares the extra output itself.
+  #
+  # This is the single biggest lever on boot time. GRUB copies the whole boot
+  # archive into RAM before the kernel starts, and a DBG64 tree is ~125M of
+  # which the overwhelming majority is DWARF -- genunix alone is 81M of it.
+  #
+  # The $out side is done by strip-dwarf.py, not by objcopy. That is not a
+  # preference: GNU objcopy silently destroys these files in two ways that
+  # cannot be repaired afterwards -- it truncates .strtab, taking a module's
+  # DT_NEEDED dependency names with it, and it reorders unix's allocatable
+  # sections so that the multiboot header leaves the first 8K. Both are
+  # measured and written up at the top of that script. objcopy is still used
+  # for $debug, which is a fresh file that nothing loads.
+  #
+  # strip-dwarf.py keeps every surviving section byte-identical, keeps every
+  # section index, and never moves anything a program header covers, verifying
+  # all of that plus the multiboot header and .SUNW_ctf before it replaces the
+  # file. That is what makes it safe on `unix`, which objcopy is not -- see the
+  # STRIP_STABS note above for that history.
+  postFixup = ''
+    objcopy=${stdenv.cc.bintools.bintools}/bin/${stdenv.cc.targetPrefix}objcopy
+    stripDwarf="${buildPackages.python3Minimal}/bin/python3 ${./strip-dwarf.py}"
+
+    mkdir -p "$debug"
+
+    # A module installed under two names is one file with two links, not two
+    # files: uts/intel/ip/Makefile:119 is `ln $(ROOTMODULE) $@`, so the 25M ip
+    # is both kernel/drv/amd64/ip and kernel/strmod/amd64/ip, and nfs does the
+    # same across kernel/fs and kernel/sys. strip-dwarf.py writes a temp file
+    # and renames over the original, which breaks the link, so remember each
+    # inode and re-link the second name onto the first result rather than
+    # stripping the same bytes twice into two independent copies.
+    declare -A splitDebugSeen=()
+
+    while IFS= read -r -d "" f; do
+      [ "$(head -c 4 "$f" | tr -d '\0')" = $'\177ELF' ] || continue
+
+      ino=$(stat -c %i "$f")
+      if [ -n "''${splitDebugSeen[$ino]:-}" ]; then
+        ln -f "''${splitDebugSeen[$ino]}" "$f"
+        continue
+      fi
+
+      # --only-keep-debug reads the file as it stands, so it has to come first.
+      dbg="$debug/lib/debug/''${f#$out/}.debug"
+      mkdir -p "$(dirname "$dbg")"
+      "$objcopy" --only-keep-debug "$f" "$dbg"
+
+      $stripDwarf "$f"
+      splitDebugSeen[$ino]="$f"
+    done < <(find "$out" -type f -print0)
+  '';
 }

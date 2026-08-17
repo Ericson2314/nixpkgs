@@ -26,6 +26,13 @@ mkDerivation (
   // {
     pname = "kmod-${lib.replaceStrings [ "/" ] [ "-" ] module}";
 
+    # The module's DWARF, split out by uts-common.nix's postFixup so that what
+    # lands in the boot archive is code, relocations and CTF only.
+    outputs = [
+      "out"
+      "debug"
+    ];
+
     # Already unpacked, already patched, and with the generated headers,
     # assym.h and genunix that this module's build needs left in place. Going
     # back to the filtered source would mean redoing all of that ninety times.
