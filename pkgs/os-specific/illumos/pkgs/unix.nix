@@ -416,6 +416,37 @@ let
     "i86pc/consconfig_dacf"
     "intel/consconfig"
 
+    # The *other* DACF module, and the one that makes networking exist.
+    #
+    # /etc/dacf.conf -- which we stage -- carries these two rules:
+    #
+    #     minor-nodetype="ddi_network" net_dacf:net_config post-attach -
+    #     minor-nodetype="ddi_network" net_dacf:net_config pre-detach -
+    #
+    # so every `ddi_network` minor node's post-attach is supposed to run
+    # net_postattach() (uts/common/io/net_dacf.c:104), which calls
+    # softmac_create(), which calls dls_devnet_create(). That is what turns an
+    # attached NIC into a *datalink* -- and, crucially, what takes the
+    # reference that keeps the driver attached.
+    #
+    # Without this module the rule names a module that cannot be loaded, and
+    # a NIC gets all the way through attach and then evaporates:
+    #
+    #     mac: NOTICE: vioif0 registered
+    #     mac: NOTICE: vioif0 unregistered      <- two ticks later
+    #
+    # vioif_attach() itself returns DDI_SUCCESS with no diagnostic; instance 0
+    # is assigned, interrupts are enabled, mac_register() succeeds. Nothing is
+    # wrong with the driver. It is simply that nobody holds it, because the
+    # thing that would hold it never ran. Every downstream symptom follows:
+    # no datalink for dlmgmtd to know about, /dev/net empty (those entries are
+    # sdev rendering the datalinks), and finally
+    #
+    #     ifconfig: cannot plumb vioif0: Could not open DLPI link
+    #
+    # which is three layers away from the cause and blames the driver.
+    "intel/net_dacf"
+
     # ...and the modules consconfig_dacf plumbs at run time rather than links
     # against: the terminal emulator and the workstation console behind
     # /dev/console, the STREAMS modules every console line gets pushed
