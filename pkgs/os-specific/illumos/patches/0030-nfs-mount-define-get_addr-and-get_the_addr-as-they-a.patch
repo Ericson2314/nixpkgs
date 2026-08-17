@@ -1,0 +1,61 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Mon, 17 Aug 2026 10:46:05 -0400
+Subject: [PATCH] nfs/mount: define get_addr() and get_the_addr() as they are
+ declared
+
+Both are forward-declared with `rpcprog_t`/`rpcvers_t` at the top of mount.c
+and then defined taking `ulong_t`:
+
+    static struct netbuf *get_addr(char *, rpcprog_t, rpcvers_t, ...);
+    ...
+    get_addr(char *hostname, ulong_t prog, ulong_t vers, ...)
+
+Whether that is a conflict depends on the data model, which is why it has
+never been noticed:
+
+    #if defined(_LP64)
+    typedef uint32_t rpcprog_t;          /* four bytes */
+    #else
+    typedef unsigned long rpcprog_t;     /* == ulong_t */
+    #endif
+
+cmd/fs.d/nfs/mount has no amd64 subdirectory, so upstream builds it 32-bit,
+where `rpcprog_t` really is `ulong_t` and the two spellings agree. Built
+64-bit they disagree -- four bytes against eight -- and a compiler that
+enforces it says so:
+
+    error: conflicting types for 'get_the_addr'; have
+        'struct netbuf *(char *, ulong_t, ulong_t, ...)'
+
+Take the declarations as correct, since they use the types the RPC interfaces
+actually specify, and make the definitions match. No functional change in the
+32-bit build, where the types are identical.
+
+Assisted-by: Claude <noreply@anthropic.com>
+---
+ usr/src/cmd/fs.d/nfs/mount/mount.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/usr/src/cmd/fs.d/nfs/mount/mount.c b/usr/src/cmd/fs.d/nfs/mount/mount.c
+index efb1f998f3..391ca7d876 100644
+--- a/usr/src/cmd/fs.d/nfs/mount/mount.c
++++ b/usr/src/cmd/fs.d/nfs/mount/mount.c
+@@ -1390,7 +1390,7 @@ make_secure(struct nfs_args *args, char *hostname, struct netconfig *nconf,
+  * This is a potential routine to move to ../lib for common usage.
+  */
+ static struct netbuf *
+-get_the_addr(char *hostname, ulong_t prog, ulong_t vers,
++get_the_addr(char *hostname, rpcprog_t prog, rpcvers_t vers,
+ 	struct netconfig *nconf, ushort_t port, struct t_info *tinfo,
+ 	caddr_t *fhp, bool_t get_pubfh, char *fspath, err_ret_t *error)
+ {
+@@ -1748,7 +1748,7 @@ check_nconf(struct netconfig *nconf, int nthtry, int *valid_proto)
+  *
+  */
+ static struct netbuf *
+-get_addr(char *hostname, ulong_t prog, ulong_t vers, struct netconfig **nconfp,
++get_addr(char *hostname, rpcprog_t prog, rpcvers_t vers, struct netconfig **nconfp,
+ 	char *proto, ushort_t port, struct t_info *tinfo, caddr_t *fhp,
+ 	bool_t get_pubfh, char *fspath, err_ret_t *error)
+ {
