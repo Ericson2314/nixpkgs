@@ -1,112 +1,109 @@
 {
+  lib,
   mkDerivation,
 
-  cw,
+  headers,
 }:
 
-# soconfig(8) -- out of usr/src/cmd/cmd-inet/usr.sbin.
+# soconfig(8) -- usr/src/cmd/cmd-inet/usr.sbin/soconfig.
 #
-# This is the piece that makes `socket(2)` work at all. sockfs keeps *no*
-# built-in family/type/protocol table: `sockparams_init()`
-# (uts/common/fs/sockfs/sockparams.c:87) creates an empty list, and
-# `solookup()` (:663) walks that list and returns EAFNOSUPPORT when it is
-# empty. The list is populated only by the `sockconfig` system call, and
-# soconfig(8) is the only thing that issues it -- so on a system where
-# soconfig has never run, *every* socket() call fails, unix-domain included.
+# This is what makes `socket(3SOCKET)` work at all. sockfs does not know which
+# transport provider serves a given (family, type, protocol) triple; that
+# mapping is data, loaded into the kernel at boot by this program from
+# /etc/sock2path.d. The core entries live in the file named `system/kernel`:
 #
-# The table itself is data, not code: cmd/cmd-inet/etc/sock2path.d/. See the
-# nixbsd boot image for the copy that is actually loaded, which differs from
-# upstream's in naming devices by their /devices path (there is no devfsadm
-# here to populate /dev).
+#     2   2   0    tcp        # AF_INET,  SOCK_STREAM
+#     2   1   0    udp        # AF_INET,  SOCK_DGRAM
+#     26  2   0    tcp        # AF_INET6, SOCK_STREAM
+#     26  1   0    udp        # AF_INET6, SOCK_DGRAM
 #
-# Built as a single target rather than by running the directory's `all`:
-# usr.sbin/Makefile builds some forty programs, between them wanting
-# libdhcpagent, libdladm, libipadm, libipmp, libdlpi, libtsnet, libbsm, libpam,
-# librpcsvc and mech_krb5, none of which are packaged. soconfig itself is in
-# neither $(SOCKETPROG) nor $(NSLPROG) -- it links libc and nothing else, since
-# `_sockconfig()` is a libc syscall stub (lib/libc/common/sys/_sockconfig.S).
+# Until they are loaded, every AF_INET socket fails at creation:
+#
+#     ifconfig: socket: Address family not supported by protocol family
+#
+# and it fails in `ifconfig -a`, before any interface is named -- so it looks
+# like a driver or a NIC problem and is neither. The ip/tcp/udp modules can be
+# attached and the interrupt path can be perfect and networking still will not
+# work, because nothing has told sockfs where to send an AF_INET request.
+#
+# Upstream runs it from svc:/system/device/local (cmd/svc/milestone/
+# devices-local), which invokes it after devfsadm precisely because some of
+# the mappings name /dev entries devfsadm has just created:
+#
+#     /sbin/soconfig -d /etc/sock2path.d
+#
+# Anything bringing up networking without that SMF service has to run it by
+# hand, in the same order: devfsadm first, then this.
 mkDerivation {
   pname = "soconfig";
   path = "usr/src/cmd/cmd-inet/usr.sbin";
 
   extraPaths = [
-    "usr/src/Makefile.master"
-    "usr/src/Makefile.master.64"
-    "usr/src/Makefile.native"
-    "usr/src/Makefile.smatch"
-
-    "usr/src/cmd/Makefile.cmd"
-    "usr/src/cmd/Makefile.cmd.64"
-    "usr/src/cmd/Makefile.ctf"
-    "usr/src/cmd/Makefile.targ"
-
-    # `include ../Makefile.cmd-inet` at usr.sbin/Makefile:84.
-    "usr/src/cmd/cmd-inet/Makefile.cmd-inet"
-
-    # usr.sbin/Makefile:101 has an unconditional
-    # `include $(SRC)/lib/gss_mechs/mech_krb5/Makefile.mech_krb5`. Nothing
-    # soconfig needs comes out of it, but the file has to exist for dmake to
-    # parse the makefile at all.
-    "usr/src/lib/gss_mechs/mech_krb5/Makefile.mech_krb5"
+    # Not built -- installed. See the installPhase.
+    "usr/src/cmd/cmd-inet/etc/sock2path.d"
   ];
 
-  extraNativeBuildInputs = [ cw ];
+  # `_sockconfig`, the one non-standard thing this calls, is in libc
+  # (lib/libc/port/mapfile-vers), so there is no library to reach the illumos
+  # headers through. Ask for them directly.
+  buildInputs = [ headers ];
 
-  # soconfig is in `$(ROOTFS_PROG)`, and cmd/Makefile.cmd:485 gives every
-  # member of that list `-Wl,-I/lib/ld.so.1` -- the *32-bit* interpreter.
-  # Upstream corrects it in cmd/Makefile.cmd.64:34
-  # (`-Wl,-I/lib/$(MACH64)/ld.so.1`), which only takes effect for a program
-  # with an `amd64` subdirectory; this one has none, so the 32-bit path
-  # survives and the resulting binary dies at exec with
+  dontConfigure = true;
+
+  # Compiled directly rather than through the directory's Makefile, which is
+  # shared with the whole cmd-inet/usr.sbin family and unconditionally
+  # includes Makefile.mech_krb5:
   #
-  #     soconfig: Cannot find /lib/ld.so.1
+  #     make: Fatal error in reader: Makefile, line 122: Read of include file
+  #     `.../lib/gss_mechs/mech_krb5/Makefile.mech_krb5' failed
   #
-  # -- which reads like a broken image rather than a wrong ELF interpreter.
-  # Fix the macro at the source instead of appending a second -I, since the
-  # link-editor takes the *first* interpreter it is given.
-  postPatch = ''
-    substituteInPlace usr/src/cmd/Makefile.cmd \
-      --replace-fail '-Wl,-I/lib/ld.so.1' '-Wl,-I/lib/$(MACH64)/ld.so.1'
+  # Dragging krb5 in to build one 645-line program that links only libc is a
+  # bad trade. Two consequences of not using the makefile are worth knowing:
+  #
+  #  * `soconfig` is one of that directory's `ROOTFS_PROG`s, so Makefile.cmd
+  #    would have pinned the 32-bit interpreter on it
+  #    (`$(64ONLY)$(ROOTFS_PROG) := LDFLAGS += -Wl,-I/lib/ld.so.1`), which for
+  #    a 64-bit build names an interpreter that does not exist and gets the
+  #    process killed with no output. mount-ufs works around that with
+  #    `64ONLY=$(POUND_SIGN)`; here the problem simply does not arise.
+  #  * No CTF and no mapfile, neither of which a command needs.
+  buildPhase = ''
+    runHook preBuild
+    $CC -O2 -o soconfig soconfig.c
+    runHook postBuild
   '';
 
-  # The single-suffix `%: %.c` rule in cmd/Makefile.targ.
-  buildFlags = [ "soconfig" ];
-
-  makeFlags = [
-    # illumos' MACH/MACH64 are not uname processor strings; on x86 they are
-    # "i386" and "amd64".
-    "MACH=i386"
-    "MACH64=amd64"
-
-    # The contents of usr/src/Makefile.master.64 that a command build reads;
-    # cmd/cmd-inet/usr.sbin has no amd64 subdirectory. See getent.nix, which
-    # does exactly the same thing and explains why.
-    "CFLAGS=$(CFLAGS64)"
-    "ASFLAGS=$(ASFLAGS64)"
-    "COMPILE.c=$(COMPILE64.c)"
-    "LINK.c=$(LINK64.c)"
-    "LDLIBS.cmd=$(LDLIBS64)"
-    "MAPFILECLASS=-64"
-
-    # CTF and strip steps need illumos target tools on the build host.
-    "POST_PROCESS=:"
-    "POST_PROCESS_O=:"
-
-    # Solaris link-editor syntax that GNU ld rejects; see getent.nix.
-    "LDFLAGS.cmd="
-    "LDCHECKS="
-  ];
-
-  # `install` here would build every other program in the directory, so do the
-  # one copy by hand. Upstream puts soconfig in $(ROOTSBIN) (it is in
-  # $(ROOTFS_PROG)) -- i.e. /sbin, not /usr/sbin -- because it runs before
-  # /usr is mounted.
   installPhase = ''
     runHook preInstall
-    mkdir -p "$out/bin"
-    cp soconfig "$out/bin/soconfig"
+
+    # Upstream installs it as /sbin/soconfig, which is the path
+    # svc:/system/device/local invokes. Written to $out/sbin for that reason,
+    # though nixpkgs' fixup phase then folds sbin into bin -- so consumers
+    # here should use $out/bin/soconfig.
+    mkdir -p $out/sbin
+    cp soconfig $out/sbin/soconfig
+    chmod 755 $out/sbin/soconfig
+
+    # The mappings themselves. They are plain data files whose names are
+    # URL-encoded package FMRIs (`system%2Fkernel` is `system/kernel`), and
+    # `soconfig -d` reads the whole directory, so ship them beside the program
+    # rather than making every consumer go find them in the gate.
+    #
+    # Everything but the Makefile: soconfig treats each regular file in the
+    # directory as a mapping table and would choke on it.
+    mkdir -p $out/etc/sock2path.d
+    for f in ../etc/sock2path.d/*; do
+      case "$(basename "$f")" in
+        Makefile) continue ;;
+      esac
+      cp "$f" $out/etc/sock2path.d/
+    done
+
     runHook postInstall
   '';
 
-  meta.mainProgram = "soconfig";
+  meta = {
+    description = "illumos soconfig(8), which loads the socket-to-transport mappings";
+    mainProgram = "soconfig";
+  };
 }

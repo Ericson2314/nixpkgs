@@ -1,0 +1,92 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Mon, 17 Aug 2026 00:09:26 -0400
+Subject: [PATCH] soconfig: declare `_sockconfig()`, and define `main()` in
+ prototype form
+
+`soconfig.c` calls `_sockconfig()` without ever declaring it. That worked
+because the compiler supplied an implicit declaration, which C99 removed; a
+compiler that enforces the current standard rejects the file:
+
+    error: implicit declaration of function '_sockconfig'
+
+Declare it variadic, because that is what it is. libc supplies it as a
+generated assembly system-call stub (`_sockconfig.o` in `SYSOBJS`), which is
+untyped, and the argument count genuinely varies by command:
+`SOCKCONFIG_GET_SOCKTABLE` passes one, `SOCKCONFIG_ADD_SOCK` four.
+
+The kernel declares the trailing arguments `void *` and interprets them per
+command (`uts/common/os/sysent.c`), so the call sites pass a mixture of small
+integers and pointers through them. Cast the integers explicitly through
+`uintptr_t` at the site that passes them: under an implicit declaration an
+`int` argument left the upper half of its register undefined, and the only
+reason that was harmless is that the kernel truncates back to `int` on the
+way in. Casting makes the full register well defined rather than
+relying on that.
+
+While here, give `main()` a prototype-form definition. The K&R form is not an
+error, but it is the only one left in the file and it draws a warning
+(`-Wold-style-definition`) that obscures real ones.
+
+No functional change.
+
+Assisted-by: Claude <noreply@anthropic.com>
+---
+ usr/src/cmd/cmd-inet/usr.sbin/soconfig.c | 25 ++++++++++++++++++++----
+ 1 file changed, 21 insertions(+), 4 deletions(-)
+
+diff --git a/usr/src/cmd/cmd-inet/usr.sbin/soconfig.c b/usr/src/cmd/cmd-inet/usr.sbin/soconfig.c
+index 6f990db460..cbfe7ead3a 100644
+--- a/usr/src/cmd/cmd-inet/usr.sbin/soconfig.c
++++ b/usr/src/cmd/cmd-inet/usr.sbin/soconfig.c
+@@ -30,11 +30,29 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
++#include <stdint.h>
+ #include <sys/socket.h>
+ #include <sys/socketvar.h>
+ #include <sys/stat.h>
+ #include <unistd.h>
+ 
++/*
++ * The sockconfig(2) system call has no prototype in any installed header, so
++ * every call below was relying on an implicit declaration. That is invalid C
++ * since C99, and compilers that enforce it reject this file outright:
++ *
++ *     error: implicit declaration of function '_sockconfig'
++ *
++ * It is declared variadic because that is what it actually is. libc supplies
++ * it as a generated assembly system-call stub (`_sockconfig.o` in SYSOBJS),
++ * which is untyped, and the number of arguments genuinely varies by command:
++ * SOCKCONFIG_GET_SOCKTABLE passes one, SOCKCONFIG_ADD_SOCK passes four. The
++ * kernel declares the trailing arguments `void *` and interprets them per
++ * command (uts/common/os/sysent.c), which is why the call sites pass a
++ * mixture of small integers and pointers through them.
++ */
++extern int _sockconfig(int, ...);
++
+ #define	MAXLINELEN	4096
+ 
+ /*
+@@ -86,9 +104,7 @@ static int	parse_filter_params(int argc, char **argv);
+ static int	print_socktable();
+ 
+ int
+-main(argc, argv)
+-	int argc;
+-	char *argv[];
++main(int argc, char *argv[])
+ {
+ 	int ret;
+ 
+@@ -372,7 +388,8 @@ parse_params(char *famstr, char *typestr, char *protostr, char *path,
+ 	printf("not calling sockconfig(%d, %d, %d, %d, %s)\n",
+ 	    cmd, fam, type, protocol, path == NULL ? "(null)" : path);
+ #else
+-	if (_sockconfig(cmd, fam, type, protocol, path) == -1) {
++	if (_sockconfig(cmd, (void *)(uintptr_t)fam, (void *)(uintptr_t)type,
++	    (void *)(uintptr_t)protocol, path) == -1) {
+ 		char *s;
+ 
+ 		switch (errno) {
