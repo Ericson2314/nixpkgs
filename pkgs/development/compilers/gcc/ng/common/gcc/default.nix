@@ -534,18 +534,52 @@ stdenv.mkDerivation (finalAttrs: {
     test "$nsrc" -gt 0
   '';
 
-  # The plugin headers land under lib/gcc/<target>/<version>/, one directory per
-  # target, so glob rather than naming a target.
+  # THIS USED TO BE A LOOP THAT HAD NEVER MOVED A FILE, AND COULD NOT HAVE.
+  #
+  # It globbed `lib/gcc/*/"${version}"/plugin/include` with a
+  # `test -d ... || continue`, on the belief that plugin headers land in a
+  # per-target directory. Both halves of that path are wrong, and either alone
+  # is fatal:
+  #
+  #   * there is no target component. `gcc/Makefile.in:859,863` make it
+  #     `$(libdir)/gcc/$(version)/plugin/include` -- one compiler serves every
+  #     back end, so `libsubdir` carries no triple on this branch;
+  #   * `$(version)` there is `gcc/BASE-VER` (`17.0.0`), not the nixpkgs
+  #     `version` (`17.0.0-multi-target-<rev>`).
+  #
+  # So the glob matched nothing, `continue` swallowed it, and the phase reported
+  # success -- a mechanism present but never invoked, which reads as done and
+  # does nothing. Measured on the built compiler: the directory is
+  # `lib/gcc/17.0.0/plugin/include` and it holds the generated headers.
+  #
+  # The `moveToOutput` is gone rather than corrected, because this derivation
+  # has no `dev` output (`outputs = [ "out" "man" "info" ]`), so `!outputDev`
+  # is `out` and the move was a no-op even where the path existed. What is left
+  # is the check: those headers are what `libgcc`'s `-I$(gcc_objdir)` has to
+  # resolve against once it stops running its own inner gcc build, so their
+  # absence must be an error and not a shrug.
   postInstall = ''
-    for d in "$out"/lib/gcc/*/"${version}"/plugin/include; do
-      test -d "$d" || continue
-      moveToOutput "''${d#$out/}" "''${!outputDev}"
-    done
+    plugininc="$out/lib/gcc/${release_version}/plugin/include"
+    test -d "$plugininc" || {
+      echo "gcc: no $plugininc." >&2
+      echo "  \`install-plugin' puts the headers at" >&2
+      echo "  \$(libdir)/gcc/\$(version)/plugin/include, with \$(version) taken" >&2
+      echo "  from gcc/BASE-VER. If that layout has changed, change this path --" >&2
+      echo "  do not restore the silent skip that hid it." >&2
+      exit 1; }
+    echo "gcc: $(ls "$plugininc" | wc -l) plugin headers at $plugininc"
 
     # Beside the per-target directories the driver searches, not inside one:
     # this is the input a per-target `target-specs` run consumes, and it is the
     # same file for all of them.
-    srcspecs="$out/lib/gcc/${version}/multi-target"
+    # `release_version`, NOT `version`. Everything gcc installs under `lib/gcc/`
+    # is keyed by `$(version)`, which is `gcc/BASE-VER` -- `17.0.0` -- while the
+    # nixpkgs `version` is `17.0.0-multi-target-<rev>`. Using the latter here
+    # put these files in a SECOND version directory beside the compiler's own,
+    # which is exactly the "one name, several authorities" shape: measured, the
+    # first build of this produced both `lib/gcc/17.0.0/` and
+    # `lib/gcc/17.0.0-multi-target-491713a/`.
+    srcspecs="$out/lib/gcc/${release_version}/multi-target"
     mkdir -p "$srcspecs"
     install -m644 multi-target.manifest multi-target.multilib "$srcspecs/"
     install -m644 specs-src-* "$srcspecs/"

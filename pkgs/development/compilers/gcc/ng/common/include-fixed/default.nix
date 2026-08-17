@@ -57,14 +57,24 @@
 # which is not a workaround for nix: it is the same assembly a `make install`
 # performs, done explicitly.
 #
-# THE ONE PLACE THAT REALLY DOES NEED CHANGING IS THE OUTPUT PATH.
-# `mkheaders.in:147-155` takes `libdir` and `libexecdir` from `@libdir@` and
-# `@libexecdir@`, substituted when `../fixincludes` was configured, and computes
-# `incdir=${libdir}/gcc/${version}/${target}/include-fixed` from them. The
-# `prefix` positional argument at `:129` is read and then used for none of it.
-# So `mkheaders` can only ever write into `../fixincludes`' own store path.
-# `sed` on the copied script is the honest minimum; the real fix is for
-# `mkheaders` to honour its own `prefix` argument.
+# AND WHERE IT WRITES IS AN ARGUMENT TOO -- A CLAIM THIS FILE PREVIOUSLY GOT
+# WRONG, SO THE EVIDENCE IS RECORDED RATHER THAN THE CONCLUSION.
+#
+# Reading `mkheaders.in` alone suggests otherwise: `:147-148` are
+# `libdir=@libdir@` / `libexecdir=@libexecdir@`, and `:153` builds `libsubdir`
+# from them, which reads as "substituted when `../fixincludes` was configured,
+# therefore fixed". It is not. Autoconf substitutes `@libdir@` as the literal
+# `${exec_prefix}/lib`, and `:145` is `exec_prefix=${prefix}` -- so the
+# positional `prefix` at `:129` reaches all of it through ordinary shell
+# expansion. Checked in the INSTALLED script, not the input:
+#
+#     exec_prefix=${prefix}
+#     libdir=${exec_prefix}/lib
+#
+# So `mkheaders ... <prefix>` writes into `<prefix>` and nothing needs
+# rewriting. An earlier version of this derivation `sed`-ed the script; that was
+# unnecessary, and worse, it was a second authority for a path the script
+# already computes correctly.
 let
   target = stdenv.hostPlatform.config;
   libc = stdenv.cc.libc or null;
@@ -118,18 +128,16 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     echo "include-fixed: ${target}'s fixinc.sh is" \
          "$(wc -c < "$NIX_BUILD_TOP/it/${itools}/fixinc.sh") bytes"
 
-    # Point `mkheaders` at a prefix it can write to. See the note above: its
-    # `prefix` argument does not reach `libdir`, so the substituted values are
-    # rewritten instead. Both directions are checked, because a `sed` that
-    # matched nothing leaves a script that writes into the store, fails, and
-    # blames the store.
+    # Deriving `exec_prefix` from `prefix` is what makes the positional
+    # argument below reach `libdir`; assert the script really is shaped that way rather
+    # than trusting the reading, because if it is not, `mkheaders` writes into
+    # `fixincludes`' read-only store path and the error names the store.
     mk="$NIX_BUILD_TOP/it/${itools}/mkheaders"
-    grep -q '^libdir=' "$mk"
-    sed -i \
-      -e "s|^libdir=.*|libdir=$NIX_BUILD_TOP/it/lib|" \
-      -e "s|^libexecdir=.*|libexecdir=$NIX_BUILD_TOP/it/libexec|" \
-      "$mk"
-    grep -q "^libdir=$NIX_BUILD_TOP/it/lib\$" "$mk"
+    grep -q '^exec_prefix=..prefix.$' "$mk" || {
+      echo "include-fixed: mkheaders does not derive exec_prefix from prefix." >&2
+      echo "  Its \`prefix' argument would then not reach libdir, and this" >&2
+      echo "  derivation's assumption about where it writes is wrong." >&2
+      exit 1; }
 
     runHook postBuild
   '';
@@ -137,10 +145,13 @@ stdenvNoCC.mkDerivation (finalAttrs: {
   installPhase = ''
     runHook preInstall
 
+    # The trailing argument is `prefix`, and it is the whole of how this is
+    # told where to write.
     sh "$NIX_BUILD_TOP/it/${itools}/mkheaders" \
       --target=${target} \
       --headers=${lib.getDev libc}/include \
-      --gcc="${lib.getExe' cc "${stdenv.cc.targetPrefix}cc"}"
+      --gcc="${lib.getExe' cc "${stdenv.cc.targetPrefix}cc"}" \
+      "$NIX_BUILD_TOP/it"
 
     src="$NIX_BUILD_TOP/it/lib/gcc/${release_version}/${target}/include-fixed"
 
