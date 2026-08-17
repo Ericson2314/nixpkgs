@@ -44,8 +44,48 @@
 # NAMES this target while DESCRIBING x86_64 -- measured upstream at 95 of 101
 # lines identical between two such files, with every name- and path-based check
 # still green. `--with-tools-dir` below is a wrapped bintools directory, so the
-# tools are there by construction; the assertion after configure is what makes
-# that checkable rather than assumed.
+# tools are there by construction; `postConfigure` reads back WHICH tools were
+# chosen, so that is checked rather than assumed.
+#
+# ==========================================================================
+# WHAT THIS DERIVATION PASSES, CLASSIFIED. Nine flags, and the split is the
+# point: it says how much of the "fancy pre-configure" is this derivation doing
+# work the component should do for itself.
+#
+#   (a) RE-DERIVED FROM `gcc-unwrapped`'S OUTPUT -- 3, and all three are the
+#       defect in nix form. This derivation opens `multi-target.manifest`, so it
+#       has to know that file's location, its line format and its key names:
+#         `--with-cpu-type`       `awk`ed out of the manifest
+#         `--with-option-defaults` `awk`ed out of the manifest
+#         `--with-source-specs`   two files sitting BESIDE the manifest
+#       Between them they are the whole of `preConfigure`'s 56 lines bar three.
+#
+#   (b) PROBED FROM THIS TARGET'S TOOLCHAIN -- **0**. Nothing measured is passed
+#       IN; the probing is the component's own job and it does all of it. That
+#       is the half of the boundary that is already right, and it is worth
+#       stating as a count rather than an absence.
+#
+#   (c) GENUINE nixpkgs-SIDE CHOICES -- 6:
+#         `--build` / `--host`    from `configurePlatforms`
+#         `--with-target`         nixpkgs' SPELLING of the triple; see below
+#         `--with-tools-dir`      which toolchain to probe
+#         `--with-specs-file`     where the artefact goes
+#         `--with-native-system-header-dir`  which libc's headers
+#         (`--with-fixed-include-dir` is a seventh, conditional, and also (c))
+#
+# `--with-target` IS NOT REDUNDANT WITH `--host`, WHICH IT LOOKS LIKE. Both are
+# `stdenv.hostPlatform.config`, so it reads as saying the same thing twice --
+# but `--host` goes through `config.sub` and `--with-target` does not, and for
+# at least one nixpkgs triple those differ:
+#
+#     ./config.sub s390x-unknown-linux-gnu  ->  s390x-ibm-linux-gnu
+#
+# The driver looks up `<version>/<target>/specs-config` under the triple it
+# calls ITSELF, which is nixpkgs' spelling. Without `--with-target` the file
+# would be written under the canonical one and never found -- one name, two
+# authorities, and the failure would be `no configuration file for target`
+# pointing at a path that exists under a different name.
+# ==========================================================================
 let
   target = stdenv.hostPlatform.config;
 
@@ -128,9 +168,17 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     # The source-derived half. Absent, the spec file still exists, still parses,
     # and the driver silently falls back to generic defaults -- looking for
     # crt0.o where glibc wants crt1.o, with no diagnostic. So require it.
+    # `mlib-specs-<target>` is genuinely optional -- `gen-multilib-specs.sh` can
+    # fail for a target with no multilib tables, and `multi-target-specs` reports
+    # that and carries on -- so a missing one must not stop this. But the
+    # `test -f "$f" && ...` this used to be is a compound that RETURNS 1 when the
+    # file is absent, and under `set -e` a failing last statement in a loop body
+    # aborts the phase with no message at all. It never fired because all 48
+    # targets in this compiler happen to have both files; that is a property of
+    # today's tree, not of the code.
     sourceSpecs=
     for f in "${srcSpecsDir}/specs-src-${target}" "${srcSpecsDir}/mlib-specs-${target}"; do
-      test -f "$f" && sourceSpecs="$sourceSpecs $f"
+      if test -f "$f"; then sourceSpecs="$sourceSpecs $f"; fi
     done
     test -n "$sourceSpecs" || {
       echo "target-specs: no specs-src-${target} in ${srcSpecsDir}." >&2
@@ -163,6 +211,13 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     # among them -- still fail with only those two set. A failed probe is not an
     # error here; it silently records "no". So hand over the whole directory,
     # which is what `--with-tools-dir` is for.
+    #
+    # WHAT IS ACTUALLY IN `bintools` TODAY: `buildPackages.binutilsNoLibc`, a
+    # wrapper that runs on the build machine and emits for this target. The
+    # `NoLibc` is a cycle break, not a capability statement -- the call site in
+    # `../default.nix` records the three candidates that recursed, and records
+    # that the with-libc and no-libc wrappers produce byte-identical
+    # `specs-config`.
     "--with-tools-dir=${bintools}/bin"
 
     "--with-specs-file=${placeholder "out"}/${specsDir}/specs"
@@ -185,6 +240,61 @@ stdenvNoCC.mkDerivation (finalAttrs: {
   # wrapper, names the result. Two passes, stated rather than hidden.
   ++ lib.optional (includeFixed != null) "--with-fixed-include-dir=${includeFixed}";
 
+  # WHICH ASSEMBLER AND LINKER WERE ACTUALLY PROBED. The comment at the top of
+  # this file says the failure to fear is a spec file that NAMES this target
+  # while DESCRIBING the build machine, and until now nothing here could tell
+  # the difference: `installPhase` checked that a file appeared, and a file
+  # appears either way.
+  #
+  # `config.log` records the answer -- `result: aarch64-unknown-linux-gnu-as`
+  # where a fallback would say `result: as` -- so read it back.
+  #
+  # The test is not "is it prefixed", which would be wrong for a native target
+  # where the unprefixed name is the only one that exists. It is "does the
+  # directory we told it to use actually provide a tool by that name". That is
+  # right on both: a cross bintools wrapper installs ONLY `<triple>-as`, so a
+  # fallback to plain `as` fails this; a native one installs `as`, so the
+  # correct native answer passes.
+  #
+  # Every step refuses to be silent. A missing `config.log`, a `checking` line
+  # that is not there, and an empty result are three different ways to get "no
+  # evidence", and none of them may read as "evidence of success".
+  postConfigure = ''
+    test -f config.log || {
+      echo "target-specs: no config.log, so which tools were probed cannot be" >&2
+      echo "  established. Refusing to accept the spec file on trust." >&2
+      exit 1; }
+
+    tsProbed() {
+      awk -v want="checking for a usable $1" '
+        index($0, want) { getline; sub(/^configure:[0-9]*: result: /, ""); print; exit }
+      ' config.log
+    }
+
+    for tool in assembler linker; do
+      got=$(tsProbed "$tool")
+      test -n "$got" || {
+        echo "target-specs: config.log has no result for \`a usable $tool'." >&2
+        echo "  Either configure stopped before that check or its message" >&2
+        echo "  changed. Either way this check is reading nothing, which must" >&2
+        echo "  not pass." >&2
+        exit 1; }
+      test "$got" != "not found" || {
+        echo "target-specs: configure found no usable $tool for ${target}." >&2
+        exit 1; }
+      test -x "${bintools}/bin/$got" || {
+        echo "target-specs: ${target}'s $tool was probed as \`$got', which" >&2
+        echo "  ${bintools}/bin does not provide." >&2
+        echo "  That is the documented failure: configure fell back to a tool" >&2
+        echo "  found elsewhere on PATH -- the BUILD machine's, in a cross" >&2
+        echo "  build -- and would write a spec file naming ${target} while" >&2
+        echo "  describing that machine, with every path- and name-based check" >&2
+        echo "  still green." >&2
+        exit 1; }
+      echo "target-specs: ${target}: $tool = $got (from ${bintools}/bin)"
+    done
+  '';
+
   installPhase = ''
     runHook preInstall
 
@@ -202,7 +312,17 @@ stdenvNoCC.mkDerivation (finalAttrs: {
         exit 1; }
     done
 
+    # `test -f` above is satisfied by an EMPTY file, so count the keys and
+    # require some. The `|| true` here is only so that `grep -c` returning 1 on
+    # no match does not abort before the count can be reported; zero is then an
+    # error with a name, rather than a number printed on the way past.
     nkeys=$(grep -c '^[a-z_]' "$out/${specsDir}/specs-config" || true)
+    test "$nkeys" -gt 0 || {
+      echo "target-specs: $out/${specsDir}/specs-config has no capability keys." >&2
+      echo "  configure's own reader/expected-list comparison should have made" >&2
+      echo "  this impossible, so an empty file here means that check did not" >&2
+      echo "  run -- which is worth failing on rather than shipping." >&2
+      exit 1; }
     echo "target-specs: ${target}: $nkeys capability keys, $(wc -l < "$out/${specsDir}/specs") spec lines"
 
     runHook postInstall
