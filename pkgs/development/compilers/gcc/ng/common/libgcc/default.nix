@@ -137,6 +137,38 @@ stdenv.mkDerivation (finalAttrs: {
   #     machine's library) but they have to come from somewhere, and today
   #     nothing installs a multi-target compiler's per-target generated headers.
   #     That is what stands between this derivation and a standalone libgcc.
+  #
+  # WHERE THE STANDALONE ATTEMPT ACTUALLY GOT TO, AND WHAT STOPPED IT. Three
+  # blockers, in the order they were hit, each one only visible once the one
+  # before it was gone:
+  #
+  #   1. `no configuration file for target 'aarch64-unknown-linux-gnu'`, from
+  #      the driver, before cc1 ran at all. FIXED: `../target-specs` and
+  #      `../gcc-composed` exist now and the wrappers use them.
+  #   2. `cannot compute suffix of object files`, from libgcc's own configure,
+  #      because `../gcc-composed` was reading `hostPlatform` -- so a cross
+  #      wrapper held x86_64's spec file with aarch64's bintools. FIXED.
+  #   3. `cannot execute 'as'`, and this one is a GCC defect rather than a
+  #      packaging one. cc1 runs and emits correct aarch64 assembly; the driver
+  #      then cannot find an assembler, because it looks for the UNPREFIXED
+  #      name. `find_a_program` (`gcc/gcc.cc:3219`) does have a machine-prefixed
+  #      search -- `gcc/gcc.cc:3274` prepends `just_machine_prefix` in every
+  #      machine-agnostic directory, with a comment saying it is there "as an
+  #      additional way to disambiguate targets". But `just_machine_prefix` is
+  #      assigned in exactly one place, `gcc/gcc.cc:9305`, to `""`, inside
+  #      `set_up_specs` -- which runs BEFORE the target is resolved -- and
+  #      nothing ever sets it from the target in force, though the comment three
+  #      lines above says that is where it should come from. So the prefixed
+  #      search prepends nothing and is indistinguishable from no search at all:
+  #      a complete mechanism that never fires.
+  #
+  # Note the shape of (3): every check upstream of it passes, the compiler
+  # proper is correct, and the failure names a tool rather than the reason it
+  # was looked for under that name.
+  #
+  # And note what the boundary list did NOT predict. It named `specs-config` as
+  # the missing artefact, and that was right but not sufficient: (2) and (3)
+  # were both behind it, and (3) is not about libgcc's boundary at all.
   depsBuildBuild = [
     buildPackages.stdenv.cc
     buildGccPackages.libiberty
