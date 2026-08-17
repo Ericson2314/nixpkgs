@@ -43,7 +43,14 @@
 # So this copies the drivers and symlinks the rest. It is deliberately not a
 # `symlinkJoin`.
 let
-  target = stdenv.hostPlatform.config;
+  # `targetPlatform`, NOT `hostPlatform`. This derivation is a COMPILER: it runs
+  # on the host and serves the target, and the spec file it carries is the
+  # target's. Reading `hostPlatform` here composed the compiler that runs here
+  # with the specs OF the machine it runs on -- so a cross wrapper came out
+  # holding x86_64's spec file while its bintools were aarch64's, and the driver
+  # said `no configuration file for target aarch64-unknown-linux-gnu' naming two
+  # paths under an x86_64 prefix.
+  target = stdenv.targetPlatform.config;
 in
 runCommand "gcc-${target}-${version}"
   {

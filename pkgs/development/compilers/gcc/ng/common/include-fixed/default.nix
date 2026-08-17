@@ -8,9 +8,7 @@
   monorepoSrc ? null,
   fixincludes,
   gcc-unwrapped,
-  # A compiler that can preprocess for this target. `mkheaders` needs the set of
-  # macros the preprocessor predefines and refuses to run without it; see below.
-  cc,
+  # NOTE: the compiler comes from `stdenv.cc`, not as an argument -- see below.
 }:
 # ONE TARGET'S FIXED SYSTEM HEADERS. Thin, and per target, which is the whole
 # distinction: `../fixincludes` BUILDS the fixer once per host, and this RUNS it
@@ -90,7 +88,12 @@ stdenvNoCC.mkDerivation (finalAttrs: {
 
   strictDeps = true;
 
-  nativeBuildInputs = [ cc ];
+  # `stdenv.cc` is the compiler that RUNS on the build machine and serves this
+  # derivation`s platform -- the same authority `../libgcc` reads. `mkheaders`
+  # needs it only to preprocess: it builds `macro_list` with `-E -dM`, and
+  # refuses to run without it, because an empty list reads as "nothing is
+  # predefined" and changes which fixes fire.
+  nativeBuildInputs = [ stdenv.cc ];
 
   dontConfigure = true;
 
@@ -102,6 +105,13 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     mkdir -p "$NIX_BUILD_TOP/it/${itools}" "$NIX_BUILD_TOP/it/${itoolsData}"
     cp -r "${fixincludes}/${itools}/." "$NIX_BUILD_TOP/it/${itools}/"
     cp -r "${gcc-unwrapped}/${itoolsData}/." "$NIX_BUILD_TOP/it/${itoolsData}/"
+    # AND gcc's HALF OF `itoolsdir` ITSELF, which is `mkinstalldirs` alone.
+    # `fixincludes` installs `fixincl`, `fixinc.sh`, `mkheaders` and
+    # `README-fixinc` there; `mkinstalldirs` comes from gcc's
+    # `install-mkheaders` (`gcc/Makefile.in:6898`). So this one directory has
+    # two producers in two store paths, and the consumer has to merge both --
+    # measured, by the check below firing when only the `lib` half was copied.
+    cp -r "${gcc-unwrapped}/${itools}/." "$NIX_BUILD_TOP/it/${itools}/"
     chmod -R u+w "$NIX_BUILD_TOP/it"
 
     # Name the file whose absence `mkheaders` reports as its own error, so that
@@ -150,7 +160,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     sh "$NIX_BUILD_TOP/it/${itools}/mkheaders" \
       --target=${target} \
       --headers=${lib.getDev libc}/include \
-      --gcc="${lib.getExe' cc "${stdenv.cc.targetPrefix}cc"}" \
+      --gcc="${lib.getExe' stdenv.cc "${stdenv.cc.targetPrefix}cc"}" \
       "$NIX_BUILD_TOP/it"
 
     src="$NIX_BUILD_TOP/it/lib/gcc/${release_version}/${target}/include-fixed"

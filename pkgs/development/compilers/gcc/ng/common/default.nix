@@ -225,8 +225,16 @@ makeScopeWithSplicing' {
       # -- it exits with `no configuration file for target ...` before reaching
       # cc1 -- so a wrapper built straight on it is a compiler that names a
       # target and cannot serve it.
+      #
+      # The two halves come from two different sets, and that is the whole
+      # point: `gcc-unwrapped` is a property of the machine this compiler RUNS
+      # on, `target-specs` of the machine it SERVES. Taking both from one set
+      # produced a cross wrapper carrying x86_64's spec file with aarch64's
+      # bintools, and the driver's own diagnostic named two paths under an
+      # x86_64 prefix -- correct, and unreadable as a cause.
       gcc-composed = callPackage ./gcc-composed {
         gcc-unwrapped = buildGccPackages.gcc-unwrapped;
+        target-specs = targetGccPackages.target-specs;
       };
 
       # `fixincludes` runs on the build machine, so it is taken from
@@ -246,7 +254,6 @@ makeScopeWithSplicing' {
         # this reads are host-independent data, but the derivation carrying them
         # runs on the build machine.
         gcc-unwrapped = buildGccPackages.gcc-unwrapped;
-        cc = buildGccPackages.gcc;
       };
 
       gfortran-unwrapped = gccPackages.gcc-unwrapped.override {
