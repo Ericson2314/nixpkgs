@@ -8,10 +8,6 @@
   monorepoSrc ? null,
   fetchpatch,
   autoreconfHook269,
-  buildGccPackages,
-  buildPackages,
-  which,
-  python3,
 
   # A threading library that is not part of the libc, for targets where the
   # libc alone does not offer the model we want — MinGW, whose only built-in
@@ -115,149 +111,48 @@ stdenv.mkDerivation (finalAttrs: {
 
   strictDeps = true;
 
-  # `libiberty` AND FRIENDS ARE NOT libgcc'S -- MEASURED, AND KEPT ANYWAY, WITH
-  # THE REASON WRITTEN DOWN.
+  # THE INNER `gcc/configure` RUN IS GONE, AND SO IS EVERY TOOL-VARIABLE EXPORT
+  # WITH IT. THIS BUILDS `libgcc/` AND NOTHING ELSE.
   #
-  # `grep libiberty libgcc/Makefile.in libgcc/configure.ac` reads **zero**.
-  # Nothing in this library wants it. They are here for the `gcc/configure` and
-  # `make` run in `preConfigure`, which exists only to produce `libgcc.mvars`
-  # and the generated headers `-I$(gcc_objdir)` resolves. That run is a *gcc*
-  # build happening inside libgcc's derivation, and these are its dependencies,
-  # not ours.
+  # What used to be here: a whole second configure and partial build of GCC's
+  # `gcc/` component, driven with a fifteen-flag `topLevelConfigureFlags` list
+  # and about twenty `export`s of build-machine and target-machine tool
+  # variables, to produce two things --
   #
-  # They go when it goes. What it is reaching for, exactly:
-  #   `libgcc.mvars` -- two variables (`gcc/Makefile.in:3779-3784`):
-  #     `GCC_CFLAGS`, which describes *gcc's* build and whose `-isystem
-  #     ./include` is relative to gcc's build directory (hence the
-  #     `mkdir -p "$buildRoot/gcc/include"` below, which exists to stop an
-  #     illegitimate flag from erroring), and `INHIBIT_LIBC_CFLAGS`, which is
-  #     `-Dinhibit_libc` and is legitimate;
-  #   `-I$(gcc_objdir)` (`libgcc/Makefile.in:284`) -- `tconfig.h`, `tm.h`,
-  #     `options.h`, `insn-constants.h`. Legitimate in kind (libgcc is one
-  #     machine's library) but they have to come from somewhere, and today
-  #     nothing installs a multi-target compiler's per-target generated headers.
-  #     That is what stands between this derivation and a standalone libgcc.
+  #   * `libgcc.mvars`, whose two variables (`gcc/Makefile.in:3801-3806`) were
+  #     `GCC_CFLAGS` (a description of GCC'S OWN BUILD, whose `-isystem
+  #     ./include` is relative to gcc's build directory -- which is why this
+  #     derivation used to `mkdir -p "$buildRoot/gcc/include"`, purely to stop
+  #     an illegitimate flag from erroring) and `INHIBIT_LIBC_CFLAGS`;
+  #   * the generated headers that `-I$(gcc_objdir)` resolved.
   #
-  # WHERE THE STANDALONE ATTEMPT ACTUALLY GOT TO, AND WHAT STOPPED IT. Three
-  # blockers, in the order they were hit, each one only visible once the one
-  # before it was gone:
+  # libgcc now answers both itself, and asks the COMPILER for the third thing:
   #
-  #   1. `no configuration file for target 'aarch64-unknown-linux-gnu'`, from
-  #      the driver, before cc1 ran at all. FIXED: `../target-specs` and
-  #      `../gcc-composed` exist now and the wrappers use them.
-  #   2. `cannot compute suffix of object files`, from libgcc's own configure,
-  #      because `../gcc-composed` was reading `hostPlatform` -- so a cross
-  #      wrapper held x86_64's spec file with aarch64's bintools. FIXED.
-  #   3. `cannot execute 'as'`, and this one is a GCC defect rather than a
-  #      packaging one. cc1 runs and emits correct aarch64 assembly; the driver
-  #      then cannot find an assembler, because it looks for the UNPREFIXED
-  #      name. `find_a_program` (`gcc/gcc.cc:3219`) does have a machine-prefixed
-  #      search -- `gcc/gcc.cc:3274` prepends `just_machine_prefix` in every
-  #      machine-agnostic directory, with a comment saying it is there "as an
-  #      additional way to disambiguate targets". But `just_machine_prefix` is
-  #      assigned in exactly one place, `gcc/gcc.cc:9305`, to `""`, inside
-  #      `set_up_specs` -- which runs BEFORE the target is resolved -- and
-  #      nothing ever sets it from the target in force, though the comment three
-  #      lines above says that is where it should come from. So the prefixed
-  #      search prepends nothing and is indistinguishable from no search at all:
-  #      a complete mechanism that never fires.
+  #   * `libgcc/configure.ac:263-302` detects in-tree versus standalone by
+  #     looking for a sibling `gcc/libgcc.mvars`, and when there is none runs
+  #     `$CC -print-target-header-dir`. `libgcc/Makefile.in:323` is now
+  #     `-I$(gcc_target_incdir)` rather than `-I$(gcc_objdir)`.
+  #   * `Makefile.in:216-222` defines `GCC_CFLAGS` itself in the standalone
+  #     case, without the build-directory-relative flag.
+  #   * `configure.ac:318-330` PROBES `inhibit_libc` -- it compiles
+  #     `#include <stdio.h>` against the headers these objects will actually
+  #     use -- instead of inheriting the host gcc's single answer.
   #
-  # Note the shape of (3): every check upstream of it passes, the compiler
-  # proper is correct, and the failure names a tool rather than the reason it
-  # was looked for under that name.
+  # SO THE ONLY INPUT THIS COMPONENT NEEDS IS A COMPILER, ARRIVING AS AN
+  # ORDINARY DERIVATION INPUT. That is the whole of the claim this task was
+  # about, and it is now the code rather than a prediction.
   #
-  # And note what the boundary list did NOT predict. It named `specs-config` as
-  # the missing artefact, and that was right but not sufficient: (2) and (3)
-  # were both behind it, and (3) is not about libgcc's boundary at all.
+  # `--host=<the library's machine>` AND NO `--target`: `configurePlatforms`
+  # below is `[ "build" "host" ]`. libgcc is one machine's library; the top
+  # level renaming its `--target` into libgcc's `--host` was the inversion.
   #
-  # ==========================================================================
-  # THE 24 TOOL-VARIABLE LINES BELOW, SPLIT BY WHY EACH ONE IS STILL HERE.
-  # ==========================================================================
-  #
-  # "Delete the shuffling" is one instruction covering two different claims, and
-  # they have different evidence and different unblock conditions. The split is
-  # what makes the count actionable, so it is written down rather than left as a
-  # total.
-  #
-  # THE MEASUREMENT THAT SETTLES IT -- libgcc's own build system, not the
-  # packaging:
-  #
-  #   `grep -cE '_FOR_BUILD|_FOR_TARGET' libgcc/configure.ac`   -> **0**
-  #   `grep -cE '_FOR_BUILD|_FOR_TARGET' libgcc/configure`      -> **1**, and it
-  #       is inside a COMMENT (`:2687`, about post-stage1 host modules).
-  #   `grep -cE '_FOR_BUILD|_FOR_TARGET' libgcc/Makefile.in`    -> **21**, and
-  #       every one is a LOCAL DEFINITION, not a read:
-  #
-  #           AR_FOR_TARGET = $(AR)        GCC_FOR_TARGET = $(CC)
-  #           NM_FOR_TARGET = $(NM)        RANLIB_FOR_TARGET = $(RANLIB)
-  #           STRIP_FOR_TARGET = $(STRIP)  LIPO_FOR_TARGET = $(LIPO)
-  #
-  #       (`libgcc/Makefile.in:187-199`, then `export`ed at `:209-223` for its
-  #       own sub-makes.) They are the makefile's local names for its ONE
-  #       toolchain, derived from `$(AR)`/`$(CC)`/... which come from libgcc's
-  #       own configure. And they are plain `=` assignments, which an
-  #       environment variable CANNOT override in make -- so exporting these
-  #       names at libgcc does not even reach them.
-  #
-  # THE CHECK, STATED SO IT IS REPRODUCIBLE AND SO THAT PROSE CANNOT FAIL IT.
-  # Counting every matching line counts this comment, which discusses the
-  # variables by name and has to. So the check skips comment lines:
-  #
-  #     for f in $(find ng -name '*.nix'); do
-  #       grep -v '^[[:space:]]*#' "$f" | grep -c '_FOR_BUILD\|_FOR_TARGET'
-  #     done
-  #
-  # Measured: **0 for every file in the set except this one, which is 24.**
-  #
-  # So, of the 24:
-  #
-  #   *** 9 ARE UNNECESSARY REGARDLESS OF #246 *** -- the second block, the one
-  #   set just before libgcc's OWN configure runs: the five `*_FOR_BUILD` and
-  #   the four `*_FOR_TARGET` exports. Nothing in libgcc reads any of them, per
-  #   the grep above. They are not blocked on anything; they are simply not
-  #   read. They stay only because libgcc cannot currently be BUILT on the
-  #   target that would demonstrate the deletion, and deleting a thing while the
-  #   build that would contradict you cannot run is the unfalsifiable-claim
-  #   shape PRINCIPLES warns about. Delete them the moment a libgcc build
-  #   passes.
-  #
-  #   *** 15 SURVIVE ONLY BECAUSE OF THE INNER `gcc/configure` RUN *** -- the
-  #   first block: five `*_FOR_BUILD` exports, five uses of them to set the plain
-  #   names, four `*_FOR_TARGET` exports, one `NIX_CFLAGS_COMPILE_FOR_BUILD`.
-  #   That run needs the three-machine vocabulary because it IS a gcc build:
-  #   build machine for the
-  #   generators, target machine for the probes. They go when it goes, and it
-  #   goes when two things exist:
-  #     (a) the compiler installs per-target `tconfig.h`/`tm.h`/`options.h`/
-  #         `insn-constants.h` for `-I$(gcc_objdir)`. Today it installs the
-  #         PRIMARY's: measured on the built compiler,
-  #         `lib/gcc/<ver>/plugin/include/tm.h` is 72 lines of `#ifndef`-guarded
-  #         configure answers (`DEFAULT_LIBC LIBC_GLIBC`, `HAVE_LD_EH_FRAME_HDR
-  #         1`, ...), not a back end's `tm.h` chain, and there is no
-  #         `tconfig.h` there at all;
-  #     (b) #246, so that the compiler which would replace the run can assemble.
-  #
-  # The non-`*_FOR_*` exports in the second block (`AS`, `CC`, `CPP`, `CXX`,
-  # `LD`) are a third category the grep does not count: they exist to UNDO the
-  # first block's clobbering of the environment, and stdenv had them right to
-  # begin with. They go with the first block, not on their own.
-  #
-  # `GCC_CFLAGS` remains the one genuinely inverted variable, as recorded above:
-  # two variables in `libgcc.mvars`, one of them describing gcc's build rather
-  # than libgcc's machine.
-  depsBuildBuild = [
-    buildPackages.stdenv.cc
-    buildGccPackages.libiberty
-    buildGccPackages.libcpp
-    buildGccPackages.libdecnumber
-    buildGccPackages.libcody
-  ];
-
-  nativeBuildInputs = [
-    autoreconfHook269
-    which
-    python3
-  ];
+  # The catch-all it replaces was not merely inelegant. `-I$(gcc_objdir)` served
+  # whatever `tm.h` the sibling gcc build directory happened to hold, and on a
+  # multi-target build that is the PRIMARY back end's -- so in the sibling case
+  # every target's libgcc was compiled against i386's `tm.h`. Live, not latent.
+  # `which` and `python3` were the INNER gcc build's: its generator scripts
+  # want them, libgcc's own configure and Makefile do not. They go with it.
+  nativeBuildInputs = [ autoreconfHook269 ];
 
   # The `gthr-<model>.h` header for a non-libc threading model includes that
   # library's own headers, and the built `libgcc_s` links against it, so it has
@@ -280,8 +175,23 @@ stdenv.mkDerivation (finalAttrs: {
       # of its hunks no longer applies to trunk. `autoreconfFlags` below
       # regenerates that file anyway, so take only the input: a partially
       # applied generated file is the worst of the outcomes available.
-      excludes = [ "libgcc/configure" ];
-      hash = "sha256-Bx3xx0Uql5Lcv1UORzlFjUhikPWcirJYCDHZRgS2fds=";
+      # `libgcc/Makefile.in` IS EXCLUDED TOO, AND IS RE-EXPRESSED BELOW AS
+      # `substituteInPlace`. Its last hunk stopped applying: the branch inserted
+      # a comment block between `install-unwind_h` and `install-gcov_h`, and the
+      # hunk's trailing context is that block. Six of seven hunks applied, which
+      # is the worst outcome available -- `patch` exits non-zero, but a tree with
+      # six of seven applied is what it leaves behind, and `--fuzz` up to 5 makes
+      # it strictly worse (two failures rather than one), measured.
+      #
+      # The four edits it actually makes are mechanical, and `substituteInPlace
+      # --replace-fail` states each one as an assertion: a pattern that has
+      # stopped existing is an error naming the pattern, rather than an offset
+      # that quietly lands somewhere else.
+      excludes = [
+        "libgcc/configure"
+        "libgcc/Makefile.in"
+      ];
+      hash = "sha256-IxzhTA/18rxbL4FomzlNLeAer7MP/aLEsh4g2C5JvBY=";
     })
     (getVersionFile "libgcc/force-regular-dirs.patch")
   ];
@@ -294,6 +204,39 @@ stdenv.mkDerivation (finalAttrs: {
   '';
 
   postPatch =
+    # THE `libgcc/Makefile.in` HALF OF `regular-libdir-includedir.patch`, as
+    # assertions rather than as context matching. See the `excludes` above for
+    # why it is not a patch any more.
+    #
+    # What it does, in one sentence: libgcc installs into the ordinary
+    # `$(libdir)` and `$(includedir)` instead of
+    # `$(libdir)/gcc/<triple>/<version>`, which is the layout a package manager
+    # wants and the only reason `$out/lib/libgcc.a` is where every consumer
+    # expects it. `libsubdir` is left defined and simply stops being used; the
+    # upstream patch also deletes it and `real_host_noncanonical`, which is
+    # tidier and is a bigger diff to keep rebased for no behavioural gain.
+    ''
+      substituteInPlace libgcc/Makefile.in \
+        --replace-fail 'shlib_slibdir = @slibdir@' \
+                       'shlib_slibdir = @slibdir@
+      includedir = @includedir@' \
+        --replace-fail '"libsubdir=$(libsubdir)" \' \
+                       '"includedir=$(includedir)" \' \
+        --replace-fail 'inst_libdir = $(libsubdir)$(MULTISUBDIR)' \
+                       'inst_libdir = $(libdir)$(MULTISUBDIR)' \
+        --replace-fail '$(DESTDIR)$(libsubdir)/include' \
+                       '$(DESTDIR)$(includedir)'
+
+      # `--replace-fail` fires on the FIRST absent pattern, so a later one that
+      # is present four times and becomes present zero times would still be
+      # caught -- but one that changes from four occurrences to one would not.
+      # Count what is left instead of trusting the replace.
+      if grep -q 'libsubdir)/include' libgcc/Makefile.in; then
+        echo "libgcc: libsubdir/include survives in Makefile.in:" >&2
+        grep -n 'libsubdir)/include' libgcc/Makefile.in >&2
+        exit 1
+      fi
+    ''
     # Both halves of this are ELF-specific, so it is applied only there.
     # `crti.o`/`crtn.o` are an ELF convention; forcing the rule on a PE/COFF
     # target makes the build assemble the generic ELF `crti.S` with a PE
@@ -305,7 +248,7 @@ stdenv.mkDerivation (finalAttrs: {
     # hostPlatform libc available beforehand.  Taken from:
     #   https://web.archive.org/web/20170222224855/http://frank.harvard.edu/~coldwell/toolchain/
     #   https://web.archive.org/web/20170224235700/http://frank.harvard.edu/~coldwell/toolchain/t-linux.diff
-    lib.optionalString (enableShared && stdenv.hostPlatform.isElf) (
+    + lib.optionalString (enableShared && stdenv.hostPlatform.isElf) (
       let
 
         # crt{i,n}.o are the first and last (respectively) object file
@@ -383,174 +326,67 @@ stdenv.mkDerivation (finalAttrs: {
 
   enableParallelBuilding = true;
 
+
   preConfigure = ''
     cd "$buildRoot"
-
-    # The inner gcc build's siblings, same enumerated boundary as the `gcc`
-    # derivation's; all on the BUILD machine, since that is where its
-    # generators run.
-    for l in libiberty:${buildGccPackages.libiberty}/lib/libiberty.a \
-             libcpp:${buildGccPackages.libcpp}/lib/libcpp.a \
-             libdecnumber:${buildGccPackages.libdecnumber}/lib/libdecnumber.a \
-             libcody:${buildGccPackages.libcody}/lib/libcody.a; do
-      d=''${l%%:*}; a=''${l#*:}
-      mkdir -p "$buildRoot/build-${stdenv.buildPlatform.config}/$d"
-      install -m644 "$a" "$buildRoot/build-${stdenv.buildPlatform.config}/$d/''${a##*/}"
-    done
-
-    mkdir -p "$buildRoot/gcc"
-    cd "$buildRoot/gcc"
-
-    (
-  ''
-  # `AS`, `CC`, `CPP` and `LD` still name the *target* tools at this point,
-  # under their machine-prefixed names. Snapshot them before the
-  # `*_FOR_BUILD` assignments below overwrite them.
-  #
-  # Deriving `AS_FOR_TARGET` from `$AS` *after* `AS=$AS_FOR_BUILD` asked for
-  # the basename of the build assembler -- plain `as` -- inside the target
-  # compiler's `bin`, and a cross wrapper installs only prefixed names, so
-  # the path did not exist. Likewise `ld`.
-  #
-  # That is not an error `gcc/configure` reports. It probes the target
-  # assembler and linker for capabilities, and a probe it cannot run simply
-  # records "no"; with neither tool found, *every* `gcc_cv_as_*`/`gcc_cv_ld_*`
-  # answer came back "no". The one that matters here is
-  # `HAVE_LD_EH_FRAME_HDR`: `unwind-dw2-fde-dip.c` gates `USE_PT_GNU_EH_FRAME`
-  # on it, so without it the unwinder is compiled with no `dl_iterate_phdr`
-  # lookup at all -- only the `__register_frame` registry, which nothing
-  # populates for normally linked objects. libgcc and libstdc++ then build,
-  # link and install perfectly cleanly, and every C++ `throw` finds no FDE
-  # and calls `std::terminate`.
-  #
-  # `CPP` in particular is not always exported, so fall back to the
-  # machine-prefixed name the wrappers install.
-  + ''
-    targetAs=$(basename "''${AS:-${stdenv.hostPlatform.config}-as}")
-    targetCc=$(basename "''${CC:-${stdenv.hostPlatform.config}-cc}")
-    targetCpp=$(basename "''${CPP:-${stdenv.hostPlatform.config}-cpp}")
-    targetLd=$(basename "''${LD:-${stdenv.hostPlatform.config}-ld}")
-
-    export AS_FOR_BUILD=${lib.getExe' buildPackages.stdenv.cc "$(basename $AS_FOR_BUILD)"}
-    export CC_FOR_BUILD=${lib.getExe' buildPackages.stdenv.cc "$(basename $CC_FOR_BUILD)"}
-    export CPP_FOR_BUILD=${lib.getExe' buildPackages.stdenv.cc "$(basename $CPP_FOR_BUILD)"}
-    export CXX_FOR_BUILD=${lib.getExe' buildPackages.stdenv.cc "$(basename $CXX_FOR_BUILD)"}
-    export LD_FOR_BUILD=${lib.getExe' buildPackages.stdenv.cc.bintools "$(basename $LD_FOR_BUILD)"}
-
-    export AS=$AS_FOR_BUILD
-    export CC=$CC_FOR_BUILD
-    export CPP=$CPP_FOR_BUILD
-    export CXX=$CXX_FOR_BUILD
-    export LD=$LD_FOR_BUILD
-
-    export AS_FOR_TARGET=${lib.getExe' stdenv.cc "$targetAs"}
-    export CC_FOR_TARGET=${lib.getExe' stdenv.cc "$targetCc"}
-    export CPP_FOR_TARGET=${lib.getExe' stdenv.cc "$targetCpp"}
-    export LD_FOR_TARGET=${lib.getExe' stdenv.cc.bintools "$targetLd"}
-
-    export NIX_CFLAGS_COMPILE_FOR_BUILD+=' -DGENERATOR_FILE=1'
-
-    "$sourceRoot/../gcc/configure" $topLevelConfigureFlags
-
-    sed -e 's,libgcc.mvars:.*$,libgcc.mvars:,' -i Makefile
-
-    make \
-      config.h \
-      libgcc.mvars \
-      tconfig.h \
-      tm.h \
-      options.h \
-      insn-constants.h \
-      version.h
-    )
-    mkdir -p "$buildRoot/gcc/include"
-
-    mkdir -p "$buildRoot/gcc/${stdenv.hostPlatform.config}/libgcc"
-    cd "$buildRoot/gcc/${stdenv.hostPlatform.config}/libgcc"
     configureScript=$sourceRoot/configure
     chmod +x "$configureScript"
 
-    export AS_FOR_BUILD=${lib.getExe' buildPackages.stdenv.cc "$(basename $AS_FOR_BUILD)"}
-    export CC_FOR_BUILD=${lib.getExe' buildPackages.stdenv.cc "$(basename $CC_FOR_BUILD)"}
-    export CPP_FOR_BUILD=${lib.getExe' buildPackages.stdenv.cc "$(basename $CPP_FOR_BUILD)"}
-    export CXX_FOR_BUILD=${lib.getExe' buildPackages.stdenv.cc "$(basename $CXX_FOR_BUILD)"}
-    export LD_FOR_BUILD=${lib.getExe' buildPackages.stdenv.cc.bintools "$(basename $LD_FOR_BUILD)"}
-
-    export AS=${lib.getExe' stdenv.cc "$(basename $AS)"}
-    export CC=${lib.getExe' stdenv.cc "$(basename $CC)"}
-    export CPP=${lib.getExe' stdenv.cc "$(basename $CPP)"}
-    export CXX=${lib.getExe' stdenv.cc "$(basename $CXX)"}
-    export LD=${lib.getExe' stdenv.cc.bintools "$(basename $LD)"}
-
-    export AS_FOR_TARGET=${lib.getExe' stdenv.cc "$(basename $AS_FOR_TARGET)"}
-    export CC_FOR_TARGET=${lib.getExe' stdenv.cc "$(basename $CC_FOR_TARGET)"}
-    export CPP_FOR_TARGET=${lib.getExe' stdenv.cc "$(basename $CPP_FOR_TARGET)"}
-    export LD_FOR_TARGET=${lib.getExe' stdenv.cc.bintools "$(basename $LD_FOR_TARGET)"}
+    # NO IN-TREE-DETECTION GUARD HERE. One was written and was WRONG in the
+    # direction that matters: it globbed `"$up/../../"*"/gcc/libgcc.mvars"` and
+    # fed the unmatched glob to `test -f`, which with more than one argument is
+    # not the test it looks like -- it reported a sibling gcc build directory in
+    # a tree that has none, and stopped the build.
+    #
+    # The question it was trying to ask is answered properly in `postConfigure`
+    # below, from configure's own recorded answer rather than from a
+    # reconstruction of configure's search.
   ''
   + lib.optionalString stdenv.hostPlatform.isMusl ''
     NIX_CFLAGS_COMPILE_OLD=$NIX_CFLAGS_COMPILE
     NIX_CFLAGS_COMPILE+=' -isystem ${stdenv.cc.cc}/lib/gcc/${stdenv.hostPlatform.config}/${version}/include-fixed'
   '';
 
-  topLevelConfigureFlags = [
-    "--build=${stdenv.buildPlatform.config}"
-    "--host=${stdenv.buildPlatform.config}"
-    "--target=${stdenv.hostPlatform.config}"
+  # ASK THE COMPILER WHAT IT ANSWERED, BECAUSE CONFIGURE'S OWN CHECK CANNOT
+  # DISTINGUISH THE TWO CASES THAT MATTER TO US.
+  #
+  # `configure.ac` errors if `-print-target-header-dir` names nothing or names a
+  # directory with no `tm.h` -- but it is equally happy with the in-tree path,
+  # and equally happy with a header directory belonging to a DIFFERENT target,
+  # since every target's has a `tm.h`. Both would build, and both would produce
+  # a `libgcc.a` for the wrong machine under the right file names. So read the
+  # two answers back out of `config.log` and require them.
+  postConfigure = ''
+    test -f config.log || {
+      echo "libgcc: no config.log; cannot establish which headers were used." >&2
+      exit 1; }
 
-    "--disable-bootstrap"
-    "--disable-multilib"
-    "--enable-languages=c"
+    incdir=$(sed -n "s|^gcc_target_incdir='\\(.*\\)'$|\\1|p" config.log | tail -1)
+    test -n "$incdir" || \
+      incdir=$(awk '/where this targets generated headers come from|generated headers come from/ { getline; sub(/^configure:[0-9]*: result: /, ""); print; exit }' config.log)
+    test -n "$incdir" || {
+      echo "libgcc: config.log does not say where the generated headers came" >&2
+      echo "  from. This check is reading nothing, which must not pass." >&2
+      exit 1; }
 
-    "--disable-fixincludes"
-    "--disable-intl"
-    "--disable-lto"
-    "--disable-libatomic"
-    "--disable-libbacktrace"
-    "--disable-libcpp"
-    "--disable-libssp"
-    "--disable-libquadmath"
-    "--disable-libgomp"
-    "--disable-libvtv"
-    "--disable-vtable-verify"
+    case "$incdir" in
+      *"/${stdenv.hostPlatform.config}/include") ;;
+      *) echo "libgcc: headers came from '$incdir', which is not" >&2
+         echo "  .../${stdenv.hostPlatform.config}/include." >&2
+         echo "  This library must compile against ITS OWN machine's tm.h." >&2
+         echo "  A sibling build directory or another target's directory would" >&2
+         echo "  both satisfy configure's own check, and both produce a" >&2
+         echo "  libgcc.a for the wrong machine under the right file names." >&2
+         exit 1 ;;
+    esac
+    echo "libgcc: generated headers from $incdir"
+  ''
+  + lib.optionalString stdenv.hostPlatform.isMusl ''
+    NIX_CFLAGS_COMPILE=$NIX_CFLAGS_COMPILE_OLD
+  '';
 
-    "--with-system-zlib"
-
-    # `gcc/configure` includes `system.h`, which includes `gmp.h`, in EVERY
-    # feature probe. The branch turns a missing `gmp.h` into a hard error
-    # naming itself -- it used to sail past and write about fifty wrong answers
-    # into `auto-host.h`, `rlim_t` among them, whose bogus definition then fails
-    # every compile with an error that names anything but the cause.
-    #
-    # The headers wanted are the BUILD machine's: this configure runs there.
-    # When the top level was doing the driving it passed `GMPINC` down and this
-    # was invisible.
-    "GMPINC=-I${lib.getDev buildPackages.gmp}/include"
-
-    # State this rather than leave it to be inferred (see below): configure
-    # works it out from `host != target` alone, so a native build of the
-    # pre-libc stage would come out `false` and compile every file against a
-    # libc that is not there yet. A value given here wins, since configure only
-    # defaults it, with `: ${inhibit_libc=false}`.
-    "inhibit_libc=${if libc == null then "true" else "false"}"
-  ]
-  # NO `--with-sysroot=` / `--with-native-system-header-dir=`. They used to be
-  # here so that `gcc/configure` would derive `target_header_dir` and decide
-  # `inhibit_libc` from it. `target_header_dir` is GONE on this branch --
-  # `gcc/configure.ac:2197` is literally `dnl target_header_dir is GONE.`, and
-  # is the file's only occurrence -- so both flags were inert. `inhibit_libc`
-  # is stated above instead, and the symbols it decides are asserted in
-  # `postInstall` rather than trusted.
-  ++
-    lib.optional (!stdenv.hostPlatform.isRiscV)
-      # RISC-V does not like it being empty
-      "--with-multilib-list="
-  ++
-    lib.optional (stdenv.hostPlatform.libc == "glibc")
-      # Cheat and use previous stage's glibc to avoid infinite recursion. As
-      # of GCC 11, libgcc only cares if the version is greater than 2.19,
-      # which is quite ancient, so this little lie should be fine.
-      "--with-glibc-version=${buildPackages.glibc.version}";
-
+  # `--build` and `--host` ONLY. No `--target`: this is one machine's library,
+  # and `--host` is that machine.
   configurePlatforms = [
     "build"
     "host"
@@ -559,21 +395,24 @@ stdenv.mkDerivation (finalAttrs: {
   configureFlags = [
     "--disable-dependency-tracking"
     "gcc_cv_target_thread_file=${threadModel}"
-    # $CC cannot link binaries, let alone run then
+    # $CC cannot link binaries, let alone run them
     "cross_compiling=true"
     "--enable-static"
 
     (lib.enableFeature enableShared "shared")
   ];
 
-  # Set the variable back the way it was, see corresponding code in
-  # `preConfigure`.
-  postConfigure = lib.optionalString stdenv.hostPlatform.isMusl ''
-    NIX_CFLAGS_COMPILE=$NIX_CFLAGS_COMPILE_OLD
-  '';
+  # NO `inhibit_libc=`. It used to be stated here because `gcc/configure`
+  # decided it and handed it over in `libgcc.mvars`, and a native build of the
+  # pre-libc stage would have come out `false`. libgcc now PROBES it
+  # (`configure.ac:318-330`), by compiling `#include <stdio.h>` against the
+  # headers these objects will actually use -- which is a better answer than
+  # either of us can state, since it is about the compiler this build was
+  # handed. The `postInstall` symbol assertions are what make that checkable.
 
-  makeFlags = [ "MULTIBUILDTOP:=../" ];
-
+  # NO `MULTIBUILDTOP`. It is the top level's variable for telling an in-tree
+  # target library how deep multilib put it, so relative paths still reach
+  # `gcc/`. Nothing here is in a tree.
   postInstall = ''
     install -c -m 644 gthr-default.h "$dev/include"
   ''

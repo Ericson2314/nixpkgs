@@ -86,9 +86,49 @@ runCommand "gcc-${target}-${version}"
       ln -s "$d" "$out/lib/gcc/${release_version}/$(basename "$d")"
     done
 
-    # This target's probed answers, which is the only per-target thing here.
-    ln -s "${target-specs}/lib/gcc/${release_version}/${target}" \
-          "$out/lib/gcc/${release_version}/${target}"
+    # THE PER-TARGET DIRECTORY HAS TWO PRODUCERS, SO IT IS MERGED, NOT REPLACED.
+    #
+    # `lib/gcc/<version>/<target>/` holds this target's `specs` and
+    # `specs-config`, which `target-specs` writes -- AND its `include/`, the
+    # per-target generated headers (`tconfig.h`, `tm.h`, `options.h`,
+    # `insn-modes.h`, `insn-constants.h`, `auto-host.h`, `version.h`) that
+    # `gcc`'s `install-target-headers` writes. Two derivations, one directory,
+    # exactly as `install-tools` is split between `fixincludes` and `gcc`.
+    #
+    # This used to `ln -s` the whole `target-specs` directory over the name,
+    # which SHADOWS gcc's `include/`. Nothing would have reported that: the
+    # driver would still find `specs-config` and answer `-dumpspecs`, so the
+    # check below would pass, and the loss would surface one component later as
+    # `libgcc`'s configure saying `<dir>/tm.h does not exist` about a directory
+    # that does exist and is full of the wrong thing.
+    tdir="$out/lib/gcc/${release_version}/${target}"
+    rm -f "$tdir"
+    mkdir -p "$tdir"
+    for src in "${gcc-unwrapped}/lib/gcc/${release_version}/${target}" \
+               "${target-specs}/lib/gcc/${release_version}/${target}"; do
+      test -d "$src" || continue
+      for e in "$src"/*; do
+        name=$(basename "$e")
+        test -e "$tdir/$name" && {
+          echo "gcc-composed: both producers supply lib/gcc/*/${target}/$name;" >&2
+          echo "  one of them would silently win. Resolve it rather than" >&2
+          echo "  letting the merge order decide." >&2
+          exit 1; }
+        ln -s "$e" "$tdir/$name"
+      done
+    done
+
+    # Both halves must actually be there. `specs-config` is what the driver
+    # needs to know its target at all; `include/tm.h` is what `libgcc`'s
+    # configure demands of `-print-target-header-dir`. Each has been absent
+    # once, and each absence reads as a different component's bug.
+    for f in specs-config include/tm.h; do
+      test -e "$tdir/$f" || {
+        echo "gcc-composed: no $tdir/$f." >&2
+        echo "  specs-config comes from target-specs; include/ comes from" >&2
+        echo "  gcc's install-target-headers. Both land in this one directory." >&2
+        exit 1; }
+    done
 
     # ASK THE CONSUMER, NOT THE PRODUCER. Every step above can succeed while the
     # result is unusable -- that is exactly what the two rejected approaches

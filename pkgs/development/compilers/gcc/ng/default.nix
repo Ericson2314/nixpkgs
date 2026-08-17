@@ -65,7 +65,7 @@ let
   # every derivation downstream of it. The hash is unchanged, so with the name
   # restored the existing store path is still the one used.
   branchName = "multi-target";
-  branchRev = "37ba8d9fa48e4875d48411b05fc64e97682b76d8";
+  branchRev = "7b39423abba8a7ff5e7fa57f56662e39f1d82619";
   versions = {
     # `17.0.0` is `gcc/BASE-VER` in that tree: the branch is cut from trunk, not
     # from the 15 series, and calling it 15 here would be a second authority
@@ -85,7 +85,7 @@ let
         name = "${branchName}-${builtins.substring 0 7 branchRev}";
         url = "file:///tmp/npkgs-mt-src/gcc.git";
         rev = branchRev;
-        hash = "sha256-ZfYg5YYZ7F71SDEvyapKj/+eygjIpbbtPooI28h35wQ=";
+        hash = "sha256-ZdbhYLhKld0HY62n+8TGoky++u2Ol4w6insF6Hp2y4Q=";
       };
     };
   }

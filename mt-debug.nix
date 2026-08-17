@@ -57,7 +57,7 @@
 # uncommitted state goes into a store path, which is exactly what the real
 # expression refuses to do and exactly what iteration needs.
 {
-  pinnedGcc ? "/nix/store/nzd1l9zasf3vzd084ybnppbafbx1sp96-gcc-17.0.0-multi-target-37ba8d9",
+  pinnedGcc ? "/nix/store/rq0nf7zcj88zr1bpjq5rizd03b49nzd1-gcc-17.0.0-multi-target-7b39423",
   srcDir ? null,
   ...
 }@args:

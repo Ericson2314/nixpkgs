@@ -302,7 +302,7 @@ makeScopeWithSplicing' {
       gfortran = wrapCCWith {
         cc = gccPackages.gfortran-unwrapped;
         libcxx = targetGccPackages.libstdcxx;
-        bintools = args.buildPackages.binutils;
+        bintools = binutils;
         extraPackages = [
           targetGccPackages.libgcc
         ]
@@ -325,7 +325,7 @@ makeScopeWithSplicing' {
       gfortranNoLibgfortran = wrapCCWith {
         cc = gccPackages.gfortran-unwrapped;
         libcxx = targetGccPackages.libstdcxx;
-        bintools = args.buildPackages.binutils;
+        bintools = binutils;
         extraPackages = [
           targetGccPackages.libgcc
         ]
@@ -345,7 +345,7 @@ makeScopeWithSplicing' {
       gcc = wrapCCWith {
         cc = gccPackages.gcc-composed;
         libcxx = targetGccPackages.libstdcxx;
-        bintools = args.buildPackages.binutils;
+        bintools = binutils;
         extraPackages = [
           targetGccPackages.libgcc
         ]
@@ -377,7 +377,7 @@ makeScopeWithSplicing' {
       gccNoLibgcc = wrapCCWith {
         cc = gccPackages.gcc-composed;
         libcxx = null;
-        bintools = args.buildPackages.binutils;
+        bintools = binutilsNoLibc;
         extraPackages = [ ];
         nixSupport.cc-cflags = [
           "-nostartfiles"
@@ -415,7 +415,7 @@ makeScopeWithSplicing' {
       gccWithLibgccNoCxx = wrapCCWith {
         cc = gccPackages.gcc-composed;
         libcxx = null;
-        bintools = args.buildPackages.binutils;
+        bintools = binutilsNoLibc;
         extraPackages = [
           targetGccPackages.libgcc-no-libc
         ];
@@ -456,7 +456,7 @@ makeScopeWithSplicing' {
       gccWithLibcAndBasicLibgcc = wrapCCWith {
         cc = gccPackages.gcc-composed;
         libcxx = null;
-        bintools = args.buildPackages.binutils;
+        bintools = binutils;
         extraPackages = [
           targetGccPackages.libgcc-no-libc
         ];
@@ -468,7 +468,7 @@ makeScopeWithSplicing' {
       gccWithLibc = wrapCCWith {
         cc = gccPackages.gcc-composed;
         libcxx = null;
-        bintools = args.buildPackages.binutils;
+        bintools = binutils;
         extraPackages = [
           targetGccPackages.libgcc
         ]
@@ -488,7 +488,7 @@ makeScopeWithSplicing' {
       gccWithLibssp = wrapCCWith {
         cc = gccPackages.gcc-composed;
         libcxx = null;
-        bintools = args.buildPackages.binutils;
+        bintools = binutils;
         extraPackages = [
           targetGccPackages.libgcc
         ]
@@ -509,7 +509,7 @@ makeScopeWithSplicing' {
       gccWithLibatomic = wrapCCWith {
         cc = gccPackages.gcc-composed;
         libcxx = null;
-        bintools = args.buildPackages.binutils;
+        bintools = binutils;
         extraPackages = [
           targetGccPackages.libgcc
         ]
