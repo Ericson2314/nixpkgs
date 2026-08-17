@@ -212,11 +212,49 @@ makeScopeWithSplicing' {
       # own configure on `gmp.h`, an error naming nothing to do with specs.
       target-specs = callPackage ./target-specs {
         gcc-unwrapped = buildGccPackages.gcc-unwrapped;
-        # The PLAIN package set's bintools, not this scope's `stdenv.cc`'s --
-        # see the argument's own note. `stdenv` here is still the outer one,
-        # before `overrideCC`, so this is the ordinary cross toolchain and
-        # nothing downstream of the compiler being composed.
-        bintools = stdenv.cc.bintools;
+        # `buildPackages.binutilsNoLibc`, AND EVERY PART OF THAT IS LOAD-BEARING.
+        # Three other candidates were tried and each failed; the failures are
+        # recorded because they are what stops the next person re-treading it.
+        #
+        # This used to read `stdenv.cc.bintools`, under a comment claiming
+        # "`stdenv` here is still the outer one, before `overrideCC`". THAT
+        # CLAIM WAS FALSE, and false on exactly the platforms this set is for:
+        # `all-packages.nix:91-92` makes the top-level stdenv
+        # `overrideCC stdenvNoCC buildPackages.gccNGPackages.gccNoLibgcc` when
+        # `useGccNG` is set, so `stdenv.cc` IS the gcc-ng wrapper, which wraps
+        # `gcc-composed`, which is built from `target-specs`. It evaluated
+        # everywhere `useGccNG` was off, which is why the comment survived.
+        #
+        # What did not work:
+        #
+        #   `stdenv.cc.bintools`   -- the cycle above; `infinite recursion` at
+        #       `target-specs/default.nix`'s `--with-tools-dir`.
+        #   `binutils` / `binutilsNoLibc` (THIS scope's) -- infinite recursion
+        #       one layer deeper. In a cross set those are the copies that RUN
+        #       on the target, so their own `buildInputs` are target libraries,
+        #       built with the gcc-ng stdenv: the same cycle by a longer route.
+        #       The trace ends in `binutils-aarch64-unknown-linux-musl`'s
+        #       `buildInputs`.
+        #   `buildPackages.binutils` -- infinite recursion again, and this is
+        #       the SECOND cycle, through the bintools wrapper's `libc`, since
+        #       the target libc is built with the gcc-ng stdenv.
+        #
+        # `buildPackages.binutilsNoLibc` is right on both axes.
+        # `buildPackages.targetPlatform == hostPlatform` is a nixpkgs
+        # invariant, so it runs on the build machine and emits for this target
+        # -- its `bin` holds the `<triple>-as` and `<triple>-ld` that
+        # `target-specs` looks for -- and `NoLibc` breaks the second cycle,
+        # which is the case that package exists for.
+        #
+        # DROPPING THE LIBC COSTS NOTHING HERE, AND THAT IS MEASURED RATHER
+        # THAN HOPED. Several of these probes link, and a probe that cannot
+        # link records "no" exactly as a real "no" does, so a quietly
+        # pessimistic spec file was the thing to rule out. Running the identical
+        # probe for `aarch64-unknown-linux-gnu` against the with-libc and the
+        # no-libc wrapper gives `specs-config` files that are byte-identical --
+        # **0** differing lines -- and `specs` files differing only in the two
+        # embedded paths naming their own output directories.
+        bintools = args.buildPackages.binutilsNoLibc;
       };
 
       # The join, and the thing every wrapper below should really be wrapping:
@@ -264,7 +302,7 @@ makeScopeWithSplicing' {
       gfortran = wrapCCWith {
         cc = gccPackages.gfortran-unwrapped;
         libcxx = targetGccPackages.libstdcxx;
-        bintools = binutils;
+        bintools = args.buildPackages.binutils;
         extraPackages = [
           targetGccPackages.libgcc
         ]
@@ -287,7 +325,7 @@ makeScopeWithSplicing' {
       gfortranNoLibgfortran = wrapCCWith {
         cc = gccPackages.gfortran-unwrapped;
         libcxx = targetGccPackages.libstdcxx;
-        bintools = binutils;
+        bintools = args.buildPackages.binutils;
         extraPackages = [
           targetGccPackages.libgcc
         ]
@@ -307,7 +345,7 @@ makeScopeWithSplicing' {
       gcc = wrapCCWith {
         cc = gccPackages.gcc-composed;
         libcxx = targetGccPackages.libstdcxx;
-        bintools = binutils;
+        bintools = args.buildPackages.binutils;
         extraPackages = [
           targetGccPackages.libgcc
         ]
@@ -339,7 +377,7 @@ makeScopeWithSplicing' {
       gccNoLibgcc = wrapCCWith {
         cc = gccPackages.gcc-composed;
         libcxx = null;
-        bintools = binutilsNoLibc;
+        bintools = args.buildPackages.binutils;
         extraPackages = [ ];
         nixSupport.cc-cflags = [
           "-nostartfiles"
@@ -377,7 +415,7 @@ makeScopeWithSplicing' {
       gccWithLibgccNoCxx = wrapCCWith {
         cc = gccPackages.gcc-composed;
         libcxx = null;
-        bintools = binutilsNoLibc;
+        bintools = args.buildPackages.binutils;
         extraPackages = [
           targetGccPackages.libgcc-no-libc
         ];
@@ -418,7 +456,7 @@ makeScopeWithSplicing' {
       gccWithLibcAndBasicLibgcc = wrapCCWith {
         cc = gccPackages.gcc-composed;
         libcxx = null;
-        bintools = binutils;
+        bintools = args.buildPackages.binutils;
         extraPackages = [
           targetGccPackages.libgcc-no-libc
         ];
@@ -430,7 +468,7 @@ makeScopeWithSplicing' {
       gccWithLibc = wrapCCWith {
         cc = gccPackages.gcc-composed;
         libcxx = null;
-        bintools = binutils;
+        bintools = args.buildPackages.binutils;
         extraPackages = [
           targetGccPackages.libgcc
         ]
@@ -450,7 +488,7 @@ makeScopeWithSplicing' {
       gccWithLibssp = wrapCCWith {
         cc = gccPackages.gcc-composed;
         libcxx = null;
-        bintools = binutils;
+        bintools = args.buildPackages.binutils;
         extraPackages = [
           targetGccPackages.libgcc
         ]
@@ -471,7 +509,7 @@ makeScopeWithSplicing' {
       gccWithLibatomic = wrapCCWith {
         cc = gccPackages.gcc-composed;
         libcxx = null;
-        bintools = binutils;
+        bintools = args.buildPackages.binutils;
         extraPackages = [
           targetGccPackages.libgcc
         ]

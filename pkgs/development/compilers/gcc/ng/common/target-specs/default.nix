@@ -10,16 +10,18 @@
   # THE BINUTILS THAT RUN ON THE BUILD MACHINE AND EMIT FOR THIS TARGET, i.e.
   # the ones whose `bin` holds `<triple>-as` and `<triple>-ld`.
   #
-  # An argument rather than `stdenv.cc.bintools`, and the reason is a cycle
-  # rather than taste. In this scope `stdenv` is `overrideCC stdenv gcc`, and
-  # that `gcc` wraps `../gcc-composed`, which is built from THIS derivation. So
-  # reading the compiler's bintools here would make the spec file depend on a
-  # compiler that cannot exist until the spec file does. The call site passes
-  # the plain package set's bintools, which knows the same answer and is not
-  # downstream of anything here.
+  # An argument, and the rule is: IT MUST NOT BE REACHED THROUGH ANY COMPILER.
+  # Every `stdenv.cc.*` route is a cycle, because on a `useGccNG` platform the
+  # stdenv's compiler wraps `../gcc-composed`, which is built from THIS
+  # derivation -- so the spec file would depend on a compiler that cannot exist
+  # until the spec file does.
   #
-  # It is deliberately NOT the scope's `binutils` either: in a cross set that is
-  # the copy which RUNS on the target and cannot be executed on the builder.
+  # Nor is it the scope's own `binutils`: in a cross set that is the copy which
+  # RUNS on the target, cannot be executed on the builder, and whose own
+  # `buildInputs` are target libraries -- the same cycle by a longer route.
+  #
+  # The call site (`../default.nix`) documents the four candidates that were
+  # tried and which three failed, with their errors.
   bintools,
   # This target's fixed system headers, if they have been made. `null` is the
   # honest answer before `mkheaders` has run, and it is NOT the same as "there
