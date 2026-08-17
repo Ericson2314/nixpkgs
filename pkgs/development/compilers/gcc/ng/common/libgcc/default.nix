@@ -187,6 +187,16 @@ stdenv.mkDerivation (finalAttrs: {
       # --replace-fail` states each one as an assertion: a pattern that has
       # stopped existing is an error naming the pattern, rather than an offset
       # that quietly lands somewhere else.
+      #
+      # IF YOU CHANGE `excludes`, `includes` OR THE URL, CHANGE `hash` TOO.
+      # This is a fixed-output derivation: its store path is a function of the
+      # name and the hash and NOTHING ELSE, so with the hash unchanged nix
+      # considers the existing path valid and never re-runs the recipe. Adding
+      # the exclusion below did nothing at all on the first attempt -- the build
+      # kept applying the unfiltered patch and failing identically, so a correct
+      # fix looked like no fix. Set the hash to a wrong value, read the `got:`
+      # line, and put that back. The general shape is worth remembering: a
+      # correct edit to an FOD's recipe is INERT until its hash moves.
       excludes = [
         "libgcc/configure"
         "libgcc/Makefile.in"

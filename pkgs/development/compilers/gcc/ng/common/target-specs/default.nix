@@ -70,7 +70,7 @@
 #         `--with-target`         nixpkgs' SPELLING of the triple; see below
 #         `--with-tools-dir`      which toolchain to probe
 #         `--with-specs-file`     where the artefact goes
-#         `--with-native-system-header-dir`  which libc's headers
+#         (`--with-native-system-header-dir` WAS here and is gone; see below)
 #         (`--with-fixed-include-dir` is a seventh, conditional, and also (c))
 #
 # `--with-target` IS NOT REDUNDANT WITH `--host`, WHICH IT LOOKS LIKE. Both are
@@ -222,9 +222,41 @@ stdenvNoCC.mkDerivation (finalAttrs: {
 
     "--with-specs-file=${placeholder "out"}/${specsDir}/specs"
   ]
-  ++ lib.optionals (stdenv.cc.libc or null != null) [
-    "--with-native-system-header-dir=${lib.getDev stdenv.cc.libc}/include"
-  ]
+  # NO `--with-native-system-header-dir`, AND ITS REMOVAL IS THE FIX FOR #256.
+  #
+  # It used to be here, guarded by `stdenv.cc.libc != null`, and it was the last
+  # structural cycle in the chain:
+  #
+  #   musl -> stdenvNoLibc -> gccWithLibgcc -> gcc-composed -> target-specs
+  #        -> stdenv.cc.libc -> musl
+  #
+  # THE STAGE SELECTION WAS NEVER WRONG, which is worth saying because the
+  # trace points at the wrapper and invites that conclusion. `musl`'s package
+  # takes `stdenvNoLibc` for a cross build (`by-name/mu/musl/package.nix:10`),
+  # and `all-packages.nix:104-108` gives that `gccWithLibgcc`, whose
+  # `binutilsNoLibc` is the designed pre-libc break. That is all correct. The
+  # cycle re-entered one level DOWN, through the compiler this file composes:
+  # `gcc-composed` needs `target-specs`, and `target-specs` was reading the
+  # libc off the very stdenv that was waiting for it.
+  #
+  # NOTHING ABOUT THE FIX IS MUSL-SPECIFIC. Any libc built by a gcc-ng stdenv
+  # closes the same loop; musl is only where a `useGccNG` cross was first
+  # evaluated. So it is fixed where the dependency was created rather than by
+  # special-casing a libc.
+  #
+  # AND THE LINE SHOULD NOT HAVE BEEN HERE ANYWAY. `../gcc` refuses
+  # `--with-sysroot` and `--with-native-system-header-dir` in as many words --
+  # "would make every libc change rebuild the compiler, precisely the coupling
+  # this split package set exists to remove" -- and this re-introduced exactly
+  # that coupling one component down, where it makes `gcc-composed`, and so
+  # every wrapper, a function of the libc. It was also a second authority for a
+  # path cc-wrapper already supplies as `-idirafter <libc.dev>/include`.
+  #
+  # What changes in the artefact: `specs-config`'s `native_system_header_dir`
+  # key becomes empty rather than naming a store path. cc1 drops an empty entry
+  # from the include chain, which is the honest answer -- this compiler is not
+  # built against a libc, and the wrapper that composes a target is what knows
+  # which one.
   # NO `--with-fixed-include-dir` UNLESS THE DIRECTORY EXISTS, AND THE ASYMMETRY
   # IS THE POINT. `mkheaders` ends by saying that nothing searches the fixed
   # headers until this key names them, and cc1's compiled-in default for the key
