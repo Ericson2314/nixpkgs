@@ -96,7 +96,24 @@ runCommand "gcc-${target}-${version}"
   #    `<dir>/tm.h does not exist` about a directory that exists and is full of
   #    the wrong thing.
   #
-  #    Both merges REFUSE a collision rather than letting merge order decide.
+  #    Both merges REFUSE a collision rather than letting merge order decide --
+  #    but the refusal is at FILE granularity, via `mergeTree`, and that
+  #    distinction was paid for.
+  #
+  #    It used to refuse on any repeated top-level ENTRY. That is too coarse the
+  #    moment two producers legitimately contribute different files to one
+  #    directory, which is exactly what `t261` arranged: `target-specs` now
+  #    generates `<target>/include/tm.h` and `tm-<triple>.h`, while gcc's
+  #    `install-target-headers` still writes the other six into the same
+  #    `<target>/include/`. Their FILE sets are disjoint -- `comm -12` is empty
+  #    -- yet both supply a directory called `include`, so an entry-level check
+  #    reported a collision that did not exist and stopped every build.
+  #
+  #    `mergeTree` makes real directories all the way down and symlinks only
+  #    leaves, so "collision" means what it should: two producers supplying the
+  #    same FILE. A genuine clash still fails by name; a shared directory does
+  #    not. Note the earlier tm.h double-install WAS a genuine clash and this
+  #    still catches it -- the fix narrows the check, it does not weaken it.
   #
   # 4. The two presence checks. `specs-config` is what the driver needs to know
   #    its target at all; `include/tm.h` is what `libgcc`'s configure demands of
@@ -109,6 +126,24 @@ runCommand "gcc-${target}-${version}"
   #    tell, so it is run: `-dumpspecs` reaches `set_up_specs`, which is what
   #    needs the config file, and it needs no assembler.
   ''
+    mergeTree() {
+      local src="$1" dest="$2" label="$3" e name
+      for e in "$src"/*; do
+        name=$(basename "$e")
+        if [ -d "$e" ]; then
+          mkdir -p "$dest/$name"
+          mergeTree "$e" "$dest/$name" "$label/$name"
+        elif [ -e "$dest/$name" ]; then
+          echo "gcc-composed: both producers supply $label/$name;" >&2
+          echo "  one of them would silently win. Resolve it rather than" >&2
+          echo "  letting the merge order decide." >&2
+          exit 1
+        else
+          ln -s "$e" "$dest/$name"
+        fi
+      done
+    }
+
     mkdir -p "$out/bin" "$out/lib/gcc/${release_version}"
 
     for f in "${gcc-unwrapped}"/bin/*; do
@@ -149,15 +184,7 @@ runCommand "gcc-${target}-${version}"
     for src in "${gcc-unwrapped}/lib/gcc/${release_version}/${target}" \
                "${target-specs}/lib/gcc/${release_version}/${target}"; do
       test -d "$src" || continue
-      for e in "$src"/*; do
-        name=$(basename "$e")
-        test -e "$tdir/$name" && {
-          echo "gcc-composed: both producers supply lib/gcc/*/${target}/$name;" >&2
-          echo "  one of them would silently win. Resolve it rather than" >&2
-          echo "  letting the merge order decide." >&2
-          exit 1; }
-        ln -s "$e" "$tdir/$name"
-      done
+      mergeTree "$src" "$tdir" "lib/gcc/*/${target}"
     done
 
     for f in specs-config include/tm.h; do
