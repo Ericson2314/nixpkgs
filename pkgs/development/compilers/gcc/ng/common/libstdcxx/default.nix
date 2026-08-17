@@ -107,7 +107,23 @@ stdenv.mkDerivation (finalAttrs: {
     # THE `custom-threading-model` BACKPORT IS GONE -- ancestor of the pinned
     # rev, same measurement as in `../libatomic`:
     # `git merge-base --is-ancestor e5d853bbe9b0 1167d3f15f7` is true.
-    (getVersionFile "libstdcxx/force-regular-dirs.patch")
+    # `force-regular-dirs.patch` IS GONE, AND WHAT KILLED IT IS WORTH RECORDING.
+    #
+    # Its `acinclude.m4` hunk deleted 85 lines of `GLIBCXX_EXPORT_INSTALL_INFO`
+    # by context. It stopped applying, and the FIRST cause was a one-character
+    # upstream typo fix in a COMMENT that the hunk carried as context:
+    #
+    #     -dnl config/gxx-include-dir.m4 must be kept consistant with this ...
+    #     +dnl config/gxx-include-dir.m4 must be kept consistent with this ...
+    #
+    # Correcting that was not enough -- the macro body had also moved on
+    # (`AC_HELP_STRING` -> `AS_HELP_STRING` twice, `glibcxx_prefixdir` relocated,
+    # six trailing lines added). An 85-line context-matched deletion is simply
+    # not a durable way to state an intention.
+    #
+    # So the intention is stated instead, as two anchored substitutions and a
+    # configure option it already supports -- the same conversion `../libgcc`
+    # made for `regular-libdir-includedir`. See `postPatch` and `configureFlags`.
 
     # From the posting to gcc-patches, which covers every component that links
     # libbacktrace. Take only this component's non-generated files: the
@@ -131,6 +147,35 @@ stdenv.mkDerivation (finalAttrs: {
   postUnpack = ''
     mkdir -p ./build
     buildRoot=$(readlink -e "./build")
+  '';
+
+  # THE `force-regular-dirs` INTENTION, RE-EXPRESSED (see `patches` above).
+  #
+  # The library goes straight in $(libdir): the macro's whole version-specific /
+  # toolexec block is guarded by `if test x"$glibcxx_toolexecdir" = x"no"`, so
+  # presetting both variables skips it and survives. Two adjacent lines, matched
+  # exactly -- `--replace-fail` turns a moved anchor into an error naming it,
+  # rather than a hunk that lands somewhere plausible.
+  #
+  # The headers go in `$(includedir)-cxx`, via the option libstdc++ already has.
+  # libstdc++ intentionally ships headers named after C ones -- `math.h`,
+  # `stdlib.h`, `complex.h` -- to shadow them when compiling C++. Installed into
+  # the ordinary include dir they shadow them for C too, because the generic
+  # setup hook puts that directory on the C include path. A sibling directory
+  # keeps them out of C's way while staying findable for C++; no version or
+  # target subdirectory is needed, since the store path already separates one
+  # libstdc++ from another.
+  #
+  # `host_installdir` drops its `${host_alias}$(MULTISUBDIR)` for the same
+  # reason: one store path, one host.
+  postPatch = ''
+    substituteInPlace libstdc++-v3/acinclude.m4 \
+      --replace-fail "glibcxx_toolexecdir=no" "glibcxx_toolexecdir='\$(libdir)'" \
+      --replace-fail "glibcxx_toolexeclibdir=no" "glibcxx_toolexeclibdir='\$(libdir)'"
+
+    substituteInPlace libstdc++-v3/include/Makefile.am \
+      --replace-fail 'host_installdir = ''${gxx_include_dir}/''${host_alias}''$(MULTISUBDIR)/bits' \
+                     'host_installdir = ''${gxx_include_dir}/bits'
   '';
 
   preAutoreconf = ''
@@ -254,6 +299,13 @@ stdenv.mkDerivation (finalAttrs: {
     # to `const ctype_base::mask *`. Configure picks the right model from the
     # host triple on its own, as it does for the monolithic build, which passes
     # no `--enable-clocale` at all.
+
+    # The other half of `force-regular-dirs`, and this one needs no patching at
+    # all -- libstdc++ has always had the option. Without it `gxx_include_dir`
+    # defaults to `no` and the macro derives a version- and target-qualified
+    # path; the deleted patch hardcoded `$(includedir)-cxx` in the macro instead
+    # of using the knob next to it.
+    "--with-gxx-include-dir=${placeholder "dev"}/include-cxx"
 
     "--disable-libstdcxx-pch"
     "--disable-vtable-verify"
