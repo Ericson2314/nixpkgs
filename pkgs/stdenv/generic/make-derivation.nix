@@ -328,6 +328,7 @@ let
 
   inherit (hostPlatform)
     isLinux
+    isIllumos
     isWindows
     isCygwin
     isStatic
@@ -466,7 +467,21 @@ let
 
       separateDebugInfo' =
         let
-          actualValue = separateDebugInfo && isLinux;
+          # Nothing in ../../build-support/setup-hooks/separate-debug-info.sh is
+          # Linux-specific -- it tests `isELF` and shells out to `$OBJCOPY
+          # --only-keep-debug` -- so the gate is about which platforms we have
+          # actually verified, not about what the hook can do.
+          #
+          # illumos is added here rather than widening this to `isElf` for two
+          # reasons. The BSDs already grow a `debug` output by hand, from their
+          # own build systems' debug-file install rules (see
+          # ../../os-specific/bsd/freebsd/pkgs/mkDerivation.nix, which even
+          # removes "debug" from `outputs` when the host is not FreeBSD);
+          # turning this on for them would mean two mechanisms racing for the
+          # same output name. And `isElf` is also true of freestanding
+          # `kernel = none` targets, where there is no objcopy contract worth
+          # relying on. Adding a platform here should stay a deliberate act.
+          actualValue = separateDebugInfo && (isLinux || isIllumos);
         in
         if
           actualValue
