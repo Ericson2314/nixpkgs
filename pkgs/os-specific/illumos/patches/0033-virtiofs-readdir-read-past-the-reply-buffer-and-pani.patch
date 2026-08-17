@@ -1,0 +1,73 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Mon, 17 Aug 2026 13:18:55 -0400
+Subject: [PATCH] virtiofs: `readdir` read past the reply buffer and panicked
+ the kernel
+
+The name copy used `strncpy()` with `DIRENT64_NAMELEN(ndlen)`, the *padded
+destination* length, on the theory that it would zero the bytes past the name.
+It only does that once it finds a NUL in the **source**, and a `fuse_dirent`
+name is not NUL terminated: it is exactly `namelen` bytes followed by alignment
+padding. So `strncpy()` kept reading past the name looking for a terminator
+that is not there.
+
+For every record but the last this is invisible -- whatever follows in the
+buffer happens to contain a zero byte soon enough. For the last record in the
+reply it runs off the end of the 8K allocation:
+
+    BAD TRAP: type=e (#pf Page fault) addr=fffffe091ff42000
+    coreutils: #pf Page fault
+    Bad kernel fault at addr=0xfffffe091ff42000
+    r13: 2000   r14: 1e18
+
+`r13` is `VIRTIOFS_DIRBUFSZ` and the fault address is exactly the page after
+the buffer.
+
+`bcopy()` exactly `namelen` bytes, then terminate and zero the padding by hand.
+The bounds checks on the decode loop itself were already correct; this was the
+copy, not the walk.
+
+Assisted-By: Claude Opus 5 (claude-opus-5)
+---
+ .../uts/common/fs/virtiofs/virtiofs_vnops.c   | 28 ++++++++++++++++---
+ 1 file changed, 24 insertions(+), 4 deletions(-)
+
+diff --git a/usr/src/uts/common/fs/virtiofs/virtiofs_vnops.c b/usr/src/uts/common/fs/virtiofs/virtiofs_vnops.c
+index 127ee261e8..9ef9044fff 100644
+--- a/usr/src/uts/common/fs/virtiofs/virtiofs_vnops.c
++++ b/usr/src/uts/common/fs/virtiofs/virtiofs_vnops.c
+@@ -464,10 +464,30 @@ virtiofs_readdir(vnode_t *vp, struct uio *uiop, cred_t *cr, int *eofp,
+ 		nd->d_ino = (ino64_t)fd->ino;
+ 		nd->d_off = (offset_t)fd->off;
+ 		nd->d_reclen = (ushort_t)ndlen;
+-		/* strncpy(9F) zeroes the bytes past the name for us. */
+-		(void) strncpy(nd->d_name, fd->name,
+-		    DIRENT64_NAMELEN(ndlen));
+-		nd->d_name[fd->namelen] = '\0';
++
++		/*
++		 * bcopy() of exactly namelen bytes, then terminate and zero the
++		 * padding by hand.  NOT strncpy(): it stops at a NUL in the
++		 * *source*, and a fuse_dirent name is not NUL terminated -- it
++		 * is exactly namelen bytes followed by alignment padding.  Since
++		 * DIRENT64_NAMELEN() is the padded *destination* length, and is
++		 * therefore larger, strncpy() reads past the name looking for a
++		 * terminator that is not there.
++		 *
++		 * For the last record in the reply buffer that runs off the end
++		 * of the allocation, which panics the kernel:
++		 *
++		 *     BAD TRAP: type=e (#pf Page fault) addr=fffffe091ff42000
++		 *     coreutils: #pf Page fault
++		 *     Bad kernel fault at addr=0xfffffe091ff42000
++		 *
++		 * with the fault address exactly at the page after the buffer.
++		 * Every earlier record survives only because whatever follows it
++		 * happens to contain a zero byte.
++		 */
++		bcopy(fd->name, nd->d_name, fd->namelen);
++		bzero(nd->d_name + fd->namelen,
++		    DIRENT64_NAMELEN(ndlen) - fd->namelen);
+ 
+ 		outoff += ndlen;
+ 		cookie = fd->off;

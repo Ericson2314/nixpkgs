@@ -1,0 +1,35 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Mon, 17 Aug 2026 14:00:11 -0400
+Subject: [PATCH] virtiofs: the bulk data buffer is bound in the wrong
+ direction
+
+`vtfs_xfer()` binds the caller's bulk buffer with `DDI_DMA_WRITE`, but
+that buffer is the device-writable tail of the chain: the device writes
+the payload of a `FUSE_READ` or the dirent stream of a `FUSE_READDIR`
+into it and we read it back.  `DDI_DMA_READ` is the direction that
+says so.
+
+Under QEMU on x86 this is harmless -- no bouncing happens and the
+cookies name the same physical pages either way -- but the direction is
+what an IOMMU is programmed from, and what `ddi_dma_sync(9F)` consults
+on a platform where the two directions are not the same operation.
+
+Assisted-By: Claude Opus 5 (claude-opus-5)
+---
+ usr/src/uts/common/io/virtiofs/vtfs.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/usr/src/uts/common/io/virtiofs/vtfs.c b/usr/src/uts/common/io/virtiofs/vtfs.c
+index a1af61b203..d0f57dd782 100644
+--- a/usr/src/uts/common/io/virtiofs/vtfs.c
++++ b/usr/src/uts/common/io/virtiofs/vtfs.c
+@@ -347,7 +347,7 @@ vtfs_xfer(vtfs_t *vtf, vtfs_xfer_t *vx)
+ 
+ 	if (vx->vx_data != NULL && vx->vx_datalen > 0) {
+ 		if (virtio_dma_bind(vs->vs_data, vx->vx_data, vx->vx_datalen,
+-		    DDI_DMA_WRITE | DDI_DMA_STREAMING, KM_SLEEP) !=
++		    DDI_DMA_READ | DDI_DMA_STREAMING, KM_SLEEP) !=
+ 		    DDI_SUCCESS) {
+ 			r = ENOMEM;
+ 			goto out;

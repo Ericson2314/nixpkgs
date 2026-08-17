@@ -271,6 +271,11 @@ e1000g "pci8086,10d3"
 vioif "pci1af4,1"
 vioif "pci1af4,1000"
 vioif "pci1af4,1041"
+
+# 1af4:105a is virtio-fs. It is a modern-only device, so there is no
+# transitional (0x1000-range) id to alias as well. Without this the vtfs
+# driver never attaches and `mount -F virtiofs <tag>` has nothing to find.
+vtfs "pci1af4,105a"
 EOF
 
 # /etc/driver_classes is the third file add_drv(8) owns, and the copy in the

@@ -1,0 +1,62 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Mon, 17 Aug 2026 14:19:26 -0400
+Subject: [PATCH] virtiofs: `readdir` must not share one `fh` with a concurrent
+ `readdir`
+
+A FUSE readdir offset is a cookie into the entry stream that one
+particular file handle is walking.  It is meaningful only to that
+handle, and the server is free to keep the stream position on the
+handle -- `virtiofsd` does, and only issues a `seekdir()` when the
+offset it is given is not the one it left off at.
+
+`virtiofs_readdir()` was taking its handle from `virtiofs_openfh()`,
+which hands every opener of a node the *same* server handle and merely
+counts them.  Two threads calling `getdents(2)` on one directory at
+once therefore took turns issuing `FUSE_READDIR` against a single
+shared stream, each resuming from wherever the other had got to, and
+each seeing a subset of the directory interleaved with the other's.
+
+Give each call its own `FUSE_OPENDIR` and `FUSE_RELEASEDIR` instead.
+This costs nothing in the uncontended case, which already opened and
+released per call -- the count went 0 -> 1 -> 0 every time -- and it is
+what the comment in `virtiofs_open()` says happens already.
+
+Assisted-By: Claude Opus 5 (claude-opus-5)
+---
+ usr/src/uts/common/fs/virtiofs/virtiofs_vnops.c | 15 +++++++++++++--
+ 1 file changed, 13 insertions(+), 2 deletions(-)
+
+diff --git a/usr/src/uts/common/fs/virtiofs/virtiofs_vnops.c b/usr/src/uts/common/fs/virtiofs/virtiofs_vnops.c
+index 9ef9044fff..fcbcd6b7ea 100644
+--- a/usr/src/uts/common/fs/virtiofs/virtiofs_vnops.c
++++ b/usr/src/uts/common/fs/virtiofs/virtiofs_vnops.c
+@@ -405,7 +405,18 @@ virtiofs_readdir(vnode_t *vp, struct uio *uiop, cred_t *cr, int *eofp,
+ 	if (eofp != NULL)
+ 		*eofp = 0;
+ 
+-	if ((error = virtiofs_openfh(vfn, B_TRUE, &fh)) != 0)
++	/*
++	 * A handle of our own, rather than the counted one that
++	 * virtiofs_openfh() shares between every opener of a node.  A FUSE
++	 * offset is a cookie into the stream that a particular handle is
++	 * reading, and means nothing to any other handle: two concurrent
++	 * VOP_READDIRs on one directory that took turns issuing FUSE_READDIR
++	 * against a shared handle would each be resuming from the other's
++	 * position.  This is also what the comment in virtiofs_open() says
++	 * already happens.
++	 */
++	if ((error = virtiofs_fuse_open(vfs, vfn->vfn_nodeid, B_TRUE,
++	    &fh)) != 0)
+ 		return (error);
+ 
+ 	cookie = (u_offset_t)uiop->uio_loffset;
+@@ -518,7 +529,7 @@ done:
+ 		kmem_free(fbuf, VIRTIOFS_DIRBUFSZ);
+ 	if (obuf != NULL)
+ 		kmem_free(obuf, obufsize);
+-	virtiofs_closefh(vfn, B_TRUE);
++	(void) virtiofs_fuse_release(vfs, vfn->vfn_nodeid, fh, B_TRUE);
+ 
+ 	return (error);
+ }
