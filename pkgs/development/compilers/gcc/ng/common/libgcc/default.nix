@@ -499,11 +499,31 @@ stdenv.mkDerivation (finalAttrs: {
     ngcov=$(count '__gcov_')
     nsplit=$(count '__splitstack_')
 
+    # THE `dl_iterate_phdr` FDE LOOKUP, WHICH IS A DIFFERENT DEFECT WITH THE
+    # SAME SIGNATURE AND HAS TO BE ASKED SEPARATELY.
+    #
+    # `inhibit_libc` drops it, and so does a failed `HAVE_LD_EH_FRAME_HDR` --
+    # and that probe fails whenever `gcc/configure` could not RUN the target
+    # linker, because a probe it cannot run records "no". Either way
+    # `unwind-dw2-fde-dip.c` compiles with `USE_PT_GNU_EH_FRAME` undefined,
+    # leaving only the `__register_frame` registry, which nothing populates for
+    # normally linked objects. libgcc and libstdc++ then build, link and install
+    # perfectly cleanly under the same file names, and every C++ `throw` finds
+    # no FDE and calls `std::terminate`.
+    #
+    # It is decidable from the archive: with the lookup compiled in,
+    # `dl_iterate_phdr` is an UNDEFINED symbol of `unwind-dw2-fde-dip.o`. So ask
+    # the undefined set, not the defined one -- the counting function above
+    # would report zero for a good build.
+    "''${NM:-nm}" --undefined-only "$libgcc_a" > libgcc-undef.txt
+    ndip=$(grep -c 'dl_iterate_phdr' libgcc-undef.txt || true)
+
     # Reported, not asserted: split-stack exists only where the back end builds
     # `generic-morestack.c` (i386 and a few others), so zero is the correct
     # answer on most targets and an assertion on it would fire for the wrong
     # reason. `__gcov_*` is the one libgcov builds everywhere.
-    echo "libgcc: __gcov_* = $ngcov, __splitstack_* = $nsplit (reported only)"
+    echo "libgcc: __gcov_* = $ngcov, __splitstack_* = $nsplit (reported only)," \
+         "dl_iterate_phdr = $ndip"
   ''
   + (
     if libc == null then
@@ -518,6 +538,19 @@ stdenv.mkDerivation (finalAttrs: {
           echo "libgcc: check on the with-libc build is not measuring anything." >&2
           exit 1
         fi
+        # The control for the unwinder half, and it is the reason the assertion
+        # on the other arm means something. `inhibit_libc` also drops the
+        # `dl_iterate_phdr` lookup, so this build MUST NOT have it. If it did,
+        # `ndip -ne 0` would be true of every build and the with-libc check
+        # could not fail.
+        if [ "$ndip" -ne 0 ]; then
+          echo "libgcc: built with inhibit_libc=true, yet libgcc.a references" >&2
+          echo "libgcc: dl_iterate_phdr $ndip time(s). Either inhibit_libc did" >&2
+          echo "libgcc: not take effect, or this probe answers yes regardless" >&2
+          echo "libgcc: -- and in that case the check on the with-libc build" >&2
+          echo "libgcc: is measuring nothing." >&2
+          exit 1
+        fi
       ''
     else
       ''
@@ -526,6 +559,29 @@ stdenv.mkDerivation (finalAttrs: {
           echo "libgcc: libgcov must be present -- but __gcov_* = 0." >&2
           echo "libgcc: something set inhibit_libc, and the result installs" >&2
           echo "libgcc: under the same file names as a good one." >&2
+          exit 1
+        fi
+      ''
+      # THE UNWINDER ASSERTION, ELF ONLY. `USE_PT_GNU_EH_FRAME` is an ELF
+      # mechanism: `PT_GNU_EH_FRAME` is an ELF program header and
+      # `dl_iterate_phdr` is the ELF loader's interface. A PE/COFF or Mach-O
+      # target finds its FDEs another way, so requiring the symbol there would
+      # fail for the wrong reason -- which is how a real check gets deleted.
+      + lib.optionalString stdenv.hostPlatform.isElf ''
+        if [ "$ndip" -eq 0 ]; then
+          echo "libgcc: this is an ELF target with a real libc, so the" >&2
+          echo "libgcc: dl_iterate_phdr FDE lookup must be compiled in -- but" >&2
+          echo "libgcc: libgcc.a references dl_iterate_phdr 0 times." >&2
+          echo "libgcc:" >&2
+          echo "libgcc: USE_PT_GNU_EH_FRAME is off, so unwind-dw2-fde-dip.c" >&2
+          echo "libgcc: built with only the __register_frame registry, which" >&2
+          echo "libgcc: nothing populates for normally linked objects. This" >&2
+          echo "libgcc: library installs under exactly the same file names as" >&2
+          echo "libgcc: a good one and every C++ throw will call std::terminate." >&2
+          echo "libgcc:" >&2
+          echo "libgcc: The usual cause is not inhibit_libc but a configure" >&2
+          echo "libgcc: that could not RUN the target linker: HAVE_LD_EH_FRAME_HDR" >&2
+          echo "libgcc: then reads no, exactly as a real no would." >&2
           exit 1
         fi
       ''
