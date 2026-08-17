@@ -61,7 +61,18 @@ let
           (a ++ [ [ b ] ])
         else
           ((lib.lists.init a) ++ (lib.lists.singleton ((lib.lists.last a) ++ [ b ])));
-      partitionedPatches' = lib.lists.foldl foldFunc [ [ ] ] allLines;
+      # `builtins.foldl'`, not `lib.lists.foldl`: the lazy fold accumulates one
+      # thunk per line and only forces them at the end, so a large patch blows
+      # the evaluator stack rather than merely being slow --
+      #
+      #     error: stack overflow; max-call-depth exceeded
+      #     (26539 duplicate frames omitted)
+      #
+      # which points at hasPrefix and gives no hint that the patch *size* is
+      # what matters. It took a 3805-line patch to reach it; every patch in
+      # tree until then was small enough to get away with it. The strict fold
+      # forces the accumulator at each step and uses no stack at all.
+      partitionedPatches' = builtins.foldl' foldFunc [ [ ] ] allLines;
       partitionedPatches =
         if (builtins.length partitionedPatches' > 1) then
           (lib.lists.drop 1 partitionedPatches')
