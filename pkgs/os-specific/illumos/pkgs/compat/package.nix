@@ -78,7 +78,7 @@
 # That directory does not exist in the pinned upstream tarball -- it is created
 # wholesale by the libcompat patches -- so it cannot come through
 # `filterSource`, which copies from the pristine tarball. It is reconstructed
-# from the patches instead; see `libcompatPatches` below for why doing that is
+# from the patches instead; see `gatePatches` below for why doing that is
 # this package's own job and not stdenv's.
 let
   commonHeaders = [
@@ -131,10 +131,26 @@ let
   # rsync's `--ignore-missing-args` silently copied nothing, and the `cp` below
   # failed on a path that was never going to be there.
   #
-  # So apply them here. Only the `tools/libcompat` hunks are picked, which is
-  # both the minimum needed and what keeps an unrelated patch from rebuilding
-  # this package and, through the CTF tools, every kernel module.
-  libcompatPatches = filterPatches { } patchesRoot [ "usr/src/tools/libcompat" ];
+  # So apply them here. The scope is the minimum needed, which is also what
+  # keeps an unrelated patch from rebuilding this package and, through the CTF
+  # tools, every kernel module: the `tools/libcompat` directory, plus the
+  # gathered headers named ONE BY ONE rather than `usr/src/uts/common/sys` as a
+  # whole. `filterPatches` splits each patch into one fragment per file, so a
+  # per-file scope is exact: patching some other header under that directory
+  # does not reach this package at all.
+  #
+  # The headers belong in scope for the same reason `tools/libcompat` does, and
+  # theirs is the less obvious half. `filterSource` hands back the *pristine*
+  # header, so without this a gathered <sys/foo.h> would be the unpatched one
+  # while every `mkDerivation` in the set compiles against the patched one --
+  # one type with two definitions in a single build, and nothing anywhere to
+  # say so. No gathered header is patched today, so this is a trap disarmed
+  # rather than a bug fixed.
+  gatheredHeaderPaths =
+    map (h: "usr/src/uts/common/sys/${h}") commonHeaders
+    ++ map (h: "usr/src/uts/intel/sys/${h}") intelHeaders;
+
+  gatePatches = filterPatches { } patchesRoot ([ "usr/src/tools/libcompat" ] ++ gatheredHeaderPaths);
 
   # `stdenvNoCC.mkDerivation` with an explicit `buildCommand`, which is exactly
   # what `runCommand` expands to -- but written out so the fixed point is
@@ -209,18 +225,26 @@ stdenvNoCC.mkDerivation (finalAttrs: {
 
   buildCommand =
   ''
-    mkdir -p gate
-    for p in ${lib.escapeShellArgs (map toString libcompatPatches)}; do
+    mkdir -p gate/usr/src/uts/common/sys gate/usr/src/uts/intel/sys
+    for h in $commonHeaders; do
+      cp "${src}/usr/src/uts/common/sys/$h" "gate/usr/src/uts/common/sys/$h"
+    done
+    for h in $intelHeaders; do
+      cp "${src}/usr/src/uts/intel/sys/$h" "gate/usr/src/uts/intel/sys/$h"
+    done
+    chmod -R u+w gate
+
+    for p in ${lib.escapeShellArgs (map toString gatePatches)}; do
       patch -p1 -d gate -i "$p"
     done
     libcompat=$PWD/gate/usr/src/tools/libcompat
 
     mkdir -p "$out/include/sys"
     for h in $commonHeaders; do
-      cp "${src}/usr/src/uts/common/sys/$h" "$out/include/sys/$h"
+      cp "gate/usr/src/uts/common/sys/$h" "$out/include/sys/$h"
     done
     for h in $intelHeaders; do
-      cp "${src}/usr/src/uts/intel/sys/$h" "$out/include/sys/$h"
+      cp "gate/usr/src/uts/intel/sys/$h" "$out/include/sys/$h"
     done
 
     # <sys/types32.h> is nothing but int32_t/uint32_t typedefs, but it reaches
