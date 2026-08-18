@@ -379,7 +379,7 @@ lib.makeOverridable (
     #
     #  o `illumosOwnDebugOutput`: the package already has a `debug` output that
     #    it fills itself. This is the kernel -- `uts-base` and `kmod` split
-    #    their DWARF with uts-common.nix's `strip-dwarf.py`, never with objcopy,
+    #    their DWARF with `mcs -x` (uts-common.nix), never with objcopy,
     #    which silently deletes the DT_NEEDED module dependency names along with
     #    `.strtab` and moves `unix`'s multiboot header out of the first 8K. See
     #    commit "illumos: split kernel DWARF into a `debug` output". Their
