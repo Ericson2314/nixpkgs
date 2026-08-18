@@ -48,6 +48,12 @@ mkDerivation {
     "usr/src/head"
   ];
 
+  # The shared build-host overlay: SAVEARGS, the Solaris-ld flags GNU ld
+  # rejects, the mapfile macros, STACKPROTECT and the post-processing no-ops.
+  # Stated once in mkDerivation.nix rather than restated here -- restating it
+  # per package is what grew the hand-written buildPhases this replaced.
+  illumosNativeBuild = true;
+
   extraNativeBuildInputs = [ cw ];
 
   buildInputs = [
@@ -93,32 +99,20 @@ mkDerivation {
     "MAPFILECLASS=-64"
 
     # The headers illumos does not ship, plus the compat profiles that let gate
-    # source compile against a foreign libc. `CPPFLAGS.first` is placed ahead
-    # of everything else, which matters: `compat.hostElfCflags` must beat the
-    # staged <sys/elf.h>, and `-idirafter` must lose to the host's own
-    # directories. See compat/host-elf/sys/elf.h.
-    "CPPFLAGS.first=-D_LARGEFILE64_SOURCE ${compat.hostElfCflags} ${compat.stagedCflags} -I$(SRC)/lib/libctf/common -idirafter $(SRC)/uts/common -idirafter $(SRC)/head"
+    # source compile against a foreign libc.
+    #
+    # `CPPFLAGS`, not `CPPFLAGS.first`: the shared overlay sets `CPPFLAGS` as a
+    # command-line macro, and those outrank the makefile assignment that would
+    # otherwise expand `$(CPPFLAGS.first)`. So `-D_TS_ERRNO` is carried through
+    # here rather than lost.
+    #
+    # Ordering is load-bearing: `compat.hostElfCflags` must beat the staged
+    # <sys/elf.h>, and `-idirafter` must lose to the host's own directories.
+    # See compat/host-elf/sys/elf.h.
+    "CPPFLAGS=-D_TS_ERRNO -D_LARGEFILE64_SOURCE ${compat.hostElfCflags} ${compat.stagedCflags} -I$(SRC)/lib/libctf/common -idirafter $(SRC)/uts/common -idirafter $(SRC)/head"
 
     # ...and libcompat, built in preBuild above.
     "LDLIBS.cmd=-L. -lcompat"
-
-    # `-lssp_ns` is illumos' stack-protector support library, added by
-    # Makefile.master's $(LDSTACKPROTECT). glibc implements
-    # `__stack_chk_fail` itself, so only the -l is dropped -- not
-    # `STACKPROTECT=none`, which would also throw away
-    # `-fstack-protector-strong` on the compile.
-    "LDSTACKPROTECT="
-
-    # `$(POST_PROCESS)` ends in strip/CTF steps needing illumos target tools;
-    # this *is* the CTF tool, so there is nothing to run over it anyway.
-    "POST_PROCESS=:"
-    "POST_PROCESS_O=:"
-
-    # Solaris link-editor syntax that GNU ld rejects outright -- `-Bdirect`,
-    # `-zassert-deflib`, `-zguidance`, and the three mapfiles. None is
-    # load-bearing for a command; getent.nix clears them for the same reason.
-    "LDFLAGS.cmd="
-    "LDCHECKS="
   ];
 
   # `$(ROOTPROG)` is `$(ROOTBIN)/ctfconvert`, and the setup hook has already
