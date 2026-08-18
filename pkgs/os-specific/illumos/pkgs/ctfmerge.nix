@@ -52,7 +52,6 @@ mkDerivation {
   # rejects, the mapfile macros, STACKPROTECT and the post-processing no-ops.
   # Stated once in mkDerivation.nix rather than restated here -- restating it
   # per package is what grew the hand-written buildPhases this replaced.
-  illumosNativeBuild = true;
 
   extraNativeBuildInputs = [ cw ];
 

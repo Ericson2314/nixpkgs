@@ -62,7 +62,8 @@ let
     "POST_PROCESS_SO=:"
   ];
 
-  # The build-host ("native") overlay, opted into with `illumosNativeBuild`.
+  # The build-host ("native") overlay, applied whenever a package is built to run
+  # on the builder itself.
   #
   # illumos' own answer to "build this program for the build machine" is
   # usr/src/tools/*, and the thing to notice about those makefiles is what they
@@ -149,9 +150,13 @@ let
     # survives into the binary as $ORIGIN; the doubling is make's escape.
     "DYNFLAGS=$(HSONAME) -Wl,-rpath,'$$ORIGIN'"
 
-    # From tools/Makefile.tools. The ROOTONBLD* half of that file is
-    # deliberately not reproduced; see the comment above.
-    "CPPFLAGS=-D_TS_ERRNO"
+    # From tools/Makefile.tools. Its ROOTONBLD* half is deliberately not
+    # reproduced (see above), and neither is its `CPPFLAGS=-D_TS_ERRNO`:
+    # Makefile.master:585 already has `DTS_ERRNO=-D_TS_ERRNO` inside
+    # `CPPFLAGS.master`, so restating it adds nothing -- while forcing CPPFLAGS
+    # as a command-line macro OVERRIDES cmd/sgs/Makefile.com:62, which
+    # reassigns it precisely to put `-I.` and `-I../common` ahead of the
+    # parent's. Every cmd/sgs package then fails on a missing <conv.h>.
     "ELFSIGN_O=$(TRUE)"
     "GSHARED=-_gcc=-shared"
 
@@ -289,10 +294,19 @@ lib.makeOverridable (
     # and stays in the individual packages.
     isLib = attrs.illumosLib or false;
 
-    # Opt in to the build-host overlay above. Separate from `isLib` because the
-    # two are orthogonal: a build-host *library* (sgs-libconv, sgs-libelf) wants
-    # both, a build-host *program* (mcs, ctfconvert) wants only this one.
-    isNativeBuild = attrs.illumosNativeBuild or false;
+    # A package built from illumos source whose host platform *is* the build
+    # platform is a build-host tool, and needs the overlay above by definition.
+    # Nothing to opt into: the platforms already say it.
+    #
+    # Deliberately `hostPlatform == buildPlatform` rather than
+    # `!hostPlatform.isIllumos`. `isIllumos` means "runs in illumos userland",
+    # and the kernel does not -- it is written for bare metal, so `unix` having
+    # `hostPlatform.isIllumos = true` is strictly wrong even though nothing
+    # depends on it being right. Were that ever corrected, a `!isIllumos` test
+    # would silently reclassify the entire kernel as a build-host tool and apply
+    # this overlay to it. Comparing the two platforms is true only for something
+    # genuinely built to run on the builder, whatever the kernel is labelled.
+    isNativeBuild = stdenv'.hostPlatform == stdenv'.buildPlatform;
 
     # Link through illumos' own link-editor. On by default for `illumosLib`;
     # a static-only library (libssp_ns) never links anything and turns it off.
@@ -401,7 +415,6 @@ lib.makeOverridable (
       "illumosLd"
       "illumosCtf"
       "illumosOwnDebugOutput"
-      "illumosNativeBuild"
     ])
     # Last, so that these are *prepended* to whatever the package asked for
     # rather than replaced by it. Only set when opted in: unconditionally

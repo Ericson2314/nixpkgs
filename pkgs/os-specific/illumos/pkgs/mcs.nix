@@ -78,7 +78,6 @@ mkDerivation {
   # STACKPROTECT and the post-processing no-ops. Stated once in
   # mkDerivation.nix; restating it per package is exactly how the hand-written
   # buildPhase this replaces came about.
-  illumosNativeBuild = true;
 
   extraNativeBuildInputs = [ cw ];
 
