@@ -130,6 +130,20 @@ stdenv.mkDerivation (finalAttrs: {
 
     (getVersionFile "gcc/fix-collect2-paths.diff")
 
+    # Mangle the Nix store hash in `__FILE__` to prevent unneeded runtime
+    # references. Without this, `__FILE__` used from headers in `-dev` outputs
+    # (e.g. `assert`/`BOOST_ASSERT` text) is baked into `.rodata` verbatim, and
+    # the reference scanner retains the whole `-dev` closure at runtime.
+    #
+    # `cc-wrapper` deliberately does *not* use `-fmacro-prefix-map` for GNU
+    # compilers (`useMacroPrefixMap = !isGNU`) because of
+    # <https://gcc.gnu.org/PR111527>, so every GCC in Nixpkgs is expected to
+    # carry this patch. The legacy `gcc` expression already does; share the
+    # exact same file here rather than forking it.
+    #
+    # TODO: drop this along with `useMacroPrefixMap` once PR111527 is fixed.
+    ../../../patches/13/mangle-NIX_STORE-in-__FILE__.patch
+
     # From the posting to gcc-patches, which covers every component that links
     # libbacktrace. Take only this component's non-generated files: the
     # generated ones are rebuilt by `autoreconfHook269` below, against a GCC
