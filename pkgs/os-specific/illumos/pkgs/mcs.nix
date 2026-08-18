@@ -4,7 +4,7 @@
   mkDerivation,
 
   cw,
-  ld,
+  sgs-libelf,
   sgs-support,
 }:
 
@@ -88,12 +88,19 @@ mkDerivation {
   makeFlags = [
     # Where `-lconv` and `-lelf` live. Upstream points these at the sibling
     # build directories of a full sgs build; here libconv comes from
-    # `sgs-support` and illumos' libelf from the native link-editor, which
-    # builds and installs one because it needs it too. It has to be illumos'
-    # libelf and not elfutils: the layout behaviour that makes this tool safe
-    # on a kernel module is libelf's, not mcs'.
+    # `sgs-support` and illumos' libelf from `sgs-libelf`. It has to be
+    # illumos' libelf and not elfutils: the layout behaviour that makes this
+    # tool safe on a kernel module is libelf's, not mcs'.
+    #
+    # This used to point at the `ld` package's `lib/i386/64`, on the reasoning
+    # that the native link-editor builds and installs a libelf because it
+    # needs one itself. That stopped being true when `ld` was rebuilt from
+    # `cmd/sgs`: its output is `bin/` only -- `ld` and `ld-unwrapped`, no
+    # `lib/` at all -- so the link failed with a bare
+    # `ld.bfd: cannot find -lelf`, well after everything had compiled clean.
+    # `sgs-libelf` is the package that actually installs `lib/libelf.so`.
     "CONVLIBDIR64=${sgs-support.ldflags}"
-    "ELFLIBDIR64=-L${ld}/lib/i386/64"
+    "ELFLIBDIR64=-L${sgs-libelf}/lib"
 
     # The compile profile an sgs program needs against a foreign libc.
     #
@@ -116,7 +123,7 @@ mkDerivation {
   ];
 
   # illumos' libelf is a shared object, so the runpath has to name it.
-  env.NIX_LDFLAGS = "-rpath ${ld}/lib/i386/64";
+  env.NIX_LDFLAGS = "-rpath ${sgs-libelf}/lib";
 
   buildFlags = [ "all" ];
 
