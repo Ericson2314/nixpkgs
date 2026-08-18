@@ -109,6 +109,16 @@ typedef unsigned long long	u_longlong_t;
 #define	__DECONST(type, var)	((type)(uintptr_t)(const void *)(var))
 #endif
 
+/*
+ * strtonum(3C) is illumos libc, not the host's; libcompat supplies the
+ * implementation (compat_host.c) and this is its declaration. Not reached
+ * through the gate's <stdlib.h> because the staged profile deliberately lets
+ * the host's win.
+ */
+extern long long strtonum(const char *, long long, long long, const char **);
+extern long long strtonumx(const char *, long long, long long, const char **,
+    int);
+
 #ifdef	__cplusplus
 }
 #endif

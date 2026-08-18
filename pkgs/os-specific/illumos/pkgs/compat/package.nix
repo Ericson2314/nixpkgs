@@ -108,6 +108,13 @@ let
       # "staged": host libc wins, illumos ELF headers layered on top.
       stagedCflags = "-I${self}/include -include ${self}/include/native_compat.h";
 
+      # "host ELF": <sys/elf.h> forwarded to the host's <elf.h>, for a
+      # consumer that links the host's libelf and so must not also have
+      # illumos' ELF types in scope. Mutually exclusive with the staged
+      # profile's own <sys/elf.h>, so it has to be searched first; see the
+      # comment in host-elf/sys/elf.h.
+      hostElfCflags = "-I${self}/include-host-elf";
+
       # "gate": the gate's headers win; this only prepends the overlay, so it
       # must come *before* the consumer's own -I flags for the gate tree.
       # `_REENTRANT` is not optional -- without it the gate's <errno.h> declares
@@ -159,6 +166,9 @@ let
     # has to be compiled against the *consumer's* view of the gate headers --
     # the same -I flags and the same feature-test macros -- and there is no one
     # such view to pick here. Its consumers already have all of that set up.
+    cp -r ${./host-elf} "$out/include-host-elf"
+    chmod -R u+w "$out/include-host-elf"
+
     cp -r ${./overlay} "$out/include-overlay"
     chmod -R u+w "$out/include-overlay"
 

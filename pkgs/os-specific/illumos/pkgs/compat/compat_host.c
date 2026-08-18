@@ -185,3 +185,76 @@ __compat_host_closedir(void *dirp)
 {
 	return (closedir((DIR *)dirp));
 }
+
+/*
+ * strtonum(3C) / strtonumx(3C).
+ *
+ * Originally OpenBSD's, and part of illumos' libc
+ * (lib/libc/port/gen/strtonum.c); glibc has no equivalent.  ctfconvert(1)
+ * parses its -j and -m arguments with it, and that one missing symbol is all
+ * that stands between the gate's own cmd/ctfconvert/ctfconvert.c and a
+ * build-host binary -- which is why it is filled in here rather than by
+ * patching the gate.
+ *
+ * The error strings and the errno left behind on each failure are part of the
+ * documented interface, so they are reproduced exactly rather than
+ * approximated.
+ */
+#include <limits.h>
+
+#define	COMPAT_STRTONUM_INVALID		1
+#define	COMPAT_STRTONUM_TOOSMALL	2
+#define	COMPAT_STRTONUM_TOOLARGE	3
+#define	COMPAT_STRTONUM_BADBASE		4
+
+/* The largest base strtoll(3C) accepts: digits plus the 26 letters. */
+#define	COMPAT_STRTONUM_MBASE		('z' - 'a' + 1 + 10)
+
+long long
+strtonumx(const char *numstr, long long minval, long long maxval,
+    const char **errstrp, int base)
+{
+	long long ll = 0;
+	int error = 0;
+	char *ep;
+	struct errval {
+		const char *errstr;
+		int err;
+	} ev[5] = {
+		{ NULL,		0 },
+		{ "invalid",	EINVAL },
+		{ "too small",	ERANGE },
+		{ "too large",	ERANGE },
+		{ "unparsable; invalid base specified", EINVAL },
+	};
+
+	ev[0].err = errno;
+	errno = 0;
+	if (minval > maxval) {
+		error = COMPAT_STRTONUM_INVALID;
+	} else if (base < 0 || base > COMPAT_STRTONUM_MBASE || base == 1) {
+		error = COMPAT_STRTONUM_BADBASE;
+	} else {
+		ll = strtoll(numstr, &ep, base);
+		if (numstr == ep || *ep != '\0')
+			error = COMPAT_STRTONUM_INVALID;
+		else if ((ll == LLONG_MIN && errno == ERANGE) || ll < minval)
+			error = COMPAT_STRTONUM_TOOSMALL;
+		else if ((ll == LLONG_MAX && errno == ERANGE) || ll > maxval)
+			error = COMPAT_STRTONUM_TOOLARGE;
+	}
+	if (errstrp != NULL)
+		*errstrp = ev[error].errstr;
+	errno = ev[error].err;
+	if (error != 0)
+		ll = 0;
+
+	return (ll);
+}
+
+long long
+strtonum(const char *numstr, long long minval, long long maxval,
+    const char **errstrp)
+{
+	return (strtonumx(numstr, minval, maxval, errstrp, 10));
+}
