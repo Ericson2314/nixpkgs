@@ -19,7 +19,7 @@ here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 gate=${1:?usage: update-patches.sh <illumos-gate-checkout> [base] [branch]}
 base=${2:-origin/master}
-branch=${3:-nix-cross}
+branch=${3:-virtiofs}
 
 rm -f "$here/patches"/*.patch
 

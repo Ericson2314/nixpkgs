@@ -198,14 +198,23 @@ makeScopeWithSplicing' {
             '';
           };
 
-      # Patches are generated from commits on the illumos-gate `nix-cross`
+      # Patches are generated from commits on the illumos-gate `virtiofs`
       # branch by ./update-patches.sh; that branch is the source of truth.
       #
       # The whole directory is one `git format-patch` of that one branch
       # against the revision `./pkgs/source.nix` pins, and nothing else. Do not
       # add a patch here by hand, or take one from another branch: the script
-      # starts by deleting `patches/*.patch`, so anything not on `nix-cross`
+      # starts by deleting `patches/*.patch`, so anything not on `virtiofs`
       # is silently lost the next time anyone regenerates.
+      #
+      # NOTE THE BRANCH. This said `nix-cross` until it was caught, and the
+      # script defaulted to it too -- while `patches/` had in fact been
+      # generated from `virtiofs`, which is `nix-cross` plus ten commits (the
+      # Virtio-FS client, the krtld empty-relocation fix, the idmap header
+      # path, `lowbit64()`). Regenerating the documented way would have deleted
+      # every one of them: 31 commits on `nix-cross` against 41 patches here.
+      # Caught only by counting. If the branches are ever merged or renamed,
+      # fix this comment and the script default together.
       patchesRoot = ./patches;
 
       stdenvLibcMinimal = stdenvNoLibc.override (old: {
