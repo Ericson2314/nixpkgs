@@ -4,6 +4,7 @@
   version,
   uts-base,
   kmod,
+  buildPackages,
 }:
 
 # The i86pc kernel as a boot archive sees it: `unix` and `genunix` from
@@ -591,6 +592,16 @@ runCommand "unix-illumos-${version}"
   {
     passthru = {
       inherit uts-base;
+
+      # The module list, and the bare module names it provides
+      # (`intel/net_dacf` -> `net_dacf`).  Exposed so that the image builder
+      # can check the *data files* that name modules by bare name --
+      # `/etc/dacf.conf` names `net_dacf`, `/etc/driver_aliases` names a
+      # driver per line -- against what was actually built.  Same failure
+      # shape as the -N check below, one layer out: a rule naming a module
+      # that cannot be loaded is silently a no-op.
+      inherit kmodNames;
+      kmodBaseNames = map baseNameOf kmodNames;
       # The individual modules, so that a bring-up session can build and
       # inspect one on its own: `nix-build -A illumos.unix.kmods.intel-vioif`.
       kmods = builtins.listToAttrs (
@@ -627,4 +638,18 @@ runCommand "unix-illumos-${version}"
     for d in ${uts-base} ${lib.concatMapStringsSep " " (m: "${kmod m}") kmodNames}; do
       cp -r --preserve=links --no-preserve=mode "$d/." "$out/"
     done
+
+    # Now that the tree is assembled, check that every `-N <class>/<name>`
+    # dependency any staged module declares names a module which is actually
+    # here.  Nothing else in the build does: krtld resolves those at modload()
+    # time, so an entry missing from `kmodNames` above costs nothing until the
+    # machine is running, and then costs a day -- the module quietly fails to
+    # load and something three layers up misbehaves.  See the header comment
+    # in check-kmod-deps.py.
+    #
+    # Read-only: it walks $out and exits non-zero.  It cannot perturb the
+    # output.
+    ${buildPackages.python3Minimal}/bin/python3 ${./check-kmod-deps.py} \
+      "$out" pkgs/os-specific/illumos/pkgs/unix.nix \
+      ${lib.escapeShellArgs kmodNames}
   ''
