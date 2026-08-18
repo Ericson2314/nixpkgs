@@ -19,8 +19,20 @@
 #             nature and has no target-side existence.
 #   ctfstabs  only `tools/ctf/stabs`; no `cmd/` counterpart.
 #
-# and it is NOT true of `ctfconvert`, `ctfmerge` or `ld`, all of which exist
-# under `cmd/` and should come from there for both platforms. If you find
+# REFINEMENT, learned the hard way: the rule is about duplicated SOURCE, not
+# about the path a makefile happens to live under. `tools/ctf/ctfconvert` and
+# `tools/ctf/ctfmerge` are NOT second copies of those programs --
+# `tools/ctf/ctfconvert/Makefile.com` compiles `$(SRC)/cmd/ctfconvert/%.c`, the
+# same source, with no `NATIVE_BUILD` conditional anywhere. What lives under
+# `tools/` there is a MAKEFILE SHIM (`Makefile.ctf.native`), and it is shared
+# with `libctf` and `libdwarf` besides. Replacing it with a hand-written nix
+# recipe would ADD a source of truth rather than remove one, so those two stay.
+#
+# So: migrate when `tools/` holds a second COPY of the program. Leave it alone
+# when `tools/` merely holds a different way to build the same file.
+#
+# It IS true of `ld`, whose `native` variant exists only to get a build-host
+# binary of sources that already build from `cmd/sgs/ld` for the target. If you find
 # yourself adding a `native = { path = "usr/src/tools/...` variant to a package
 # whose sources live under `cmd/`, that is the smell this order exists to
 # catch: build the `cmd/` sources for the build platform instead.
