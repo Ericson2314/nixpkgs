@@ -45,6 +45,10 @@ mkDerivation {
     "usr/src/head"
   ];
 
+  # Installs into, or reads from, the onbld $(ROOTONBLD)/bin/$(MACH) layout,
+  # so it needs MACH set even when it is built for the build host.
+  illumosOnbldMach = true;
+
   makeFlags = [
     "ROOTONBLD=${builtins.placeholder "out"}"
   ];

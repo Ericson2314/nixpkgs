@@ -163,6 +163,10 @@ mkDerivation (
     '';
   }
   // lib.optionalAttrs (!forIllumos) {
+    # tools/sgs installs into the onbld $(ROOTONBLD)/bin/$(MACH64) layout, so
+    # it needs MACH set even though it is built for the build host.
+    illumosOnbldMach = true;
+
     # `make` with no target picks the first one, `all`, and dmake does not
     # apply `all := TARGET= install` to it -- the sub-makes then get an empty
     # target and silently build nothing. Naming `install` explicitly avoids

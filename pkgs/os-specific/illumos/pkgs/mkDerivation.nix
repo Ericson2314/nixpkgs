@@ -224,6 +224,15 @@ let
   # There is no default case. A CPU with no known illumos spelling throws
   # rather than falling back to i386, because the failure mode of guessing is
   # a build that quietly succeeds against the wrong source directories.
+  #
+  # Passed to every illumos-hosted build, but NOT to a build-host tool unless
+  # it asks (`illumosOnbldMach`). MACH is also what the onbld proto layout
+  # indexes its install directories with -- $(ROOTONBLD)/bin/$(MACH) -- and the
+  # build-host tools here install into $out/bin instead, which only works
+  # because MACH is empty for them. Setting it moves `cw` to $out/bin/i386 and
+  # nothing finds it. The tools that DO want the onbld layout (they patch or
+  # follow its install rules) opt in and get the build platform's spelling.
+  #
   # A function of a platform rather than of nothing, because the gate names the
   # same concept twice: MACH/MACH64 describe what is being built (the host
   # platform) and the NATIVE_* family describes the machine doing the building
@@ -259,6 +268,13 @@ let
   machMakeFlags = [
     "MACH=${mach.mach}"
     "MACH64=${mach.mach64}"
+  ];
+
+  # For a build-host tool that asks for the onbld layout (`illumosOnbldMach`):
+  # its MACH names the machine it will run on, which is the build platform.
+  nativeMachMakeFlags = [
+    "MACH=${nativeMach.mach}"
+    "MACH64=${nativeMach.mach64}"
   ];
 in
 
@@ -549,6 +565,7 @@ lib.makeOverridable (
       "illumosLd"
       "illumosCtf"
       "illumosOwnDebugOutput"
+      "illumosOnbldMach"
     ])
     # Last, so that these are *prepended* to whatever the package asked for
     # rather than replaced by it.
@@ -557,7 +574,9 @@ lib.makeOverridable (
     # still override any single macro by restating it in its own `makeFlags`.
     // {
       makeFlags =
-        machMakeFlags
+        lib.optionals (!isNativeBuild || isLib || (attrs.illumosOnbldMach or false)) (
+          if isNativeBuild then nativeMachMakeFlags else machMakeFlags
+        )
         ++ lib.optionals isNativeBuild nativeBuildMakeFlags
         ++ lib.optionals isLib (
           libMakeFlags

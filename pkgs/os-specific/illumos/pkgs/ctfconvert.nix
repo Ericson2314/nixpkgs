@@ -70,6 +70,10 @@ mkDerivation {
     ar rcs libcompat.a compat_host.o
   '';
 
+  # Installs into, or reads from, the onbld $(ROOTONBLD)/bin/$(MACH) layout,
+  # so it needs MACH set even when it is built for the build host.
+  illumosOnbldMach = true;
+
   makeFlags = [
     # cmd/ctfconvert has no amd64 subdirectory, so Makefile.cmd would build it
     # 32-bit. These are the contents of Makefile.master.64 restricted to what a

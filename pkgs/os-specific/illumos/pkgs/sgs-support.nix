@@ -120,6 +120,10 @@ mkDerivation (finalAttrs: {
     runHook postBuild
   '';
 
+  # Installs into, or reads from, the onbld $(ROOTONBLD)/bin/$(MACH) layout,
+  # so it needs MACH set even when it is built for the build host.
+  illumosOnbldMach = true;
+
   makeFlags = [
     # libconv runs the sgsmsg built by tools/sgs to generate its message
     # catalogue, and looks for it under $(ONBLD_TOOLS)/bin/$(MACH). `ld` is the
