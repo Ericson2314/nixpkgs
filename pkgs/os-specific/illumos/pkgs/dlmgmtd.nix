@@ -103,28 +103,33 @@ mkDerivation {
   # upstream's layout than belongs in a store path. Placed by hand below.
   buildFlags = [ "all" ];
 
-  installPhase = ''
-    runHook preInstall
+  installPhase =
+    ''
+      runHook preInstall
 
-    mkdir -p $out/sbin
-    cp dlmgmtd $out/sbin/dlmgmtd
-    chmod 755 $out/sbin/dlmgmtd
+      mkdir -p $out/sbin
+      cp dlmgmtd $out/sbin/dlmgmtd
+      chmod 755 $out/sbin/dlmgmtd
 
+    ''
     # The SMF manifest and its method script, for a configuration that runs
     # this under SMF rather than by hand.
-    mkdir -p $out/lib/svc/manifest/network $out/lib/svc/method
-    cp dlmgmt.xml $out/lib/svc/manifest/network/dlmgmt.xml
-    cp svc-dlmgmtd $out/lib/svc/method/svc-dlmgmtd
-    chmod 755 $out/lib/svc/method/svc-dlmgmtd
+    + ''
+      mkdir -p $out/lib/svc/manifest/network $out/lib/svc/method
+      cp dlmgmt.xml $out/lib/svc/manifest/network/dlmgmt.xml
+      cp svc-dlmgmtd $out/lib/svc/method/svc-dlmgmtd
+      chmod 755 $out/lib/svc/method/svc-dlmgmtd
 
+    ''
     # The seed datalink database. dlmgmtd expects /etc/dladm/datalink.conf to
     # exist and to be writable; a consumer has to copy this to writable
     # storage rather than symlink it into the store.
-    mkdir -p $out/share/dlmgmtd
-    cp datalink.conf $out/share/dlmgmtd/datalink.conf
+    + ''
+      mkdir -p $out/share/dlmgmtd
+      cp datalink.conf $out/share/dlmgmtd/datalink.conf
 
-    runHook postInstall
-  '';
+      runHook postInstall
+    '';
 
   meta = {
     description = "illumos datalink management daemon";

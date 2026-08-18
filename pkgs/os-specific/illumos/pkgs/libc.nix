@@ -130,16 +130,20 @@ symlinkJoin {
         libuutil
       ];
 
-  postBuild = ''
-    rm -rf "$out/nix-support"
+  postBuild =
+    ''
+      rm -rf "$out/nix-support"
 
+    ''
     # illumos names the 64-bit runtime linker directory "64", and on x86 that is
     # a symlink to "amd64" -- which is where rtld installs and what its SONAME
     # and every PT_INTERP say. Provide the alias the wrapper expects.
-    if [ ! -e "$out/lib/64" ]; then
-      ln -s amd64 "$out/lib/64"
-    fi
+    + ''
+      if [ ! -e "$out/lib/64" ]; then
+        ln -s amd64 "$out/lib/64"
+      fi
 
+    ''
     # Point the *link-time* -ldl at libc.so.1 rather than at libdl.so.1.
     #
     # A workaround for our layout, not a fix to illumos, so: stock libdl.so.1
@@ -166,10 +170,11 @@ symlinkJoin {
     # no second linker and no ordering sensitivity. glibc did the same when it
     # emptied libdl in 2.34. libdl.so.1 stays for anything already linked
     # against it.
-    ln -sfn libc.so.1 "$out/lib/libdl.so"
+    + ''
+      ln -sfn libc.so.1 "$out/lib/libdl.so"
 
-    fixupPhase
-  '';
+      fixupPhase
+    '';
 
   # illumos' threads are POSIX threads, and they live in libc.so.1 itself --
   # libpthread.so.1 is joined in above only as a filter, so that an

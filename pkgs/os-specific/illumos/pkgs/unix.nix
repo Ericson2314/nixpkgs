@@ -654,38 +654,42 @@ runCommand "unix-illumos-${version}"
       license = licenses.cddl;
     };
   }
-  ''
-    # A copy rather than symlinkJoin: the image builders that consume this
-    # reach in with plain `cp -r "$kernel/kernel"` (nixbsd's
-    # modules/system/boot/illumos-boot-image.nix), and a tree of symlinks into
-    # the store would land in the boot archive as dangling links unless every
-    # one of them remembered -L. The copies are nearly free on a filesystem
-    # that reflinks.
-    #
-    # --no-preserve=mode because the store paths are read-only and the second
-    # cp into an existing directory would otherwise have nowhere to write.
-    #
-    # --preserve=links because a module installed under two names is one file
-    # with two links, not two files: uts/intel/ip/Makefile:119 is
-    # `ln $(ROOTMODULE) $@`, so kernel/drv/amd64/ip and kernel/strmod/amd64/ip
-    # are the same inode, and nfs does the same across kernel/fs and kernel/sys.
-    # Plain `cp -r` breaks the link and doubles them in the boot archive.
+  # A copy rather than symlinkJoin: the image builders that consume this
+  # reach in with plain `cp -r "$kernel/kernel"` (nixbsd's
+  # modules/system/boot/illumos-boot-image.nix), and a tree of symlinks into
+  # the store would land in the boot archive as dangling links unless every
+  # one of them remembered -L. The copies are nearly free on a filesystem
+  # that reflinks.
+  #
+  # --no-preserve=mode because the store paths are read-only and the second
+  # cp into an existing directory would otherwise have nowhere to write.
+  #
+  # --preserve=links because a module installed under two names is one file
+  # with two links, not two files: uts/intel/ip/Makefile:119 is
+  # `ln $(ROOTMODULE) $@`, so kernel/drv/amd64/ip and kernel/strmod/amd64/ip
+  # are the same inode, and nfs does the same across kernel/fs and kernel/sys.
+  # Plain `cp -r` breaks the link and doubles them in the boot archive.
+  (
+    ''
     mkdir -p "$out"
     for d in ${uts-base} ${lib.concatMapStringsSep " " (m: "${kmod m}") kmodNames}; do
       cp -r --preserve=links --no-preserve=mode "$d/." "$out/"
     done
 
-    # Now that the tree is assembled, check that every `-N <class>/<name>`
-    # dependency any staged module declares names a module which is actually
-    # here.  Nothing else in the build does: krtld resolves those at modload()
-    # time, so an entry missing from `kmodNames` above costs nothing until the
-    # machine is running, and then costs a day -- the module quietly fails to
-    # load and something three layers up misbehaves.  See the header comment
-    # in check-kmod-deps.py.
-    #
-    # Read-only: it walks $out and exits non-zero.  It cannot perturb the
-    # output.
+  ''
+  # Now that the tree is assembled, check that every `-N <class>/<name>`
+  # dependency any staged module declares names a module which is actually
+  # here.  Nothing else in the build does: krtld resolves those at modload()
+  # time, so an entry missing from `kmodNames` above costs nothing until the
+  # machine is running, and then costs a day -- the module quietly fails to
+  # load and something three layers up misbehaves.  See the header comment
+  # in check-kmod-deps.py.
+  #
+  # Read-only: it walks $out and exits non-zero.  It cannot perturb the
+  # output.
+  + ''
     ${buildPackages.python3Minimal}/bin/python3 ${./check-kmod-deps.py} \
       "$out" pkgs/os-specific/illumos/pkgs/unix.nix \
       ${lib.escapeShellArgs kmodNames}
   ''
+  )

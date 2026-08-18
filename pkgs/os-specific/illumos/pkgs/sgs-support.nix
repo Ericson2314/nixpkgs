@@ -136,22 +136,25 @@ mkDerivation (
     # The staged headers land in `include/` and the archive in
     # `libconv/libconv.a`, both relative to the build directory, because that is
     # where upstream's consumers look for them.
-    installPhase = ''
-      runHook preInstall
+    installPhase =
+      ''
+        runHook preInstall
 
-      mkdir -p "$out/include" "$out/lib"
-      cp -r include/. "$out/include/"
-      rm -f "$out/include/Makefile"
-      cp libconv/libconv.a "$out/lib/"
+        mkdir -p "$out/include" "$out/lib"
+        cp -r include/. "$out/include/"
+        rm -f "$out/include/Makefile"
+        cp libconv/libconv.a "$out/lib/"
 
+      ''
       # The shims `tools/sgs/Makefile.com` force-includes. `native_support.c` is
       # already compiled into libconv.a above; these are its header half, and a
       # consumer needs them for the same reason libconv did.
-      cp -r "$SRC/tools/sgs/native" "$out/include-native"
-      chmod -R u+w "$out/include-native"
+      + ''
+        cp -r "$SRC/tools/sgs/native" "$out/include-native"
+        chmod -R u+w "$out/include-native"
 
-      runHook postInstall
-    '';
+        runHook postInstall
+      '';
 
     passthru = {
       # The whole compile profile, named rather than re-derived by each consumer

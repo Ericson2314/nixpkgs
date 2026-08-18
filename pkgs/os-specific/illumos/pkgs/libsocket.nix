@@ -85,12 +85,13 @@ mkDerivation {
   # directly. `libmd`/`libmp` appear only because they are libnsl's own
   # `DT_NEEDED`s and the illumos link-editor insists on finding a dependency's
   # dependencies on the link path.
+  #
+  # <libsocket_priv.h> is installed into /usr/include by the *top*
+  # lib/libsocket/Makefile (HDRS, line 27). We build amd64 directly, so point
+  # at the source directory instead. It rides on CPPFLAGS.first rather than
+  # CPPFLAGS because a command-line CPPFLAGS would discard Makefile.com's own
+  # -DSYSV -D_REENTRANT.
   preBuild = ''
-    # <libsocket_priv.h> is installed into /usr/include by the *top*
-    # lib/libsocket/Makefile (HDRS, line 27). We build amd64 directly, so point
-    # at the source directory instead. It rides on CPPFLAGS.first rather than
-    # CPPFLAGS because a command-line CPPFLAGS would discard Makefile.com's own
-    # -DSYSV -D_REENTRANT.
     makeFlagsArray+=("CPPFLAGS.first=-I${headers}/include -I\$(SRC)/lib/libsocket/common")
     makeFlagsArray+=("BUILD.SO=\$(LD) -o \$@ \$(GSHARED) \$(DYNFLAGS) \$(PICS) \$(EXTPICS) -L${libcMinimal}/lib -L${libssp_ns}/lib -L${libnsl}/lib -R${libnsl}/lib -L${libmd}/lib -R${libmd}/lib -L${libmp}/lib -R${libmp}/lib \$(LDLIBS)")
   '';

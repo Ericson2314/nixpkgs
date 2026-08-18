@@ -119,20 +119,23 @@ MAKEFILE
     makeFlagsArray+=("BUILD.SO=\$(LD) -o \$@ \$(GSHARED) \$(DYNFLAGS) ${crt}/lib/crti.o \$(PICS) \$(EXTPICS) ${crt}/lib/crtn.o -L${libcMinimal}/lib -L${libssp_ns}/lib \$(LDLIBS)")
   '';
 
-  installPhase = ''
-    runHook preInstall
+  installPhase =
+    ''
+      runHook preInstall
 
-    mkdir -p "$out/lib"
-    cp libsqlite-sys.so.2.8.15 "$out/lib/"
-    ln -s libsqlite-sys.so.2.8.15 "$out/lib/libsqlite-sys.so.1"
-    ln -s libsqlite-sys.so.2.8.15 "$out/lib/libsqlite-sys.so"
+      mkdir -p "$out/lib"
+      cp libsqlite-sys.so.2.8.15 "$out/lib/"
+      ln -s libsqlite-sys.so.2.8.15 "$out/lib/libsqlite-sys.so.1"
+      ln -s libsqlite-sys.so.2.8.15 "$out/lib/libsqlite-sys.so"
 
+    ''
     # Under `sqlite-sys/`, because that is the directory svc.configd's
     # Makefile puts on its include path and how the gate keeps this apart
     # from any other sqlite.
-    mkdir -p "$dev/include/sqlite-sys"
-    cp ../sqlite.h ../sqlite-misc.h "$dev/include/sqlite-sys/"
+    + ''
+      mkdir -p "$dev/include/sqlite-sys"
+      cp ../sqlite.h ../sqlite-misc.h "$dev/include/sqlite-sys/"
 
-    runHook postInstall
-  '';
+      runHook postInstall
+    '';
 }

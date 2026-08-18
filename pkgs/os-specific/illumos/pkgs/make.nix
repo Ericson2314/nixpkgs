@@ -32,17 +32,20 @@ stdenv.mkDerivation {
   # whole-tree patch rather than going through `filterPatches`.
   patches = [ ./linux-dmake.patch ];
 
-  postPatch = ''
-    cp ${source}/usr/src/OPENSOLARIS.LICENSE COPYING
-    mkdir -p man/man1
-    cp ${source}/usr/src/man/man1/make.1 man/man1/make.1
+  postPatch =
+    ''
+      cp ${source}/usr/src/OPENSOLARIS.LICENSE COPYING
+      mkdir -p man/man1
+      cp ${source}/usr/src/man/man1/make.1 man/man1/make.1
 
+    ''
     # The dmake port asks for `cmake_minimum_required(VERSION 2.8)`, and CMake
     # has since removed compatibility with anything below 3.5.
-    substituteInPlace CMakeLists.txt \
-      --replace-fail 'cmake_minimum_required(VERSION 2.8)' \
-                     'cmake_minimum_required(VERSION 3.5)'
-  '';
+    + ''
+      substituteInPlace CMakeLists.txt \
+        --replace-fail 'cmake_minimum_required(VERSION 2.8)' \
+                       'cmake_minimum_required(VERSION 3.5)'
+    '';
 
   nativeBuildInputs = [
     cmake

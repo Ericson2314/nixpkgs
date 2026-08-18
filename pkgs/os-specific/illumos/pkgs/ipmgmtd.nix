@@ -116,30 +116,37 @@ mkDerivation {
   # exist here. Placed by hand below, as in dlmgmtd.nix.
   buildFlags = [ "all" ];
 
-  installPhase = ''
-    runHook preInstall
+  installPhase =
+    ''
+      runHook preInstall
 
+    ''
     # /lib/inet is where upstream puts it, and the SMF method script below
     # names that path; keep the layout so the shipped script stays usable.
-    mkdir -p $out/lib/inet
-    cp ipmgmtd $out/lib/inet/ipmgmtd
-    chmod 755 $out/lib/inet/ipmgmtd
+    + ''
+      mkdir -p $out/lib/inet
+      cp ipmgmtd $out/lib/inet/ipmgmtd
+      chmod 755 $out/lib/inet/ipmgmtd
 
+    ''
     # The SMF manifest and its method script, for a configuration that runs
     # this under SMF rather than by hand.
-    mkdir -p $out/lib/svc/manifest/network $out/lib/svc/method
-    cp network-ipmgmt.xml $out/lib/svc/manifest/network/ipmgmt.xml
-    cp net-ipmgmt $out/lib/svc/method/net-ipmgmt
-    chmod 755 $out/lib/svc/method/net-ipmgmt
+    + ''
+      mkdir -p $out/lib/svc/manifest/network $out/lib/svc/method
+      cp network-ipmgmt.xml $out/lib/svc/manifest/network/ipmgmt.xml
+      cp net-ipmgmt $out/lib/svc/method/net-ipmgmt
+      chmod 755 $out/lib/svc/method/net-ipmgmt
 
+    ''
     # The seed address database. Like dlmgmtd's datalink.conf this is rewritten
     # in place as addresses come and go, so a consumer has to copy it to
     # writable storage rather than symlink it out of the store.
-    mkdir -p $out/share/ipmgmtd
-    cp ipadm.conf $out/share/ipmgmtd/ipadm.conf
+    + ''
+      mkdir -p $out/share/ipmgmtd
+      cp ipadm.conf $out/share/ipmgmtd/ipadm.conf
 
-    runHook postInstall
-  '';
+      runHook postInstall
+    '';
 
   meta = {
     description = "illumos IP management daemon";

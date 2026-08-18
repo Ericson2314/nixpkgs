@@ -162,17 +162,20 @@ SHIM
 
   buildFlags = [ "all" ];
 
-  installPhase = ''
-    runHook preInstall
+  installPhase =
+    ''
+      runHook preInstall
 
+    ''
     # Upstream's path for the fstype-specific program, so a generic mount(8)
     # finds it if one is packaged later.
-    mkdir -p $out/lib/fs/nfs
-    cp mount $out/lib/fs/nfs/mount
-    chmod 755 $out/lib/fs/nfs/mount
+    + ''
+      mkdir -p $out/lib/fs/nfs
+      cp mount $out/lib/fs/nfs/mount
+      chmod 755 $out/lib/fs/nfs/mount
 
-    runHook postInstall
-  '';
+      runHook postInstall
+    '';
 
   meta = {
     description = "illumos NFS mount(8), for /usr/lib/fs/nfs/mount";

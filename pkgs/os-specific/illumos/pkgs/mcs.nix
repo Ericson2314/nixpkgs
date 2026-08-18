@@ -121,17 +121,20 @@ mkDerivation {
 
   buildFlags = [ "all" ];
 
-  installPhase = ''
-    runHook preInstall
+  installPhase =
+    ''
+      runHook preInstall
 
-    mkdir -p $out/bin
-    cp mcs $out/bin/mcs
+      mkdir -p $out/bin
+      cp mcs $out/bin/mcs
+    ''
     # mcs decides what to do from argv[0]; `strip` is a link to it, not a
     # separate program (cmd/sgs/mcs/Makefile.com's $(ROOTLINKS)).
-    ln -s mcs $out/bin/strip
+    + ''
+      ln -s mcs $out/bin/strip
 
-    runHook postInstall
-  '';
+      runHook postInstall
+    '';
 
   meta = {
     platforms = lib.platforms.unix;

@@ -166,27 +166,30 @@ mkDerivation {
   # Install by hand instead.
   # `install` on $PATH here is illumos' own (cmd/install), not GNU coreutils,
   # so no -D and no -m in the combined form -- hence plain mkdir/cp/chmod.
-  installPhase = ''
-    runHook preInstall
+  installPhase =
+    ''
+      runHook preInstall
 
-    mkdir -p "$out/sbin" "$out/bin" "$out/share/illumos"
-    cp init "$out/sbin/init"
-    chmod 755 "$out/sbin/init"
+      mkdir -p "$out/sbin" "$out/bin" "$out/share/illumos"
+      cp init "$out/sbin/init"
+      chmod 755 "$out/sbin/init"
 
-    # nixbsd's top-level.nix links "<getBin system.init>/bin/init", so give it
-    # something real to point at rather than a dangling symlink. (Spelled
-    # without braces on purpose: this is a shell comment inside a Nix
-    # indented string, where a dollar-brace is still interpolated.)
-    ln -s ../sbin/init "$out/bin/init"
+    ''
+    # nixbsd's top-level.nix links "${getBin system.init}/bin/init", so give it
+    # something real to point at rather than a dangling symlink.
+    + ''
+      ln -s ../sbin/init "$out/bin/init"
 
+    ''
     # /etc/default/init, which init reads through definit(3) for the initial
     # environment. Shipped rather than installed: upstream's `install` target
     # also deletes /etc/init and /usr/sbin/init compat links against a live
     # ROOT, which is not something to run here.
-    cp init.dfl "$out/share/illumos/init.dfl"
+    + ''
+      cp init.dfl "$out/share/illumos/init.dfl"
 
-    runHook postInstall
-  '';
+      runHook postInstall
+    '';
 
   meta.mainProgram = "init";
 }

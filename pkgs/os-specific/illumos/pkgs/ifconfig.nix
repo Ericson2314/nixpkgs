@@ -153,17 +153,20 @@ mkDerivation {
   # placement: ifconfig is a root-filesystem program, and the libraries it
   # links (libdladm, libipadm, libdlpi, ...) all include Makefile.rootfs for
   # the same reason.
-  installPhase = ''
-    runHook preInstall
+  installPhase =
+    ''
+      runHook preInstall
 
+    ''
     # `mkdir`/`cp` rather than `install -D`: the `install` on PATH here is
     # illumos' own (mkDerivation puts it there), and it does not take -D.
-    mkdir -p $out/sbin
-    cp ifconfig $out/sbin/ifconfig
-    chmod 755 $out/sbin/ifconfig
+    + ''
+      mkdir -p $out/sbin
+      cp ifconfig $out/sbin/ifconfig
+      chmod 755 $out/sbin/ifconfig
 
-    runHook postInstall
-  '';
+      runHook postInstall
+    '';
 
   meta = {
     description = "illumos ifconfig(8)";

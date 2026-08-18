@@ -91,11 +91,12 @@ mkDerivation {
   # for why crti.o/crtn.o are named explicitly once the compiler driver is out
   # of the picture. Every -L gets a matching -R so the dependency lands in
   # DT_RUNPATH and therefore in the nix closure.
+  #
+  # The generated .c files say #include "rstat.h" -- unqualified, because
+  # upstream generates the header beside them into the proto area. Ours are
+  # already installed by the `headers` package, under rpcsvc/, so point at
+  # that directory rather than regenerating them.
   preBuild = ''
-    # The generated .c files say #include "rstat.h" -- unqualified, because
-    # upstream generates the header beside them into the proto area. Ours are
-    # already installed by the `headers` package, under rpcsvc/, so point at
-    # that directory rather than regenerating them.
     makeFlagsArray+=("CPPFLAGS.first=-I${headers}/include -I${headers}/include/rpcsvc")
 
     make -C .. \

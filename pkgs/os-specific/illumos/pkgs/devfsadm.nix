@@ -112,60 +112,64 @@ mkDerivation {
     sys-intel
   ];
 
-  postPatch = ''
-    # Drop -lzonecfg, and with it the one function that needs it.
-    #
-    # devfsadm's entire use of libzonecfg is zone_pathcheck(), a sanity check
-    # that refuses `devfsadm -r <path>` when <path> lies inside some
-    # non-global zone's zonepath: it walks /etc/zones/index with
-    # setzoneent()/getzoneent() and compares each zonepath against the
-    # requested root. Linking libzonecfg for that would drag in libscf,
-    # libuuid, libxml2, libbrand and the zone-configuration schema -- a large
-    # sub-project for a check that is inherently a no-op on a system with no
-    # zones configured, which is every system this port currently produces.
-    #
-    # This is not even a behaviour change in the usual sense. Upstream already
-    # treats libzonecfg as optional here: the first thing zone_pathcheck()
-    # does is `dlopen(LIBZONECFG_PATH)` and `return (DEVFSADM_SUCCESS)` if that
-    # fails -- the direct calls below it are only reached once the dlopen has
-    # proved zones are present. So on a zone-less system the function returns
-    # success immediately anyway, and the stub returns exactly the same thing.
-    # The body is removed rather than merely made unreachable because the
-    # undefined references would still be in the object file otherwise.
-    #
-    # If zones are ever ported, revert this and add libzonecfg back.
-    substituteInPlace usr/src/cmd/devfsadm/Makefile.com \
-      --replace-fail 'LDLIBS += -lgen -lsysevent -lnvpair -lzonecfg -lbsm' \
-                     'LDLIBS += -lgen -lsysevent -lnvpair -lbsm'
+  # Drop -lzonecfg, and with it the one function that needs it.
+  #
+  # devfsadm's entire use of libzonecfg is zone_pathcheck(), a sanity check
+  # that refuses `devfsadm -r <path>` when <path> lies inside some
+  # non-global zone's zonepath: it walks /etc/zones/index with
+  # setzoneent()/getzoneent() and compares each zonepath against the
+  # requested root. Linking libzonecfg for that would drag in libscf,
+  # libuuid, libxml2, libbrand and the zone-configuration schema -- a large
+  # sub-project for a check that is inherently a no-op on a system with no
+  # zones configured, which is every system this port currently produces.
+  #
+  # This is not even a behaviour change in the usual sense. Upstream already
+  # treats libzonecfg as optional here: the first thing zone_pathcheck()
+  # does is `dlopen(LIBZONECFG_PATH)` and `return (DEVFSADM_SUCCESS)` if that
+  # fails -- the direct calls below it are only reached once the dlopen has
+  # proved zones are present. So on a zone-less system the function returns
+  # success immediately anyway, and the stub returns exactly the same thing.
+  # The body is removed rather than merely made unreachable because the
+  # undefined references would still be in the object file otherwise.
+  #
+  # If zones are ever ported, revert this and add libzonecfg back.
+  postPatch =
+    ''
+      substituteInPlace usr/src/cmd/devfsadm/Makefile.com \
+        --replace-fail 'LDLIBS += -lgen -lsysevent -lnvpair -lzonecfg -lbsm' \
+                       'LDLIBS += -lgen -lsysevent -lnvpair -lbsm'
 
+    ''
     # ...and the header with it. <libzonecfg.h> is installed (it is a public
     # header) but it includes <libbrand.h>, which is not, because nothing has
     # built lib/libbrand. Every name devfsadm took from it -- LIBZONECFG_PATH,
     # GLOBAL_ZONENAME, Z_OK -- is used only inside the function removed below;
     # getzoneid()/GLOBAL_ZONEID elsewhere in devfsadm.c come from <zone.h> in
     # libc and are unaffected.
-    substituteInPlace usr/src/cmd/devfsadm/devfsadm_impl.h \
-      --replace-fail '#include <libzonecfg.h>' \
-                     '/* <libzonecfg.h> dropped; see devfsadm.nix */'
+    + ''
+      substituteInPlace usr/src/cmd/devfsadm/devfsadm_impl.h \
+        --replace-fail '#include <libzonecfg.h>' \
+                       '/* <libzonecfg.h> dropped; see devfsadm.nix */'
 
-    substituteInPlace usr/src/cmd/devfsadm/devfsadm.c \
-      --replace-fail 'zone_pathcheck(char *checkpath)
-    {' 'zone_pathcheck(char *checkpath)
-    {
-    	/* See devfsadm.nix: libzonecfg is not packaged. */
-    	return (DEVFSADM_SUCCESS);
-    }
+      substituteInPlace usr/src/cmd/devfsadm/devfsadm.c \
+        --replace-fail 'zone_pathcheck(char *checkpath)
+      {' 'zone_pathcheck(char *checkpath)
+      {
+      	/* See devfsadm.nix: libzonecfg is not packaged. */
+      	return (DEVFSADM_SUCCESS);
+      }
 
-    #if 0
-    static int
-    zone_pathcheck_disabled(char *checkpath)
-    {' \
-      --replace-fail '/*
-     *  Called by the daemon when it receives an event from the devfsadm SLM' '#endif	/* 0 -- see devfsadm.nix */
+      #if 0
+      static int
+      zone_pathcheck_disabled(char *checkpath)
+      {' \
+        --replace-fail '/*
+       *  Called by the daemon when it receives an event from the devfsadm SLM' '#endif	/* 0 -- see devfsadm.nix */
 
-    /*
-     *  Called by the daemon when it receives an event from the devfsadm SLM'
+      /*
+       *  Called by the daemon when it receives an event from the devfsadm SLM'
 
+    ''
     # The link modules are found by scanning a compiled-in directory
     # (MODULE_DIRS, overridable only with the undocumented -l flag), so the
     # default has to name this package's own store path or a plain `devfsadm`
@@ -175,10 +179,11 @@ mkDerivation {
     # /devices -- are deliberately left alone: those are system state and
     # configuration, not parts of this package, and they must resolve on the
     # running machine.
-    substituteInPlace usr/src/cmd/devfsadm/devfsadm_impl.h \
-      --replace-fail '#define	MODULE_DIRS "/usr/lib/devfsadm/linkmod"' \
-                     "#define	MODULE_DIRS \"$out/lib/devfsadm/linkmod\""
-  '';
+    + ''
+      substituteInPlace usr/src/cmd/devfsadm/devfsadm_impl.h \
+        --replace-fail '#define	MODULE_DIRS "/usr/lib/devfsadm/linkmod"' \
+                       "#define	MODULE_DIRS \"$out/lib/devfsadm/linkmod\""
+    '';
 
   # Through `makeFlagsArray` rather than `makeFlags` because the value contains
   # a space, and `makeFlags` entries are word-split. `CPPFLAGS.first` rather
@@ -262,9 +267,11 @@ mkDerivation {
   buildFlags = [ "all" ];
   dontInstall = false;
 
-  installPhase = ''
-    runHook preInstall
+  installPhase =
+    ''
+      runHook preInstall
 
+    ''
     # Upstream installs the program in /usr/sbin and the link modules in
     # /usr/lib/devfsadm/linkmod; the same shape is kept here, minus the /usr.
     # nixpkgs' fixup then folds $out/sbin into $out/bin and leaves
@@ -273,39 +280,48 @@ mkDerivation {
     #
     # `mkdir`/`cp` rather than `install -D`: the `install` on PATH is illumos'
     # own (mkDerivation puts it there) and it does not take -D.
-    mkdir -p $out/sbin $out/lib/devfsadm/linkmod $out/etc
+    + ''
+      mkdir -p $out/sbin $out/lib/devfsadm/linkmod $out/etc
 
-    cp devfsadm $out/sbin/devfsadm
-    chmod 755 $out/sbin/devfsadm
-    cp SUNW_*.so $out/lib/devfsadm/linkmod/
-    chmod 755 $out/lib/devfsadm/linkmod/*.so
+      cp devfsadm $out/sbin/devfsadm
+      chmod 755 $out/sbin/devfsadm
+      cp SUNW_*.so $out/lib/devfsadm/linkmod/
+      chmod 755 $out/lib/devfsadm/linkmod/*.so
 
+    ''
     # devfsadm decides what it is doing from argv[0]; upstream makes these
     # hard links to the one binary in /usr/sbin. `devlinks` and `drvconfig` in
     # particular are what the SMF device services actually invoke.
-    for compat in disks tapes ports audlinks devlinks drvconfig; do
-      ln $out/sbin/devfsadm $out/sbin/$compat
-    done
+    + ''
+      for compat in disks tapes ports audlinks devlinks drvconfig; do
+        ln $out/sbin/devfsadm $out/sbin/$compat
+      done
 
+    ''
     # The daemon is the same binary again, under the name that makes it run in
     # daemon mode. Upstream puts it at /usr/lib/devfsadm/devfsadmd.
-    ln -s ../../sbin/devfsadm $out/lib/devfsadm/devfsadmd
+    + ''
+      ln -s ../../sbin/devfsadm $out/lib/devfsadm/devfsadmd
 
+    ''
     # The generic name-to-link rules, generated from devlink.tab.sh. Upstream
     # installs this as /etc/devlink.tab; it is configuration, so it is shipped
     # here for a system to copy or symlink into place rather than being
     # referenced from the store.
-    cp devlink.tab $out/etc/devlink.tab
-    chmod 644 $out/etc/devlink.tab
+    + ''
+      cp devlink.tab $out/etc/devlink.tab
+      chmod 644 $out/etc/devlink.tab
 
+    ''
     # Likewise /etc/dev/reserved_devnames, read at startup to keep enumerated
     # names (c0, c1, ...) from being reused.
-    mkdir -p $out/etc/dev
-    cp ../reserved_devnames $out/etc/dev/reserved_devnames
-    chmod 644 $out/etc/dev/reserved_devnames
+    + ''
+      mkdir -p $out/etc/dev
+      cp ../reserved_devnames $out/etc/dev/reserved_devnames
+      chmod 644 $out/etc/dev/reserved_devnames
 
-    runHook postInstall
-  '';
+      runHook postInstall
+    '';
 
   meta = {
     description = "illumos /dev administration daemon and its link modules";

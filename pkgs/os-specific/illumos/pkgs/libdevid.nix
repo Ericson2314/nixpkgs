@@ -79,12 +79,13 @@ mkDerivation {
   # driver is out of the picture. Every `-L` gets a matching `-R`: without it
   # there is no DT_RUNPATH and no nix reference, so the dependency is absent
   # from the closure and never reaches the boot archive.
+  #
+  # common/devid/devid_scsi.c includes the library's own header as
+  # <sys/libdevid.h>, and finds it in the proto area in an upstream build --
+  # lib/libdevid/Makefile installs it to /usr/include/sys before anything is
+  # compiled. There is no proto area here, so stage the one header under a
+  # `sys/` directory and put that on the include path.
   preBuild = ''
-    # common/devid/devid_scsi.c includes the library's own header as
-    # <sys/libdevid.h>, and finds it in the proto area in an upstream build --
-    # lib/libdevid/Makefile installs it to /usr/include/sys before anything is
-    # compiled. There is no proto area here, so stage the one header under a
-    # `sys/` directory and put that on the include path.
     mkdir -p sysinclude/sys
     cp ../libdevid.h sysinclude/sys/
 

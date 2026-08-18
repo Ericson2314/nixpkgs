@@ -73,17 +73,21 @@ mkDerivation {
     runHook postBuild
   '';
 
-  installPhase = ''
-    runHook preInstall
+  installPhase =
+    ''
+      runHook preInstall
 
+    ''
     # Upstream installs it as /sbin/soconfig, which is the path
     # svc:/system/device/local invokes. Written to $out/sbin for that reason,
     # though nixpkgs' fixup phase then folds sbin into bin -- so consumers
     # here should use $out/bin/soconfig.
-    mkdir -p $out/sbin
-    cp soconfig $out/sbin/soconfig
-    chmod 755 $out/sbin/soconfig
+    + ''
+      mkdir -p $out/sbin
+      cp soconfig $out/sbin/soconfig
+      chmod 755 $out/sbin/soconfig
 
+    ''
     # The mappings themselves. They are plain data files whose names are
     # URL-encoded package FMRIs (`system%2Fkernel` is `system/kernel`), and
     # `soconfig -d` reads the whole directory, so ship them beside the program
@@ -91,16 +95,17 @@ mkDerivation {
     #
     # Everything but the Makefile: soconfig treats each regular file in the
     # directory as a mapping table and would choke on it.
-    mkdir -p $out/etc/sock2path.d
-    for f in ../etc/sock2path.d/*; do
-      case "$(basename "$f")" in
-        Makefile) continue ;;
-      esac
-      cp "$f" $out/etc/sock2path.d/
-    done
+    + ''
+      mkdir -p $out/etc/sock2path.d
+      for f in ../etc/sock2path.d/*; do
+        case "$(basename "$f")" in
+          Makefile) continue ;;
+        esac
+        cp "$f" $out/etc/sock2path.d/
+      done
 
-    runHook postInstall
-  '';
+      runHook postInstall
+    '';
 
   meta = {
     description = "illumos soconfig(8), which loads the socket-to-transport mappings";

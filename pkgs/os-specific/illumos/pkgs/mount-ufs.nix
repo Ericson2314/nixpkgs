@@ -113,20 +113,23 @@ mkDerivation {
   buildFlags = [ "all" ];
   dontInstall = false;
 
-  installPhase = ''
-    runHook preInstall
+  installPhase =
+    ''
+      runHook preInstall
 
+    ''
     # Upstream's path for the fstype-specific program, so that a generic
     # mount(8) would find it if one is packaged later.
     #
     # `mkdir`/`cp` rather than `install -D`: the `install` on PATH here is
     # illumos' own (mkDerivation puts it there), and it does not take -D.
-    mkdir -p $out/lib/fs/ufs
-    cp mount $out/lib/fs/ufs/mount
-    chmod 755 $out/lib/fs/ufs/mount
+    + ''
+      mkdir -p $out/lib/fs/ufs
+      cp mount $out/lib/fs/ufs/mount
+      chmod 755 $out/lib/fs/ufs/mount
 
-    runHook postInstall
-  '';
+      runHook postInstall
+    '';
 
   meta = {
     description = "illumos UFS mount(8), for /usr/lib/fs/ufs/mount";

@@ -107,20 +107,27 @@ mkDerivation {
 
   # $SRC is only known at build time (illumosSetupHook sets it), so this cannot
   # go in env.NIX_CFLAGS_COMPILE above.
-  preBuild = ''
-    export NIX_CFLAGS_COMPILE="$NIX_CFLAGS_COMPILE -I$SRC/lib/libnvpair"
+  preBuild =
+    ''
+      export NIX_CFLAGS_COMPILE="$NIX_CFLAGS_COMPILE -I$SRC/lib/libnvpair"
+    ''
     # port/gen sources include their own private headers with angle brackets
     # (e.g. <getxby_door.h>), and we compile them from the amd64 directory, so
     # the source's own directory is not on the search path.
-    export NIX_CFLAGS_COMPILE="$NIX_CFLAGS_COMPILE -I$SRC/lib/libc/port/gen"
+    + ''
+      export NIX_CFLAGS_COMPILE="$NIX_CFLAGS_COMPILE -I$SRC/lib/libc/port/gen"
+    ''
     # A few libc sources include <cp_defs.h> from the commpage. That header is
     # self-contained (it pulls only <sys/types.h>); the generated cp_offsets.h
     # is needed solely by the commpage assembly, which we do not build. So the
     # include path alone suffices -- this is what COMMPAGE_CPPFLAGS would set.
-    export NIX_CFLAGS_COMPILE="$NIX_CFLAGS_COMPILE -I$SRC/lib/commpage/common"
+    + ''
+      export NIX_CFLAGS_COMPILE="$NIX_CFLAGS_COMPILE -I$SRC/lib/commpage/common"
+    ''
     # common/crypto/chacha/chacha.h, compiled into libc via CHACHAOBJS.
-    export NIX_CFLAGS_COMPILE="$NIX_CFLAGS_COMPILE -I$SRC/common/crypto/chacha"
-  '';
+    + ''
+      export NIX_CFLAGS_COMPILE="$NIX_CFLAGS_COMPILE -I$SRC/common/crypto/chacha"
+    '';
 
   # Must be explicit. Including commpage/Makefile.shared.targ near the top of
   # lib/libc/amd64/Makefile introduces an explicit target (cp_offsets.h) long
@@ -194,19 +201,22 @@ mkDerivation {
     runHook postInstall
   '';
 
-  postInstall = ''
-    pushd ${headers}
-    find include -type d -exec mkdir -p "$dev/{}" ';'
+  postInstall =
+    ''
+      pushd ${headers}
+      find include -type d -exec mkdir -p "$dev/{}" ';'
+    ''
     # `headers` is a symlinkJoin, so copy with -L to get real files rather than
     # symlinks back into the store -- otherwise chmod and substituteInPlace
     # below follow them into read-only store paths and fail with EPERM.
-    find include '(' -type f -o -type l ')' -exec cp -pLr "{}" "$dev/{}" ';'
-    popd
-    chmod -R u+w "$dev/include"
+    + ''
+      find include '(' -type f -o -type l ')' -exec cp -pLr "{}" "$dev/{}" ';'
+      popd
+      chmod -R u+w "$dev/include"
 
-    pushd ${crt}
-    find lib -type d -exec mkdir -p "$out/{}" ';'
-    find lib '(' -type f -o -type l ')' -exec cp -pr "{}" "$out/{}" ';'
-    popd
-  '';
+      pushd ${crt}
+      find lib -type d -exec mkdir -p "$out/{}" ';'
+      find lib '(' -type f -o -type l ')' -exec cp -pr "{}" "$out/{}" ';'
+      popd
+    '';
 }
