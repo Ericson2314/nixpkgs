@@ -50,9 +50,17 @@ mkDerivation {
 
   dontConfigure = true;
 
-  # Compiled directly rather than through the directory's Makefile, which is
-  # shared with the whole cmd-inet/usr.sbin family and unconditionally
-  # includes Makefile.mech_krb5:
+  # THE ONE PACKAGE HERE THAT STAYS HAND-BUILT, and the reason is in one line of
+  # one makefile.
+  #
+  # soconfig has no directory of its own: it is built by the shared
+  # usr/src/cmd/cmd-inet/usr.sbin/Makefile, one entry in that directory's
+  # `ROOTFS_PROG= hostconfig route soconfig` (line 39). That Makefile's line 124
+  # is
+  #
+  #     include $(SRC)/lib/gss_mechs/mech_krb5/Makefile.mech_krb5
+  #
+  # unconditionally, for rlogin/rsh/telnet/tftpd:
   #
   #     make: Fatal error in reader: Makefile, line 122: Read of include file
   #     `.../lib/gss_mechs/mech_krb5/Makefile.mech_krb5' failed
@@ -66,7 +74,13 @@ mkDerivation {
   #    a 64-bit build names an interpreter that does not exist and gets the
   #    process killed with no output. mount-ufs works around that with
   #    `64ONLY=$(POUND_SIGN)`; here the problem simply does not arise.
-  #  * No CTF and no mapfile, neither of which a command needs.
+  #  * No CTF -- but there is none to gain here either way. CTF for a command
+  #    comes from `include $(SRC)/cmd/Makefile.ctf` or from explicit
+  #    CTFCONVERT_HOOK/CTFMERGE_HOOK lines, the way cmd/zpool, cmd/zfs and
+  #    cmd-inet/usr.sbin/ipadm have them and are driven through their makefiles
+  #    for exactly that reason. cmd-inet/usr.sbin/Makefile has neither, so
+  #    upstream ships a soconfig with no CTF too. Nothing is being given up.
+  #  * No mapfile, which a command does not need.
   buildPhase = ''
     runHook preBuild
     $CC -O2 -o soconfig soconfig.c
