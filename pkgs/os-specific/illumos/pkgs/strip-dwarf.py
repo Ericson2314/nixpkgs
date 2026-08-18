@@ -255,9 +255,24 @@ def verify(path, original, new, drop):
     if new[old.e_phoff : old.e_phoff + phsz] != original[old.e_phoff : old.e_phoff + phsz]:
         fail("program header table changed")
 
+    # e_shoff is the one byte range in the whole file this script is allowed to
+    # change, and it was checked on its own just above. On a shared object the
+    # first PT_LOAD starts at file offset 0 -- ld.so.1's covers 0..0x531f5 --
+    # so it contains the ELF header, and comparing that segment's bytes raw
+    # would report the intended e_shoff update as "program header 0 moved or
+    # changed". Blank the field on both sides before comparing. (Kernel objects
+    # never hit this: unix's first LOAD begins at 0x158, past the header.)
+    def without_shoff(buf):
+        b = bytearray(buf)
+        b[EHDR_SHOFF : EHDR_SHOFF + 8] = b"\0" * 8
+        return bytes(b)
+
+    masked_new = without_shoff(new)
+    masked_original = without_shoff(original)
+
     for n, p in enumerate(old.phdrs):
         lo, sz = p[2], p[5]
-        if new[lo : lo + sz] != original[lo : lo + sz]:
+        if masked_new[lo : lo + sz] != masked_original[lo : lo + sz]:
             fail(f"contents of program header {n} moved or changed")
 
     for i, name in enumerate(old.names):

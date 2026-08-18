@@ -1,4 +1,5 @@
 {
+  stdenv,
   buildPackages,
   mkDerivation,
 
@@ -171,6 +172,59 @@ mkDerivation {
   # This is the same class of hazard as the kernel's own STRIP_STABS=: (see
   # unix.nix): GNU strip does not preserve illumos-specific ELF structure.
   dontStrip = true;
+
+  outputs = [
+    "out"
+    # ld.so.1's DWARF, split out by strip-dwarf.py in postFixup below.
+    "debug"
+  ];
+
+  # Not the stock separate-debug-info.sh hook. mkDerivation.nix already excludes
+  # all of usr/src/cmd/sgs from it -- compressed .debug_info that illumos ld
+  # cannot relocate, and no GNU build-ID note to key off -- and on this file in
+  # particular GNU objcopy would rewrite the ELF and zero PT_SUNWDTRACE's
+  # p_memsz, which is the exact hazard `dontStrip` above exists to avoid.
+  illumosOwnDebugOutput = true;
+
+  # Why this split is worth doing at all: ~25M of C headers -- `uts-headers`
+  # 23.0M, `head` 1.3M, `sys-intel` 0.5M -- are genuine nix references of this
+  # derivation, and therefore of `libc` (a symlinkJoin over libcMinimal and
+  # rtld), and therefore of every boot archive, because the boot archive has to
+  # stage libc: PT_INTERP and DT_RUNPATH are absolute store paths.
+  #
+  # They are references for one reason. `CPPFLAGS.first=-I${headers}/include`
+  # above, and the -I's the uts makefiles add, put absolute store paths on every
+  # compiler command line, and gcc copies each -I directory verbatim into the
+  # DWARF line program's include-directory table. Measured on the unstripped
+  # ld.so.1: all 83 occurrences of the three hashes -- 29 uts-headers, 48 head,
+  # 6 sys-intel -- lie at file offsets 0xb35cb..0xd0c17, and .debug_line spans
+  # 0xb34dc..0xd14e9. Every one is in .debug_line. None are in .debug_str,
+  # .symtab, .strtab, .dynstr or .SUNW_ctf, and none of the four $ORIGIN
+  # siblings copied in by installPhase contains them at all.
+  #
+  # That is what makes this fixable rather than a CTF problem. We keep CTF
+  # deliberately -- DTrace and mdb read it -- and CTF records type and symbol
+  # names, not the include path a type was declared under, so moving DWARF to
+  # $debug takes the header paths with it and leaves the type graph intact.
+  #
+  # strip-dwarf.py rather than objcopy, for the PT_SUNWDTRACE reason above: it
+  # empties the .debug_* sections in place, never moves anything SHF_ALLOC,
+  # never touches the ELF header past e_shoff or the program header table, and
+  # verifies all of that against the original bytes before replacing the file.
+  # It also refuses to run on anything that has lost its .SUNW_ctf. See its
+  # header comment.
+  postFixup = ''
+    mkdir -p "$debug/lib/debug/lib/amd64"
+
+    # --only-keep-debug reads the file as it stands, so it comes first. $debug
+    # is a fresh file that nothing loads, so objcopy is safe on that side.
+    "${stdenv.cc.bintools.bintools}/bin/${stdenv.cc.targetPrefix}objcopy" \
+      --only-keep-debug "$out/lib/amd64/ld.so.1" \
+      "$debug/lib/debug/lib/amd64/ld.so.1.debug"
+
+    ${buildPackages.python3Minimal}/bin/python3 ${./strip-dwarf.py} \
+      "$out/lib/amd64/ld.so.1"
+  '';
 
   installPhase = ''
     runHook preInstall
