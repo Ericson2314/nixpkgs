@@ -257,6 +257,12 @@ mkDerivation (
           # holds native_compat.h under exactly the name COMPAT_CPPFLAGS
           # force-includes.
           "COMPAT_DIR=${compat}/include"
+
+          # $(SGSMSG) defaults to $(ONBLD_TOOLS)/bin/$(MACH)/sgsmsg
+          # (cmd/sgs/Makefile.com:110). This package no longer builds sgsmsg --
+          # `sgsmsg` is its own package now -- so name the binary directly
+          # rather than reconstructing the onbld bin/$(MACH) layout around it.
+          "SGSMSG=${sgsmsg}/bin/sgsmsg"
         ];
 
     meta = {
