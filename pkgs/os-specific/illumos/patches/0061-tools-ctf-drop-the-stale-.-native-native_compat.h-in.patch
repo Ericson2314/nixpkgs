@@ -1,0 +1,45 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Tue, 18 Aug 2026 02:41:06 -0400
+Subject: [PATCH] tools/ctf: drop the stale ../native/native_compat.h include
+
+`ctf_headers.h` reached the compat header by relative path, `../native/`. The
+merge into `tools/libcompat` moved it, and no relative path can replace it --
+the header no longer sits at a fixed offset from this file.
+
+Nothing needs to replace it either. `$(COMPAT_CPPFLAGS)` force-includes
+native_compat.h ahead of every translation unit, which is what the comment's
+"this has to come first" actually requires and what a `#include` partway down
+this file could never guarantee.
+
+Assisted-By: Claude Opus 5 (claude-opus-5)
+---
+ usr/src/tools/ctf/common/ctf_headers.h | 14 ++++++++------
+ 1 file changed, 8 insertions(+), 6 deletions(-)
+
+diff --git a/usr/src/tools/ctf/common/ctf_headers.h b/usr/src/tools/ctf/common/ctf_headers.h
+index 409559a478..cc31c82d46 100644
+--- a/usr/src/tools/ctf/common/ctf_headers.h
++++ b/usr/src/tools/ctf/common/ctf_headers.h
+@@ -73,13 +73,15 @@
+ /*
+  * On a host whose libc is not illumos', the headers below want the "_t"
+  * integer spellings and boolean_t that illumos' <sys/types.h> would have
+- * supplied.  This has to come first, ahead of them.  -DCTF_NATIVE_COMPAT is
+- * set only by tools/ctf/Makefile.ctf.native; on illumos the real headers
+- * already provide all of it.
++ * supplied.  This has to come first, ahead of them.
++ *
++ * There is nothing to include here: $(COMPAT_CPPFLAGS) force-includes
++ * native_compat.h ahead of every translation unit, which is what "has to come
++ * first" requires and what a #include in the middle of this file cannot
++ * guarantee.  The relative path this used to name -- ../native/ -- did not
++ * survive the move to tools/libcompat, and could not: the header no longer
++ * sits at a fixed offset from this file.
+  */
+-#ifdef	CTF_NATIVE_COMPAT
+-#include "../native/native_compat.h"
+-#endif
+ 
+ #include <uts/common/sys/ccompile.h>
+ #include <uts/common/sys/ctf.h>

@@ -5,6 +5,7 @@
   cw,
   libdwarf,
   libctf,
+  libcompat,
 }:
 
 # ctfstabs(1ONBLD): read an `offsets.in` file plus the CTF of a compiled stub,
@@ -51,6 +52,15 @@ mkDerivation {
 
   makeFlags = [
     "ROOTONBLD=${builtins.placeholder "out"}"
+
+    # tools/Makefile.tools points these at $(SRC)/tools/libcompat, which is not
+    # in this package's filtered source. `libcompat` is that directory, built.
+    # The host-elf profile is separate and the CTF tools are the consumers that
+    # want it: it sends <sys/elf.h> to the host's <elf.h>, which is right here
+    # because these tools link the host libelf.
+    "COMPAT_DIR=${libcompat}/include-native"
+    "COMPAT_INC=${libcompat}/include"
+    "COMPAT_HOSTELF=${libcompat}/include-host-elf"
   ];
 
   buildFlags = [ "install" ];

@@ -1,0 +1,58 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Tue, 18 Aug 2026 02:41:46 -0400
+Subject: [PATCH] tools: split the gathered headers out of $(COMPAT_CPPFLAGS)
+
+Not every consumer of libcompat wants the gathered illumos headers on its
+include path. The link-editor does -- it works in illumos' ELF types
+throughout. The CTF tools do not: they link the *host* libelf, and illumos'
+<libelf.h> then declares functions in Elf32_Ehdr and friends that the host
+<elf.h> never defines:
+
+    libelf.h:176:1: error: unknown type name 'Elf32_Ehdr'
+
+So `$(COMPAT_CPPFLAGS)` keeps only the shims and the force-include, and the
+gathered set moves to `$(COMPAT_INC_CPPFLAGS)`, which tools/sgs asks for.
+
+Assisted-By: Claude Opus 5 (claude-opus-5)
+---
+ usr/src/tools/Makefile.tools   | 12 ++++++++++--
+ usr/src/tools/sgs/Makefile.com |  2 +-
+ 2 files changed, 11 insertions(+), 3 deletions(-)
+
+diff --git a/usr/src/tools/Makefile.tools b/usr/src/tools/Makefile.tools
+index 3bef1ff6d1..a685d88037 100644
+--- a/usr/src/tools/Makefile.tools
++++ b/usr/src/tools/Makefile.tools
+@@ -77,8 +77,16 @@ NATIVE_LIBS += libc.so
+ #
+ COMPAT_DIR=		$(SRC)/tools/libcompat/common
+ COMPAT_INC=		$(SRC)/tools/libcompat/include
+-COMPAT_CPPFLAGS=	-I$(COMPAT_DIR) -I$(COMPAT_INC) \
+-			-include $(COMPAT_DIR)/native_compat.h
++COMPAT_CPPFLAGS=	-I$(COMPAT_DIR) -include $(COMPAT_DIR)/native_compat.h
++
++#
++# The gathered illumos headers, kept separate from $(COMPAT_CPPFLAGS) because
++# not every consumer wants them.  The link-editor does: it works in illumos'
++# ELF types throughout.  The CTF tools do not: they link the *host* libelf, so
++# putting illumos' <libelf.h> on their include path gives them declarations in
++# types their <elf.h> never defines.
++#
++COMPAT_INC_CPPFLAGS=	-I$(COMPAT_INC)
+ COMPAT_SUPPORT_SRC=	$(COMPAT_DIR)/native_support.c
+ 
+ #
+diff --git a/usr/src/tools/sgs/Makefile.com b/usr/src/tools/sgs/Makefile.com
+index 53cbf18f26..5e42f2ab97 100644
+--- a/usr/src/tools/sgs/Makefile.com
++++ b/usr/src/tools/sgs/Makefile.com
+@@ -14,7 +14,7 @@
+ CPPFLAGS =	-I. -I$(SRCDIR) -I$(SRCDIR)/common \
+ 	-I$(SGSHOME)/include -I$(SGSHOME)/include/$(MACH) \
+ 	$(CPPFLAGS.native) -I$(ELFCAP) -DNATIVE_BUILD \
+-	$(COMPAT_CPPFLAGS)
++	$(COMPAT_CPPFLAGS) $(COMPAT_INC_CPPFLAGS)
+ 
+ #
+ # The host link-editor is not illumos' -- it understands neither illumos ld's
