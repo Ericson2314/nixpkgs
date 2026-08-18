@@ -1,6 +1,8 @@
 {
   mkDerivation,
   uts-common,
+
+  buildPackages,
 }:
 
 # The i86pc kernel proper: `unix`, `genunix` (plus the `libgenunix.so` stub
@@ -25,6 +27,61 @@ mkDerivation (
   uts-common
   // {
     pname = "uts-base";
+
+    # genassym: built and run right here, and nowhere else.
+    #
+    # `uts/i86pc/genassym` compiles a program with $(NATIVECC) and *runs* it to
+    # emit part of assym.h, so it needs a compiler for the build machine --
+    # which is what puts $CC_FOR_BUILD in the environment for Makefile.master's
+    # NATIVE* macros. (The struct offsets in assym.h do not come from there:
+    # those are $(OFFSETS_CREATE)'s doing, reading the target compiler's CTF.)
+    #
+    # Unlike the *BSDs there is no genassym shared between multiple packages,
+    # just tiny one-off commands that are better built *en passant* inside the
+    # package that needs them. There is nothing here to package: `genassym`
+    # exists only as `uts/i86pc/genassym` and `uts/i86xpv/genassym`, two
+    # per-platform Makefiles with no source of their own, each driving
+    # `ml/genassym.c` through its own platform's headers to emit assym.h for
+    # THAT tree's configuration. So this is the sanctioned use of `_FOR_BUILD`
+    # -- a tool compiled, run once, and discarded within one derivation -- and
+    # it belongs to this derivation alone.
+    #
+    # It used to live in uts-common.nix, which every loadable module also
+    # spreads, on the theory that the macro expansion happens while parsing
+    # Makefile.master in every uts make. Expansion does not need the compiler
+    # to exist; only running the rule does, and only `unix` ever runs it:
+    #
+    #     $ grep -rn 'MAKE) all.targ' usr/src/uts
+    #     i86pc/unix/Makefile:191:      @cd $(DSF_DIR); $(MAKE) all.targ
+    #     i86xpv/unix/Makefile:183:     @cd $(DSF_DIR); $(MAKE) all.targ
+    #
+    # i86xpv is not built here, so `unix` -- this derivation -- is the only
+    # consumer. Modules copy the `buildtree` output, which already has assym.h.
+    depsBuildBuild = [ buildPackages.stdenv.cc ];
+
+    # genassym.c reaches <sys/cmn_err.h>, whose __KPRINTFLIKE expands to
+    # __attribute__((format(cmn_err, ...))). That format archetype exists only in
+    # illumos' GCC fork, which here is the *target* compiler; the build-host
+    # compiler is stock GCC and rejects it under -Werror=format.
+    #
+    # This goes through the cc-wrapper rather than CUSERFLAGS because dmake does
+    # not survive passing a command-line macro whose value itself contains an '='
+    # ("-_gcc=-Wno-format") down to the recursive $(MAKE) that Makefile.targ:263
+    # spawns for the build type.
+    #
+    # -m64: NATIVE_MACH is $(MACH:amd64=i386), i.e. i386, so NATIVE_CFLAGS
+    # carries -m32 (Makefile.master:736, :468) and the build host would need a
+    # 32-bit glibc to link uts/i86pc/genassym. genassym prints only preprocessor
+    # constants -- ml/genassym.c even `#define`s `struct` to a syntax error to
+    # keep anyone from reaching for a struct offset -- so the data model does not
+    # matter. This has to travel through the cc-wrapper rather than a
+    # NATIVE_MACH= macro: both unix and genunix reach assym.h through an FRC rule
+    # that re-enters uts/i86pc/genassym with a bare `$(MAKE) all.targ`
+    # (uts/i86pc/unix/Makefile:199), and dmake carries MACH across that but not
+    # NATIVE_MACH -- so genassym would be rebuilt there, -m32, and fail. The
+    # wrapper appends these last, after the -m32.
+    NIX_CFLAGS_COMPILE_FOR_BUILD = "-Wno-format -m64";
+
 
     outputs = [
       "out"

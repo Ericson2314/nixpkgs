@@ -93,17 +93,6 @@
     (buildPackages.writeShellScriptBin "mach" "echo i386")
   ];
 
-  # uts/i86pc/genassym builds a program with $(NATIVECC) and then *runs* it to
-  # emit part of assym.h. That needs a compiler for the build machine, which is
-  # what puts $CC_FOR_BUILD in the environment for Makefile.master's NATIVE*
-  # macros. (The struct offsets in assym.h do not come from there: those are
-  # $(OFFSETS_CREATE)'s doing, reading the target compiler's CTF.)
-  #
-  # Only `uts-base` runs genassym, but the macro expansion happens while
-  # parsing Makefile.master in every uts make, so the module builds want the
-  # same environment.
-  depsBuildBuild = [ buildPackages.stdenv.cc ];
-
   makeFlags = [
     # The one shared wrapper; see ld-wrapper.nix. It clears SGS_SUPPORT, which
     # dmake sets for .KEEP_STATE and which makes ld dlopen() a support library
@@ -155,29 +144,6 @@
       exec ${stdenv.cc.bintools.bintools}/bin/${stdenv.cc.targetPrefix}nm --format=posix "$@"
     ''}"
   ];
-
-  # genassym.c reaches <sys/cmn_err.h>, whose __KPRINTFLIKE expands to
-  # __attribute__((format(cmn_err, ...))). That format archetype exists only in
-  # illumos' GCC fork, which here is the *target* compiler; the build-host
-  # compiler is stock GCC and rejects it under -Werror=format.
-  #
-  # This goes through the cc-wrapper rather than CUSERFLAGS because dmake does
-  # not survive passing a command-line macro whose value itself contains an '='
-  # ("-_gcc=-Wno-format") down to the recursive $(MAKE) that Makefile.targ:263
-  # spawns for the build type.
-  #
-  # -m64: NATIVE_MACH is $(MACH:amd64=i386), i.e. i386, so NATIVE_CFLAGS
-  # carries -m32 (Makefile.master:736, :468) and the build host would need a
-  # 32-bit glibc to link uts/i86pc/genassym. genassym prints only preprocessor
-  # constants -- ml/genassym.c even `#define`s `struct` to a syntax error to
-  # keep anyone from reaching for a struct offset -- so the data model does not
-  # matter. This has to travel through the cc-wrapper rather than a
-  # NATIVE_MACH= macro: both unix and genunix reach assym.h through an FRC rule
-  # that re-enters uts/i86pc/genassym with a bare `$(MAKE) all.targ`
-  # (uts/i86pc/unix/Makefile:199), and dmake carries MACH across that but not
-  # NATIVE_MACH -- so genassym would be rebuilt there, -m32, and fail. The
-  # wrapper appends these last, after the -m32.
-  NIX_CFLAGS_COMPILE_FOR_BUILD = "-Wno-format -m64";
 
   # NetBSD's rpcgen shells out to a C preprocessor, defaulting to a /usr/bin
   # path that does not exist here. It then emits only boilerplate and still
