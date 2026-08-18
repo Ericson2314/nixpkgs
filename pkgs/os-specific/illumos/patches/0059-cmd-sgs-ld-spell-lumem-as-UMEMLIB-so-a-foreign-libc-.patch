@@ -1,0 +1,36 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Tue, 18 Aug 2026 02:32:00 -0400
+Subject: [PATCH] cmd/sgs/ld: spell -lumem as $(UMEMLIB), so a foreign-libc
+ build can drop it
+
+libumem is illumos'. Building these sources on a host that has no libumem
+requires removing it from LDLIBS, which until now meant maintaining a forked
+Makefile in tools/sgs for that purpose. Give it an overridable name; the
+default leaves an illumos-hosted build unchanged.
+
+Assisted-By: Claude Opus 5 (claude-opus-5)
+---
+ usr/src/cmd/sgs/ld/Makefile.com | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/usr/src/cmd/sgs/ld/Makefile.com b/usr/src/cmd/sgs/ld/Makefile.com
+index 12187dbd21..bdd0845fca 100644
+--- a/usr/src/cmd/sgs/ld/Makefile.com
++++ b/usr/src/cmd/sgs/ld/Makefile.com
+@@ -44,7 +44,14 @@ MAPOPTS =	$(MAPFILES:%=-Wl,-M%)
+ RPATH =		'-R$$ORIGIN/../../lib/$(MACH64)'
+ 
+ LDFLAGS +=	$(VERSREF) $(MAPOPTS) $(RPATH)
+-LDLIBS +=	-lumem $(LDLIBDIR64) -lld $(ELFLIBDIR64) -lelf \
++#
++# $(UMEMLIB) rather than a bare -lumem: libumem is illumos', and a build of
++# these sources against a foreign libc has to be able to drop it. The default
++# keeps an illumos-hosted build exactly as it was.
++#
++UMEMLIB =	-lumem
++
++LDLIBS +=	$(UMEMLIB) $(LDLIBDIR64) -lld $(ELFLIBDIR64) -lelf \
+ 		    $(LDDBGLIBDIR64) -llddbg $(CONVLIBDIR64) -lconv
+ 
+ CERRWARN +=	-_gcc=-Wno-switch

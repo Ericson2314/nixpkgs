@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Tue, 18 Aug 2026 02:30:20 -0400
+Subject: [PATCH] cmd/sgs: honour $(COMPAT_CPPFLAGS), so the native build can
+ use these makefiles
+
+`tools/sgs` exists because `cmd/sgs` could not be built against a foreign libc,
+so a parallel set of makefiles was forked for that case. Most of what the fork
+adds is macro emptying that is not specific to sgs at all; the part that is
+specific is the compat header profile.
+
+Append `$(COMPAT_CPPFLAGS)` here. It is defined in `tools/Makefile.tools`, which
+nothing under `cmd/` includes, so it expands to nothing for an illumos-hosted
+build and this is a no-op there. A build that wants these makefiles compiled
+against a foreign libc can now supply it, rather than needing a forked copy of
+the makefiles to do the same thing.
+
+Assisted-By: Claude Opus 5 (claude-opus-5)
+---
+ usr/src/cmd/sgs/Makefile.com | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/usr/src/cmd/sgs/Makefile.com b/usr/src/cmd/sgs/Makefile.com
+index f9b16bc1ec..45a7fd3116 100644
+--- a/usr/src/cmd/sgs/Makefile.com
++++ b/usr/src/cmd/sgs/Makefile.com
+@@ -59,8 +59,15 @@ ELFCAP=		$(SRC)/common/elfcap
+ 
+ # Reassign CPPFLAGS so that local search paths are used before any parent
+ # $ROOT paths.
++#
++# $(COMPAT_CPPFLAGS) is empty for an illumos-hosted build: it is defined in
++# tools/Makefile.tools, which nothing under cmd/ includes.  It is here so that
++# these same makefiles can be built against a foreign libc -- with libcompat
++# supplying the headers -- instead of tools/sgs having to keep a forked copy of
++# them for that case.
++#
+ CPPFLAGS =	-I. -I../common -I$(SGSHOME)/include -I$(SGSHOME)/include/$(MACH) \
+-		$(CPPFLAGS.master) -I$(ELFCAP)
++		$(CPPFLAGS.master) -I$(ELFCAP) $(COMPAT_CPPFLAGS)
+ 
+ # PICS64 is unique to our environment
+ $(PICS64) :=	sparc_CFLAGS += $(C_PICFLAGS)

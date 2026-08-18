@@ -12,7 +12,7 @@
   gnum4,
   sgsmsg,
 
-  compat,
+  libcompat,
   headers,
   crt,
   libcMinimal,
@@ -122,16 +122,16 @@ mkDerivation (
           [ "usr/src/common/mapfiles" ]
         else
           [
-            "usr/src/tools/Makefile.tools"
-            "usr/src/tools/Makefile.targ"
+            #"usr/src/tools/Makefile.tools"
+            #"usr/src/tools/Makefile.targ"
 
-            # Only the pieces of cmd/sgs that the native link-editor needs; naming the
-            # whole directory would drag in (and rebuild on) lorder, ar, elfdump, ...
-            "usr/src/cmd/sgs/libconv"
-            "usr/src/cmd/sgs/libelf"
-            "usr/src/cmd/sgs/liblddbg"
-            "usr/src/cmd/sgs/libld"
-            "usr/src/cmd/sgs/tools/libconv_mk_report_bufsize.pl"
+            ## Only the pieces of cmd/sgs that the native link-editor needs; naming the
+            ## whole directory would drag in (and rebuild on) lorder, ar, elfdump, ...
+            #"usr/src/cmd/sgs/libconv"
+            #"usr/src/cmd/sgs/libelf"
+            #"usr/src/cmd/sgs/liblddbg"
+            #"usr/src/cmd/sgs/libld"
+            #"usr/src/cmd/sgs/tools/libconv_mk_report_bufsize.pl"
           ]
       );
 
@@ -145,10 +145,19 @@ mkDerivation (
       sgsmsg
     ];
 
-    buildInputs = [
+    # headers/crt/libcMinimal are illumos-hosted only -- `headers` is
+    # `meta.platforms = [ "x86_64-solaris2.11" ]` -- so naming them
+    # unconditionally makes the build-platform `ld`, and through it the whole
+    # set, refuse to evaluate. The native link-editor needs none of them: it
+    # compiles against the host libc, which is the point of -DNATIVE_BUILD.
+    #
+    # The sgs support libraries are named for both platforms, because each now
+    # has a build-platform instance of its own.
+    buildInputs = lib.optionals forIllumos [
       headers
       crt
       libcMinimal
+    ] ++ [
       sgs-libconv
       sgs-libelf
       sgs-liblddbg
@@ -165,14 +174,6 @@ mkDerivation (
       "-Wno-error"
     ];
 
-    installPhase = ''
-      runHook preInstall
-
-      mkdir -p "$out/bin"
-      cp amd64/ld "$out/bin/ld"
-
-      runHook postInstall
-    '';
   }
   // lib.optionalAttrs (!forIllumos) {
     # tools/sgs installs into the onbld $(ROOTONBLD)/bin/$(MACH64) layout, so
@@ -183,14 +184,6 @@ mkDerivation (
     # apply `all := TARGET= install` to it -- the sub-makes then get an empty
     # target and silently build nothing. Naming `install` explicitly avoids
     # that.
-    dontInstall = true;
-
-    # The build installs as it goes, so the target directories have to exist
-    # before it starts rather than in preInstall.
-    preBuild = ''
-      mkdir -p $out/bin/i386 $out/bin/amd64 $out/lib/i386/64 $out/man/man1onbld
-    '';
-
     # The onbld layout puts the tool under bin/$(MACH64). $ORIGIN in its
     # runpath resolves from the real path, so exec'ing it from bin/ld still
     # finds the libraries next to it.
@@ -213,13 +206,30 @@ mkDerivation (
       cat > $out/bin/ld <<EOF
       #!${buildPackages.runtimeShell}
       export POSIXLY_CORRECT=1
-      exec "$out/bin/amd64/ld" "\$@"
+      exec "$out/bin/ld-unwrapped" "\$@"
       EOF
       chmod +x $out/bin/ld
     '';
   }
   // {
-    buildFlags = if forIllumos then [ "all" ] else [ "install" ];
+    # `all` on both arms. The native side used to build the `install` target,
+    # because it relied on tools/sgs installing into the onbld proto layout as
+    # it went. Building cmd/sgs/ld directly there is nothing to install but the
+    # one binary, and installPhase does that.
+    buildFlags = [ "all" ];
+
+    # Identical on both arms now: `path` is the amd64 directory itself, so the
+    # binary is ./ld. It installs under a distinct name because postFixup puts
+    # the wrapper at bin/ld -- installing both as `ld` is how you get a wrapper
+    # that execs itself, which is an unkillable hang rather than an error.
+    installPhase = ''
+      runHook preInstall
+
+      mkdir -p "$out/bin"
+      cp ld "$out/bin/ld-unwrapped"
+
+      runHook postInstall
+    '';
 
     makeFlags =
       if forIllumos then
@@ -246,23 +256,32 @@ mkDerivation (
           # makefiles then look for the sgsmsg it just built. tools/sgs/Makefile
           # forwards both to the sub-makes.
           "ROOTONBLD=${builtins.placeholder "out"}"
-          "ONBLD_TOOLS=${builtins.placeholder "out"}"
 
-          # libcompat, built, rather than compiled again out of the gate tree.
-          # Makefile.tools defaults COMPAT_DIR to $(SRC)/tools/libcompat/common,
-          # which is not in this package's filtered source -- and could not be:
-          # `filterSource` copies from the pristine upstream tarball, where that
-          # directory does not exist at all. It is created by a patch. `compat`
-          # is the built package expressing the same thing, and its `include/`
-          # holds native_compat.h under exactly the name COMPAT_CPPFLAGS
-          # force-includes.
-          "COMPAT_DIR=${compat}/include"
+          # cmd/sgs/Makefile.com appends $(COMPAT_CPPFLAGS) to CPPFLAGS. It is
+          # empty for an illumos-hosted build; here it is what lets the very
+          # same makefiles compile against the host libc, with libcompat
+          # supplying the headers illumos has and glibc does not.
+          "COMPAT_CPPFLAGS=-I${libcompat}/include-native -I${libcompat}/include -include ${libcompat}/include-native/native_compat.h"
 
-          # $(SGSMSG) defaults to $(ONBLD_TOOLS)/bin/$(MACH)/sgsmsg
-          # (cmd/sgs/Makefile.com:110). This package no longer builds sgsmsg --
-          # `sgsmsg` is its own package now -- so name the binary directly
-          # rather than reconstructing the onbld bin/$(MACH) layout around it.
           "SGSMSG=${sgsmsg}/bin/sgsmsg"
+          "CONVLIBDIR=-L${sgs-libconv}/lib"
+          "CONVLIBDIR64=-L${sgs-libconv}/lib"
+          "ELFLIBDIR=-L${sgs-libelf}/lib"
+          "ELFLIBDIR64=-L${sgs-libelf}/lib"
+          "LDLIBDIR=-L${sgs-libld}/lib"
+          "LDLIBDIR64=-L${sgs-libld}/lib"
+          "LDDBGLIBDIR=-L${sgs-liblddbg}/lib"
+          "LDDBGLIBDIR64=-L${sgs-liblddbg}/lib"
+
+          # libumem is illumos'; the host has none.
+          "UMEMLIB="
+          "COMPATLIB=-L${libcompat}/lib/i386 -lcompat"
+
+          # cmd/sgs/ld/Makefile.com sets RPATH to Solaris' -R spelling, which the
+          # GNU driver rejects outright. The native link needs no runpath of its
+          # own: the support libraries are buildInputs, so the cc wrapper already
+          # records their store paths.
+          "RPATH="
         ];
 
     meta = {

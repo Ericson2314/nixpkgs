@@ -1,0 +1,37 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Tue, 18 Aug 2026 02:32:38 -0400
+Subject: [PATCH] cmd/sgs/ld: allow a $(COMPATLIB) on LDLIBS
+
+On illumos, libc supplies assfail3() and the link-editor's version string comes
+from libconv's vernote.o. A foreign-libc build has neither, and gets both from
+libcompat -- but only if these makefiles can be told to link it.
+
+Empty by default, so an illumos-hosted build is unchanged.
+
+Assisted-By: Claude Opus 5 (claude-opus-5)
+---
+ usr/src/cmd/sgs/ld/Makefile.com | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/usr/src/cmd/sgs/ld/Makefile.com b/usr/src/cmd/sgs/ld/Makefile.com
+index bdd0845fca..95dfdbf593 100644
+--- a/usr/src/cmd/sgs/ld/Makefile.com
++++ b/usr/src/cmd/sgs/ld/Makefile.com
+@@ -51,8 +51,15 @@ LDFLAGS +=	$(VERSREF) $(MAPOPTS) $(RPATH)
+ #
+ UMEMLIB =	-lumem
+ 
++#
++# Empty for an illumos-hosted build, where libc supplies assfail3() and the
++# link-editor's version string comes from libconv's vernote.o. A foreign-libc
++# build has neither and links libcompat for them.
++#
++COMPATLIB =
++
+ LDLIBS +=	$(UMEMLIB) $(LDLIBDIR64) -lld $(ELFLIBDIR64) -lelf \
+-		    $(LDDBGLIBDIR64) -llddbg $(CONVLIBDIR64) -lconv
++		    $(LDDBGLIBDIR64) -llddbg $(CONVLIBDIR64) -lconv $(COMPATLIB)
+ 
+ CERRWARN +=	-_gcc=-Wno-switch
+ CERRWARN +=	-_gcc=-Wno-parentheses
