@@ -91,12 +91,22 @@ mkDerivation {
     for f in \
       "$SRC/cmd/fs.d/ufs/mkfs/mkfs.c" \
       "$SRC/cmd/fs.d/ufs/mkfs/populate.c" \
-      "$SRC/cmd/fs.d/ufs/roll_log/roll_log.c" \
-      "${compat.gateSource}"
+      "$SRC/cmd/fs.d/ufs/roll_log/roll_log.c"
     do
       echo "compiling (gate headers) $f"
       $CC -c -o "$(basename "$f" .c).o" -I${compat.srcDir} $gateFlags "$f"
     done
+
+    # compat_gate.c lives here rather than in `compat` because this is its only
+    # consumer -- it is the gate-side half of the shims mkfs_ufs needs, and
+    # nothing else compiles it. (compat_host.c, the half it calls into, does
+    # stay in `compat`: ctfconvert and ctfmerge build that one too.)
+    #
+    # Compiled on its own rather than in the loop above because the loop names
+    # its object after `basename`, and a store path basename carries the hash
+    # prefix -- `-o` here is explicit for that reason.
+    echo "compiling (gate headers) compat_gate.c"
+    $CC -c -o compat_gate.o -I${compat.srcDir} $gateFlags ${./compat_gate.c}
 
     # The host half sees the *host's* headers only -- that is the whole reason
     # it is a separate translation unit -- so it gets none of the flags above.

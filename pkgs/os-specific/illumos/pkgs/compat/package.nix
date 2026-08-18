@@ -59,10 +59,11 @@
 # papered over at link time; see the comment at the top of each for which
 # disagreement it settles.
 #
-# compat_host.c / compat_gate.c are the function half -- the entry points a
-# foreign libc simply does not have. They are split in two because they must be
-# compiled against different headers, which is also why compat_priv.h between
-# them may name no libc type at all.
+# compat_host.c is the function half -- the entry points a foreign libc simply
+# does not have. Its other half, compat_gate.c, lives in `mkfs-ufs`, which is
+# its only consumer; the two are split because they must be compiled against
+# different headers, which is also why compat_priv.h between them may name no
+# libc type at all. That header stays here, since both sides include it.
 let
   commonHeaders = [
     "elf.h"
@@ -137,9 +138,9 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     # to link.
     overlayCflags = "-I${finalAttrs.finalPackage}/include-overlay -D_REENTRANT";
 
-    # The two halves of libcompat, to be compiled by the consumer.
+    # The host half of libcompat, to be compiled by the consumer. The gate half
+    # is `mkfs-ufs`' own file -- see the comment at the top.
     hostSource = "${finalAttrs.finalPackage}/src/compat_host.c";
-    gateSource = "${finalAttrs.finalPackage}/src/compat_gate.c";
 
     # The libc entry points a foreign libc does not have -- assfail()/assfail3()
     # behind ASSERT(), panic(), getexecname(), strtonum(), and link_ver_string.
@@ -201,12 +202,12 @@ stdenvNoCC.mkDerivation (finalAttrs: {
       printf '#include <%s.h>\n' "$h" > "$out/include/sys/$h.h"
     done
 
-    # The "gate" profile: the header overlay, and the two halves of libcompat.
+    # The "gate" profile: the header overlay, and the host half of libcompat.
     #
-    # Shipped as sources rather than as a built library because compat_gate.c
-    # has to be compiled against the *consumer's* view of the gate headers --
-    # the same -I flags and the same feature-test macros -- and there is no one
-    # such view to pick here. Its consumers already have all of that set up.
+    # Shipped as source rather than as a built library because it has to be
+    # compiled against the *consumer's* view of the headers -- the same -I
+    # flags and the same feature-test macros -- and there is no one such view
+    # to pick here. Its consumers already have all of that set up.
     cp -r ${./host-elf} "$out/include-host-elf"
     chmod -R u+w "$out/include-host-elf"
 
@@ -215,7 +216,6 @@ stdenvNoCC.mkDerivation (finalAttrs: {
 
     mkdir -p "$out/src"
     cp ${./compat_host.c} "$out/src/compat_host.c"
-    cp ${./compat_gate.c} "$out/src/compat_gate.c"
     cp ${./staged/ctf_support.c} "$out/src/ctf_support.c"
     cp ${./compat_priv.h} "$out/src/compat_priv.h"
   ''
