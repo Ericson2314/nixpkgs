@@ -37,8 +37,8 @@ mkDerivation (
     # otherwise turns on for every illumos package. That hook uses GNU objcopy,
     # which silently destroys kernel objects: it rebuilds `.strtab` and drops
     # the DT_NEEDED module dependency names with it, and it zeroes `.dynamic`'s
-    # sh_link, which is how krtld finds that table. `strip-dwarf.py` empties the
-    # DWARF in place instead, moving nothing. Leaving this on would also append
+    # sh_link, which is how krtld finds that table. illumos' own `strip` (mcs)
+    # is used instead, and does neither. Leaving this on would also append
     # a second "debug" to the `outputs` above, which is a hard eval error
     # ("duplicate derivation output 'debug'").
     illumosOwnDebugOutput = true;

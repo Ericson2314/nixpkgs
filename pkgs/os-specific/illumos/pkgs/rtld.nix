@@ -187,7 +187,7 @@ mkDerivation {
 
   outputs = [
     "out"
-    # ld.so.1's DWARF, split out by strip-dwarf.py in postFixup below.
+    # ld.so.1's DWARF, split out in postFixup below.
     "debug"
   ];
 
@@ -219,12 +219,15 @@ mkDerivation {
   # names, not the include path a type was declared under, so moving DWARF to
   # $debug takes the header paths with it and leaves the type graph intact.
   #
-  # strip-dwarf.py rather than objcopy, for the PT_SUNWDTRACE reason above: it
-  # empties the .debug_* sections in place, never moves anything SHF_ALLOC,
-  # never touches the ELF header past e_shoff or the program header table, and
-  # verifies all of that against the original bytes before replacing the file.
-  # It also refuses to run on anything that has lost its .SUNW_ctf. See its
-  # header comment.
+  # illumos' own `strip` -- mcs(1) from cmd/sgs, run for the build machine --
+  # rather than objcopy, for the PT_SUNWDTRACE reason above. `strip -x` is
+  # `mcs -d` keeping the symbol table, deleting every section whose name has
+  # the `.debug` prefix and the SHT_RELA sections that relocated them, and
+  # renumbering sh_link, sh_info and st_shndx to match. It leaves every
+  # SHF_ALLOC section at its original file offset and address and the program
+  # header table byte-identical, which is what the PT_SUNWDTRACE offset and
+  # every PT_LOAD depend on. See the longer note in uts-common.nix, which runs
+  # the same tool over `unix` and the kernel modules.
   postFixup = ''
     mkdir -p "$debug/lib/debug/lib/amd64"
 
@@ -236,8 +239,8 @@ mkDerivation {
       --only-keep-debug "$out/lib/amd64/ld.so.1" \
       "$debug/lib/debug/lib/amd64/ld.so.1.debug"
 
-    ${buildPackages.python3Minimal}/bin/python3 ${./strip-dwarf.py} \
-      "$out/lib/amd64/ld.so.1"
+    chmod u+w "$out/lib/amd64/ld.so.1"
+    "${buildPackages.illumos.mcs}/bin/strip" -x "$out/lib/amd64/ld.so.1"
   '';
 
   installPhase = ''

@@ -146,12 +146,13 @@
     # result is an ELF whose contents are correct but which no loader will
     # recognise as bootable.
     #
-    # illumos' own strip preserves the layout, but it is mcs(1) from
-    # cmd/sgs -- cross-built here, and absent from the tools/sgs NATIVE_BUILD
-    # tree that gives us a build-machine `ld` -- so it cannot run on the build
-    # machine at all. Skip the step, exactly as upstream does for source-debug
-    # builds (Makefile.master:980). DWARF is removed later, by the
-    # layout-preserving strip-dwarf.py in postFixup below.
+    # illumos' own strip preserves the layout, and it is available here --
+    # `buildPackages.illumos.mcs` is mcs(1) from cmd/sgs built for the build
+    # machine -- but it must not run at link time regardless. DWARF has to
+    # survive until postFixup, which copies it into $debug before dropping it
+    # from $out; stripping during POST_PROCESS would throw it away first. So
+    # skip the step, exactly as upstream does for source-debug builds
+    # (Makefile.master:980), and let postFixup below run mcs instead.
     "STRIP_STABS=:"
 
     "NM=${buildPackages.writeShellScript "illumos-nm" ''
@@ -218,22 +219,41 @@
   # archive into RAM before the kernel starts, and a DBG64 tree is ~125M of
   # which the overwhelming majority is DWARF -- genunix alone is 81M of it.
   #
-  # The $out side is done by strip-dwarf.py, not by objcopy. That is not a
-  # preference: GNU objcopy silently destroys these files in two ways that
-  # cannot be repaired afterwards -- it truncates .strtab, taking a module's
-  # DT_NEEDED dependency names with it, and it reorders unix's allocatable
-  # sections so that the multiboot header leaves the first 8K. Both are
-  # measured and written up at the top of that script. objcopy is still used
-  # for $debug, which is a fresh file that nothing loads.
+  # The $out side is done by illumos' own `strip` -- mcs(1) from cmd/sgs, run
+  # for the build machine -- not by objcopy. That is not a preference: GNU
+  # objcopy silently destroys these files in two ways that cannot be repaired
+  # afterwards -- it truncates .strtab, taking a module's DT_NEEDED dependency
+  # names with it, and it reorders unix's allocatable sections so that the
+  # multiboot header leaves the first 8K. objcopy is still used for $debug,
+  # which is a fresh file that nothing loads.
   #
-  # strip-dwarf.py keeps every surviving section byte-identical, keeps every
-  # section index, and never moves anything a program header covers, verifying
-  # all of that plus the multiboot header and .SUNW_ctf before it replaces the
-  # file. That is what makes it safe on `unix`, which objcopy is not -- see the
-  # STRIP_STABS note above for that history.
+  # `strip -x` is `mcs -d` keeping the symbol table (cmd/sgs/mcs/common/main.c
+  # :150), and the section it deletes is registered as the prefix `.debug`
+  # (main.c:210, matched with SNAME_FLG_STRNCMP at main.c:328), so it covers
+  # every .debug_* and nothing else. Deleting a section is safe here because
+  # mcs renumbers the whole table and rewrites sh_link, sh_info and every
+  # st_shndx to match (cmd/sgs/mcs/common/file.c:795-893), and it drops the
+  # SHT_RELA sections whose sh_info named a deleted section (file.c:384-396),
+  # so no dangling .rela.debug_* is left behind.
+  #
+  # Measured on this tree's `unix` and on drv/ip, before and after: every
+  # SHF_ALLOC section keeps its exact file offset and address, the program
+  # header table is byte-identical, unix's 0x1BADB002 multiboot magic stays at
+  # file offset 0x158+0x8 where mbh_patch put it, .strtab keeps its full
+  # 0x12bd5 bytes with all eight of ip's DT_NEEDED module names, .dynamic
+  # keeps sh_link pointing at it, and .SUNW_ctf survives at its original size
+  # with sh_link renumbered onto .symtab. Every symbol is byte-identical apart
+  # from st_shndx, and the only st_shndx values that change other than by
+  # renumbering are the unnamed STT_SECTION locals of the deleted sections
+  # themselves, which have nowhere valid to point and which krtld never looks
+  # at.
+  #
+  # mcs edits in place through the same inode, so unlike a write-and-rename it
+  # also keeps hard links intact -- but it opens the file O_RDWR and fails
+  # loudly if it cannot, hence the chmod below.
   postFixup = ''
     objcopy=${stdenv.cc.bintools.bintools}/bin/${stdenv.cc.targetPrefix}objcopy
-    stripDwarf="${buildPackages.python3Minimal}/bin/python3 ${./strip-dwarf.py}"
+    stripDwarf="${buildPackages.illumos.mcs}/bin/strip -x"
 
     mkdir -p "$debug"
 
@@ -241,10 +261,11 @@
   # A module installed under two names is one file with two links, not two
   # files: uts/intel/ip/Makefile:119 is `ln $(ROOTMODULE) $@`, so the 25M ip
   # is both kernel/drv/amd64/ip and kernel/strmod/amd64/ip, and nfs does the
-  # same across kernel/fs and kernel/sys. strip-dwarf.py writes a temp file
-  # and renames over the original, which breaks the link, so remember each
-  # inode and re-link the second name onto the first result rather than
-  # stripping the same bytes twice into two independent copies.
+  # same across kernel/fs and kernel/sys. Remember each inode so the 25M file
+  # is stripped once and its DWARF copied out once, rather than doing both
+  # twice over what is the same bytes. mcs edits in place and keeps the link,
+  # so the `ln -f` is a no-op belt-and-braces against a future stripper that
+  # writes-and-renames.
   + ''
     declare -A splitDebugSeen=()
 
@@ -275,6 +296,7 @@
       mkdir -p "$(dirname "$dbg")"
       "$objcopy" --only-keep-debug "$f" "$dbg"
 
+      chmod u+w "$f"
       $stripDwarf "$f"
       splitDebugSeen[$ino]="$f"
     done < <(find "$out" -type f -print0)
