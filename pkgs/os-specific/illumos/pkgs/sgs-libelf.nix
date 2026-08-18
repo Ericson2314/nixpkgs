@@ -1,4 +1,6 @@
 {
+  lib,
+  stdenv,
   buildPackages,
   mkDerivation,
 
@@ -12,6 +14,9 @@
   ld-wrapper,
   sgs-libconv,
 
+  libcompat,
+  sgsmsg,
+
   crt,
   headers,
   libcMinimal,
@@ -20,9 +25,13 @@
 
 # cmd/sgs/libelf -> libelf.so.1, built for the target. librtld and libld both
 # link against it, and ld.so.1 in turn links against those.
+let
+  forIllumos = stdenv.hostPlatform.isIllumos;
+in
+
 mkDerivation {
-  libcMinimal = true;
-  path = "usr/src/cmd/sgs/libelf/amd64";
+  libcMinimal = forIllumos;
+  path = if forIllumos then "usr/src/cmd/sgs/libelf/amd64" else "usr/src/tools/sgs/libelf";
   pname = "sgs-libelf";
 
   extraPaths = [
@@ -47,6 +56,12 @@ mkDerivation {
 
     # DYNFLAGS pulls in the shared link-editor mapfiles from common/mapfiles.
     "usr/src/common/mapfiles"
+  ]
+  ++ lib.optionals (!forIllumos) [
+    # tools/sgs/libelf/Makefile includes ../../Makefile.tools and ../Makefile.com.
+    "usr/src/tools/Makefile.tools"
+    "usr/src/tools/Makefile.targ"
+    "usr/src/tools/sgs/Makefile.com"
   ];
 
   nativeBuildInputs = [
@@ -54,23 +69,22 @@ mkDerivation {
     make
     install
     cw
-    ld
     # xlate.c and xlate64.c are generated from .m4 sources.
     gnum4
     (buildPackages.writeShellScriptBin "arch" "echo i386")
     (buildPackages.writeShellScriptBin "mach" "echo i386")
-  ];
+  ]
+  # Only the illumos arm links with illumos ld; the native one uses the host's.
+  # Naming `ld` unconditionally is a cycle -- `ld` links this library.
+  ++ lib.optionals forIllumos [ ld ];
 
-  buildInputs = [
+  buildInputs = lib.optionals forIllumos [
     headers
     crt
     libcMinimal
   ];
 
-  env.NIX_CFLAGS_COMPILE = builtins.toString [
-    "-B${crt}/lib"
-    "-Wno-error"
-  ];
+  env.NIX_CFLAGS_COMPILE = builtins.toString (lib.optional forIllumos "-B${crt}/lib" ++ [ "-Wno-error" ]);
 
   buildFlags = [ "all" ];
 
@@ -79,18 +93,25 @@ mkDerivation {
     "POST_PROCESS_O=:"
     "POST_PROCESS_SO=:"
     "LDFLAGS.native="
-    "CPPFLAGS.first=-I${headers}/include"
     "M4=m4"
-    "ONBLD_TOOLS=${buildPackages.illumos.ld}"
+    "SGSMSG=${sgsmsg}/bin/sgsmsg"
     "CONVLIBDIR=-L${sgs-libconv}/lib"
     "CONVLIBDIR64=-L${sgs-libconv}/lib"
+  ]
+  ++ lib.optionals forIllumos [
+    "CPPFLAGS.first=-I${headers}/include"
     "LD=${ld-wrapper}"
+  ]
+  ++ lib.optionals (!forIllumos) [
+    "ROOTONBLD=${builtins.placeholder "out"}"
+    "COMPAT_DIR=${libcompat}/include-native"
+    "COMPAT_INC=${libcompat}/include"
   ];
 
   # Makefile.lib's default BUILD.SO links through the compiler driver, i.e. GNU
   # ld, which rejects the Solaris flags in DYNFLAGS. Link with illumos ld
   # instead; ld-wrapper splits the -Wl, prefixes DYNFLAGS carries.
-  preBuild = ''
+  preBuild = lib.optionalString forIllumos ''
     makeFlagsArray+=("BUILD.SO=\$(LD) -o \$@ \$(GSHARED) \$(DYNFLAGS) \$(PICS) \$(EXTPICS) -L${libcMinimal}/lib -L${libssp_ns}/lib \$(LDLIBS)")
   '';
 
@@ -103,4 +124,8 @@ mkDerivation {
 
     runHook postInstall
   '';
+
+  meta = {
+    platforms = lib.platforms.unix;
+  };
 }

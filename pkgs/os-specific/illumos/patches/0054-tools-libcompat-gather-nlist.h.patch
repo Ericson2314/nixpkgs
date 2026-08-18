@@ -1,0 +1,26 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Tue, 18 Aug 2026 02:25:32 -0400
+Subject: [PATCH] tools/libcompat: gather <nlist.h>
+
+cmd/sgs/libelf/misc/nlist.c includes it; glibc has no counterpart.
+
+Assisted-By: Claude Opus 5 (claude-opus-5)
+---
+ usr/src/tools/libcompat/Makefile | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/usr/src/tools/libcompat/Makefile b/usr/src/tools/libcompat/Makefile
+index c173b9259a..5d96c30282 100644
+--- a/usr/src/tools/libcompat/Makefile
++++ b/usr/src/tools/libcompat/Makefile
+@@ -113,7 +113,8 @@ HEADHDRS=	elf.h \
+ 		libelf.h \
+ 		proc_service.h \
+ 		rtld_db.h \
+-		link.h
++		link.h \
++		nlist.h
+ 
+ HDRS=		$(SYSHDRS:%=include/%) $(MACHSYSHDRS:%=include/%) \
+ 		$(HEADHDRS:%=include/%)
