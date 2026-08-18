@@ -2,7 +2,7 @@
   lib,
   mkDerivation,
 
-  compat,
+  libcompat,
   compatIsNeeded,
   compatMakeFlags,
   libavl,
@@ -90,7 +90,7 @@ mkDerivation {
   preBuild =
     link.preBuild
     + lib.optionalString compatIsNeeded ''
-      $CC -c -fPIC -o compat_ctf_support.o "${compat.ctfSupportSource}"
+      $CC -c -fPIC -o compat_ctf_support.o "${libcompat.supportSource}"
       makeFlagsArray+=("EXTPICS=compat_ctf_support.o")
     '';
 

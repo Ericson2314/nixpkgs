@@ -3,7 +3,7 @@
   mkDerivation,
 
   cw,
-  compat,
+  libcompat,
 }:
 
 # elfextract(1ONBLD): dumps a linked ELF object as assembler `.byte` output,
@@ -15,7 +15,7 @@
 # native-build overlay off the platforms. It
 # needs no libelf -- it mmaps the file and walks
 # Elf64_Ehdr by hand -- but it does need illumos' <sys/elf.h>, which comes from
-# the staged header set in pkgs/compat.
+# the staged header set `libcompat` installs.
 mkDerivation {
   pname = "elfextract";
 
@@ -56,7 +56,7 @@ mkDerivation {
   # it starts rather than in preInstall.
   preBuild = ''
     mkdir -p $out/bin/i386
-    export NIX_CFLAGS_COMPILE="$NIX_CFLAGS_COMPILE ${compat.stagedCflags}"
+    export NIX_CFLAGS_COMPILE="$NIX_CFLAGS_COMPILE ${libcompat.stagedCflags}"
   '';
 
   # The onbld layout puts the tool under bin/$(MACH), which is how

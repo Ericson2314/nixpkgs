@@ -103,7 +103,7 @@ makeScopeWithSplicing' {
       # True when gate source is being compiled against a foreign libc, i.e.
       # for the machine doing the build rather than for illumos.
       compatIsNeeded = !stdenvNoCC.hostPlatform.isIllumos;
-      compatIfNeeded = lib.optional self.compatIsNeeded self.compat;
+      compatIfNeeded = lib.optional self.compatIsNeeded self.libcompat;
 
       # `-lelf`. illumos' own libelf lives in the link-editor's source tree
       # and only exists for illumos; a foreign host has elfutils'.
@@ -116,7 +116,7 @@ makeScopeWithSplicing' {
       # vocabulary the gate headers assume -- and then the gate's own headers
       # searched AFTER the host's, so the host wins wherever it has an opinion
       # and illumos supplies only what the host has no equivalent of. Ordering
-      # is load-bearing; see compat/package.nix.
+      # is load-bearing; see libcompat.nix.
       #
       # `-DCTF_NATIVE_COMPAT` is part of the same statement and is NOT optional.
       # It is the gate's own name for "this translation unit is being compiled
@@ -138,7 +138,7 @@ makeScopeWithSplicing' {
       # `hostElf`: for a library that also includes the host's <libelf.h>. The
       # staged <sys/elf.h> and elfutils' own ELF types are the same structs
       # declared twice, so they cannot both be visible; `hostElfCflags` wins
-      # ahead of the staged set and defers to the host. See compat/host-elf.
+      # ahead of the staged set and defers to the host. See tools/libcompat/host-elf.
       compatMakeFlags =
         {
           extra ? [ ],
@@ -146,8 +146,8 @@ makeScopeWithSplicing' {
         }:
         lib.optional self.compatIsNeeded (
           "CPPFLAGS.first=-D_LARGEFILE64_SOURCE -DCTF_NATIVE_COMPAT "
-          + lib.optionalString hostElf "${self.compat.hostElfCflags} "
-          + "${self.compat.stagedCflags} ${toString extra}"
+          + lib.optionalString hostElf "${self.libcompat.hostElfCflags} "
+          + "${self.libcompat.stagedCflags} ${toString extra}"
           + " -idirafter $(SRC)/uts/common -idirafter $(SRC)/head"
         );
 

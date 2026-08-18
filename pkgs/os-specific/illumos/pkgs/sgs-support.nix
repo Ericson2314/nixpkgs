@@ -38,10 +38,13 @@
 # `$(COMPAT_CPPFLAGS)`, and an sgs program built out of `cmd/` gets neither
 # from its own makefile.
 {
-  # `-I include-native` ahead of `-I include`, matching the gate's own
-  # `$(COMPAT_CPPFLAGS)` (tools/Makefile.tools) and `ld.nix`. The shims stand
-  # in for headers the host libc lacks; the gathered set is illumos' real
-  # headers underneath them.
+  # `libcompat.sgsCflags` is `-I include-native` ahead of `-I include`,
+  # matching the gate's own `$(COMPAT_CPPFLAGS) $(COMPAT_INC_CPPFLAGS)`
+  # (tools/Makefile.tools) and `ld.nix`. The shims stand in for headers the
+  # host libc lacks; the gathered set is illumos' real headers underneath them.
+  # It is `sgsCflags` rather than `stagedCflags` because sgs works in illumos'
+  # ELF types throughout and so wants the gathered <libelf.h> and <gelf.h>,
+  # which the CTF tools must NOT have; see libcompat.nix.
   cflags = toString [
     "-DNATIVE_BUILD"
 
@@ -50,10 +53,7 @@
     "-include"
     "libintl.h"
 
-    "-I${libcompat}/include-native"
-    "-I${libcompat}/include"
-    "-include"
-    "${libcompat}/include-native/native_compat.h"
+    libcompat.sgsCflags
   ];
 
   ldflags = "-L${sgs-libconv}/lib";

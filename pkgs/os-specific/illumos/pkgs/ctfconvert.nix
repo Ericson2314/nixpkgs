@@ -4,7 +4,7 @@
   mkDerivation,
 
   cw,
-  compat,
+  libcompat,
   elfutils,
   libctf,
 }:
@@ -61,12 +61,12 @@ mkDerivation {
   ];
 
   # `strtonum(3C)` is illumos libc and glibc has none; ctfconvert parses `-j`
-  # and `-m` with it. `compat` fills exactly that kind of gap. It is built here
+  # and `-m` with it. `libcompat` fills exactly that kind of gap. It is built here
   # rather than shipped built because compat_host.c must see the *consumer's*
   # host headers; mkfs-ufs.nix compiles it the same way.
   preBuild = ''
     $CC -c -o compat_host.o -D_GNU_SOURCE -D_LARGEFILE64_SOURCE \
-      -I${compat.srcDir} "${compat.hostSource}"
+      -I${libcompat.srcDir} "${libcompat.hostSource}"
     ar rcs libcompat.a compat_host.o
   '';
 
@@ -90,10 +90,10 @@ mkDerivation {
     # The headers illumos does not ship, plus the compat profiles that let gate
     # source compile against a foreign libc.
     #
-    # Ordering is load-bearing: `compat.hostElfCflags` must beat the staged
+    # Ordering is load-bearing: `libcompat.hostElfCflags` must beat the staged
     # <sys/elf.h>, and `-idirafter` must lose to the host's own directories.
-    # See compat/host-elf/sys/elf.h.
-    "CPPFLAGS.first=-D_LARGEFILE64_SOURCE ${compat.hostElfCflags} ${compat.stagedCflags} -I$(SRC)/lib/libctf/common -idirafter $(SRC)/uts/common -idirafter $(SRC)/head"
+    # See tools/libcompat/host-elf/sys/elf.h.
+    "CPPFLAGS.first=-D_LARGEFILE64_SOURCE ${libcompat.hostElfCflags} ${libcompat.stagedCflags} -I$(SRC)/lib/libctf/common -idirafter $(SRC)/uts/common -idirafter $(SRC)/head"
 
     # ...and libcompat, built in preBuild above.
     "LDLIBS.cmd=-L. -lcompat"
@@ -111,7 +111,7 @@ mkDerivation {
     mainProgram = "ctfconvert";
 
     # Only the foreign-libc build is exercised. An illumos host needs none of
-    # `compat` and wants sgs-libelf rather than elfutils, and nothing here
+    # `libcompat`'s host-ELF profile and wants sgs-libelf rather than elfutils, and nothing here
     # consumes a ctfconvert that runs on illumos.
     broken = stdenv.hostPlatform.isSunOS;
   };

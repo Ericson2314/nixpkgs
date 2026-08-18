@@ -3,7 +3,7 @@
   mkDerivation,
 
   cw,
-  compat,
+  libcompat,
 }:
 
 # mbh_patch(1ONBLD): fills in the multiboot header's load addresses in a linked
@@ -14,7 +14,7 @@
 # the build-platform instance, and mkDerivation derives the native-build overlay
 # from the platforms.
 # see pkgs/libdwarf.nix. Like elfextract it needs no libelf, just illumos'
-# <sys/elf.h> and <sys/multiboot*.h> from the staged set in pkgs/compat.
+# <sys/elf.h> and <sys/multiboot*.h> from the staged set `libcompat` installs.
 mkDerivation {
   pname = "mbh_patch";
 
@@ -48,7 +48,7 @@ mkDerivation {
     # whole kernel sys directory ahead of glibc's headers means illumos'
     # <sys/types.h> and <sys/stat.h> get mixed into glibc's <stdlib.h> chain,
     # and the two disagree about struct stat, int8_t and much else. The staged
-    # subset in pkgs/compat is what replaces it.
+    # subset `libcompat` installs is what replaces it.
     "CPPFLAGS=-D_TS_ERRNO"
   ];
 
@@ -61,7 +61,7 @@ mkDerivation {
   # it starts rather than in preInstall.
   preBuild = ''
     mkdir -p $out/bin/i386
-    export NIX_CFLAGS_COMPILE="$NIX_CFLAGS_COMPILE ${compat.stagedCflags}"
+    export NIX_CFLAGS_COMPILE="$NIX_CFLAGS_COMPILE ${libcompat.stagedCflags}"
   '';
 
   postFixup = ''

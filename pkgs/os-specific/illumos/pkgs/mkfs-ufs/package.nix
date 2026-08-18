@@ -2,7 +2,7 @@
   lib,
   mkDerivation,
 
-  compat,
+  libcompat,
 }:
 
 # mkfs_ufs(8), so that a UFS root filesystem image can be made without an
@@ -30,11 +30,11 @@
 # K&R declarations, one genuine pointer-type mismatch -- and the fifth teaches
 # mkfs to target a regular file rather than only a disk, which is a feature
 # illumos gains too. Nothing about a foreign libc leaked into them; that is all
-# in `compat`.
+# in `libcompat`.
 #
 # Deliberately built with the "gate" compat profile: mkfs needs illumos' real
 # <sys/fs/ufs_fs.h> and everything under it, which is nothing like the staged
-# ELF header subset the onbld tools use. See pkgs/compat/package.nix.
+# ELF header subset the onbld tools use. See libcompat.nix.
 mkDerivation {
   pname = "mkfs-ufs";
 
@@ -83,7 +83,7 @@ mkDerivation {
     # that its <sys/stat.h> and <iso/stdio_iso.h> are found first. Each of
     # those includes the gate's version and then repoints just the one thing
     # that cannot survive meeting a foreign libc.
-    gateFlags="${compat.overlayCflags} \
+    gateFlags="${libcompat.overlayCflags} \
       -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 \
       -I$SRC/head -I$SRC/uts/common -I$SRC/uts/intel -I$SRC/uts/i86pc \
       -I$SRC/cmd/fs.d -I$SRC/cmd/fs.d/ufs/roll_log"
@@ -94,7 +94,7 @@ mkDerivation {
       "$SRC/cmd/fs.d/ufs/roll_log/roll_log.c"
     do
       echo "compiling (gate headers) $f"
-      $CC -c -o "$(basename "$f" .c).o" -I${compat.srcDir} $gateFlags "$f"
+      $CC -c -o "$(basename "$f" .c).o" -I${libcompat.srcDir} $gateFlags "$f"
     done
 
     # compat_gate.c is the gate-side half of the shims mkfs_ufs needs, and
@@ -106,14 +106,14 @@ mkDerivation {
     # Compiled on its own rather than in the loop above because the loop names
     # its object after `basename`, and a store path basename carries the hash
     # prefix -- `-o` here is explicit for that reason.
-    echo "compiling (gate headers) ${compat.gateSource}"
-    $CC -c -o compat_gate.o -I${compat.srcDir} $gateFlags "${compat.gateSource}"
+    echo "compiling (gate headers) ${libcompat.gateSource}"
+    $CC -c -o compat_gate.o -I${libcompat.srcDir} $gateFlags "${libcompat.gateSource}"
 
     # The host half sees the *host's* headers only -- that is the whole reason
     # it is a separate translation unit -- so it gets none of the flags above.
-    echo "compiling (host headers) ${compat.hostSource}"
+    echo "compiling (host headers) ${libcompat.hostSource}"
     $CC -c -o compat_host.o -D_GNU_SOURCE -D_LARGEFILE64_SOURCE \
-      -I${compat.srcDir} "${compat.hostSource}"
+      -I${libcompat.srcDir} "${libcompat.hostSource}"
 
     $CC -o mkfs_ufs mkfs.o populate.o roll_log.o compat_gate.o \
       compat_host.o

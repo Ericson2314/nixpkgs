@@ -3,7 +3,7 @@
   mkDerivation,
 
   cw,
-  compat,
+  libcompat,
 }:
 
 # vtfontcvt(1ONBLD): converts a BDF console font into C source. `unix` needs it
@@ -69,7 +69,7 @@ mkDerivation {
     # because the value contains a space.
     makeFlagsArray+=("CPPFLAGS=-D_TS_ERRNO -I$SRC/common/lz4")
 
-    export NIX_CFLAGS_COMPILE="$NIX_CFLAGS_COMPILE ${compat.stagedCflags}"
+    export NIX_CFLAGS_COMPILE="$NIX_CFLAGS_COMPILE ${libcompat.stagedCflags}"
   '';
 
   postFixup = ''

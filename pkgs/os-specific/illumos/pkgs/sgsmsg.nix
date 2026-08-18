@@ -3,7 +3,7 @@
   mkDerivation,
 
   cw,
-  compat,
+  libcompat,
 }:
 
 # sgsmsg(1ONBLD): the message-catalogue generator every `cmd/sgs` component
@@ -48,19 +48,20 @@ mkDerivation {
   makeFlags = [
     "ROOTONBLD=${builtins.placeholder "out"}"
 
-    # tools/Makefile.tools points COMPAT_DIR at usr/src/tools/libcompat/common.
-    # `compat` is the nixpkgs package expressing the same thing, and it is what
-    # the rest of this set already uses; its `include/` holds native_compat.h
-    # under exactly the name COMPAT_CPPFLAGS force-includes.
-    "COMPAT_DIR=${compat}/include"
+    # tools/Makefile.tools names the two halves separately: COMPAT_DIR is the
+    # checked-in shims, COMPAT_INC the illumos headers gathered out of the
+    # workspace. `libcompat` installs them under those two names, so point each
+    # at its own directory rather than at one merged tree.
+    "COMPAT_DIR=${libcompat}/include-native"
+    "COMPAT_INC=${libcompat}/include"
   ];
 
   # avl.c wants illumos <sys/debug.h>, which glibc has no counterpart for.
   # `-idirafter` so the host still wins for everything it does have; $SRC is
   # only known at build time, so this cannot be an `env` attribute.
-#
-# The mkdir is here rather than in preInstall because the build installs as it
-# goes, so the target directories have to exist before it starts.
+  #
+  # The mkdir is here rather than in preInstall because the build installs as it
+  # goes, so the target directories have to exist before it starts.
   preBuild = ''
     export NIX_CFLAGS_COMPILE="$NIX_CFLAGS_COMPILE -idirafter $SRC/uts/common -idirafter $SRC/head"
     mkdir -p $out/bin/i386 $out/man/man1onbld

@@ -34,7 +34,7 @@
 # `SAVEARGS`, the `POST_PROCESS*`/`STRIP_STABS` no-ops -- comes from
 # mkDerivation's build-host overlay, which derives it from the platforms. The
 # libc half -- `native_compat.h` and the `-idirafter` search order -- comes
-# from `compat`, whose "staged" profile is that same header, packaged.
+# from `libcompat`, whose "staged" profile is that same header, installed.
 let
   link = sharedLink {
     libs = [
