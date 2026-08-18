@@ -13,7 +13,6 @@
   perl,
 
   libcompat,
-  sgsmsg,
 
   crt,
   headers,
@@ -74,6 +73,7 @@ mkDerivation {
 
   nativeBuildInputs = [
     illumosSetupHook
+
     make
     install
     cw
@@ -130,10 +130,21 @@ mkDerivation {
     "POST_PROCESS_A=:"
     "LDFLAGS.native="
 
-    # $(SGSMSG) is $(ONBLD_TOOLS)/bin/$(MACH)/sgsmsg (cmd/sgs/Makefile.com:110).
-    # sgsmsg is its own package, so name the binary rather than rebuilding the
-    # onbld bin/$(MACH) layout around it.
-    "SGSMSG=${sgsmsg}/bin/sgsmsg"
+    # $(SGSMSG) defaults to $(ONBLD_TOOLS)/bin/$(MACH)/sgsmsg. sgsmsg is its own
+    # package, so name its binary rather than rebuilding the onbld layout.
+    #
+    # It has to be an absolute path, and it has to be `buildPackages.illumos.`:
+    #
+    #  o cmd/sgs/Makefile.com uses $(SGSMSG) as a *prerequisite*, not just as a
+    #    command. A bare `sgsmsg` is a relative filename dmake cannot find, so
+    #    it tries to build it as a target -- "Don't know how to make target
+    #    `sgsmsg'". Putting it on PATH does not help; make is resolving a file.
+    #  o without `buildPackages.`, the scope hands back the *host* instance,
+    #    which for a cross build is the illumos target. That one needs libc,
+    #    which needs rtld, which needs liblddbg, which needs sgsmsg: infinite
+    #    recursion. The store name is the check -- `sgsmsg-2.11` with no
+    #    platform suffix is the build-host copy.
+    "SGSMSG=${buildPackages.illumos.sgsmsg}/bin/sgsmsg"
   ]
   ++ lib.optionals forIllumos [
     "CPPFLAGS.first=-I${headers}/include"

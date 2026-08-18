@@ -263,7 +263,7 @@ mkDerivation (
           # supplying the headers illumos has and glibc does not.
           "COMPAT_CPPFLAGS=-I${libcompat}/include-native -I${libcompat}/include -include ${libcompat}/include-native/native_compat.h"
 
-          "SGSMSG=${sgsmsg}/bin/sgsmsg"
+          "SGSMSG=${buildPackages.illumos.sgsmsg}/bin/sgsmsg"
           "CONVLIBDIR=-L${sgs-libconv}/lib"
           "CONVLIBDIR64=-L${sgs-libconv}/lib"
           "ELFLIBDIR=-L${sgs-libelf}/lib"

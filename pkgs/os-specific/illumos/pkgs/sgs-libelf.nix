@@ -15,7 +15,6 @@
   sgs-libconv,
 
   libcompat,
-  sgsmsg,
 
   crt,
   headers,
@@ -66,6 +65,7 @@ mkDerivation {
 
   nativeBuildInputs = [
     illumosSetupHook
+
     make
     install
     cw
@@ -94,7 +94,7 @@ mkDerivation {
     "POST_PROCESS_SO=:"
     "LDFLAGS.native="
     "M4=m4"
-    "SGSMSG=${sgsmsg}/bin/sgsmsg"
+    "SGSMSG=${buildPackages.illumos.sgsmsg}/bin/sgsmsg"
     "CONVLIBDIR=-L${sgs-libconv}/lib"
     "CONVLIBDIR64=-L${sgs-libconv}/lib"
   ]
