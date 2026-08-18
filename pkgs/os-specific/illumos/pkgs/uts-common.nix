@@ -48,6 +48,20 @@
     "usr/src/Makefile.psm"
     "usr/src/Makefile.psm.targ"
 
+    # Not used to build anything: uts/Makefile's last line is
+    # `include ../Makefile.xref`, which only defines the cscope/xref targets.
+    # But an include that cannot be opened is fatal to make even when nothing
+    # asks for its targets, so every module's install phase printed
+    #
+    #     make: Fatal error in reader: Makefile, line 200:
+    #     Read of include file '../Makefile.xref' failed
+    #
+    # 147 times per build. The build succeeded regardless -- the failing read
+    # is in a probing make, not the one doing the work -- but it reads like a
+    # real failure, which is exactly the sort of noise a real one hides in.
+    # Same reasoning as the makefile list in mkfs-ufs/package.nix.
+    "usr/src/Makefile.xref"
+
     # uts/common/Makefile.rules compiles a good deal of $(SRC)/common into the
     # kernel: atomic, util, font, fs, dis and so on.
     "usr/src/common"
@@ -181,8 +195,12 @@
 
   # illumosSetupHook probes for an `install_h` target before installing. uts has
   # one, but it is the whole kernel header set -- that is uts-headers' job, not
-  # this derivation's -- and merely probing for it makes dmake parse
-  # uts/Makefile, which includes a ../Makefile.xref we do not stage.
+  # this derivation's.
+  #
+  # Note that this does not stop the probe itself: includesPhase runs
+  # `make -Pp` first and only then consults this variable, so uts/Makefile is
+  # parsed either way -- which is why `usr/src/Makefile.xref` has to be in
+  # extraPaths above.
   skipIncludesPhase = true;
 
   # These are relocatable kmods for a foreign OS; none of the usual fixup

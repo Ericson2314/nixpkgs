@@ -627,14 +627,19 @@ let
     # skein" suggests: zio_checksum_table[] (common/fs/zfs/zio_checksum.c) is
     # indexed by whatever the on-disk label says, so a pool created elsewhere
     # can name any of them.
-    "intel/kcf"
-    "intel/sha1"
+    #
+    # Only the modules ZFS is the first to need are entries here: kcf, sha1,
+    # swrand, tlimod and rpcmod are all already in the sockets and NFS blocks
+    # above, and were repeated here until they were noticed. Listing a module
+    # twice builds and copies the same derivation twice, which the build
+    # survives -- but `passthru.kmodBaseNames` carries the duplicates out to
+    # consumers, including the /etc data-file check in nixbsd's
+    # illumos-boot-image.nix. The chain above stays written out in full on
+    # purpose: it is the documentation for why those other blocks may not
+    # shrink.
     "intel/sha2"
     "intel/skein"
     "intel/edonr"
-    "intel/swrand"
-    "intel/tlimod"
-    "intel/rpcmod"
     "intel/idmap"
     "intel/zfs"
   ];
