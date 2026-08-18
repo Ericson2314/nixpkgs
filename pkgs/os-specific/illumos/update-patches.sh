@@ -11,6 +11,19 @@
 # anything Nix builds -- only the hunks themselves do. That is why
 # `--zero-commit` is safe and why rebasing the branch is free.
 #
+#
+# --no-renames is not cosmetic. `filterPatches` splits a patch into per-file
+# hunks and picks the ones whose path a package asked for. A rename hunk names
+# two paths at once --
+#
+#     --- a/usr/src/tools/sgs/native/native_compat.h
+#     +++ b/usr/src/tools/libcompat/common/native_compat.h
+#
+# -- so a package that names only the destination gets a hunk it cannot apply:
+# the source file is not in its filtered tree, and patch(1) fails with "can't
+# find file to patch". Emitting a plain delete plus a plain create instead
+# makes each side stand alone, which is what per-file filtering requires.
+#
 # Usage: update-patches.sh <illumos-gate-checkout> [base] [branch]
 
 set -euo pipefail
@@ -27,6 +40,7 @@ git -C "$gate" format-patch \
   --no-signature \
   --zero-commit \
   --no-numbered \
+  --no-renames \
   -o "$here/patches" \
   "$base..$branch"
 

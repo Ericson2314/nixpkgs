@@ -1,0 +1,55 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Tue, 18 Aug 2026 02:13:03 -0400
+Subject: [PATCH] tools/libcompat: install the headers, not just the archive
+
+`install` copied `libcompat.a` into `$(ROOTONBLDLIBMACH)` and stopped there,
+leaving the gathered headers sitting in the build directory as scratch for this
+directory's own `-I`. That is the same in-tree-side-effect habit that makes
+`tools/sgs/include` unusable from outside the workspace: the headers are real
+outputs and a consumer needs them installed, not left where only a sibling
+makefile can reach them.
+
+They go into two trees, and the split is load-bearing rather than tidiness.
+`include/` is the headers gathered out of `usr/src/uts`; `include-native/` is
+the checked-in shims. `include-native/sys/elf.h` deliberately shadows
+`include/sys/elf.h` -- the former forwards to the *host's* `<elf.h>` for a
+consumer that links the host libelf, the latter is illumos' real one. A
+consumer chooses by which directory it `-I`s first, so merging them would make
+that choice unexpressible.
+
+Assisted-By: Claude Opus 5 (claude-opus-5)
+---
+ usr/src/tools/libcompat/Makefile | 19 ++++++++++++++++++-
+ 1 file changed, 18 insertions(+), 1 deletion(-)
+
+diff --git a/usr/src/tools/libcompat/Makefile b/usr/src/tools/libcompat/Makefile
+index d228f92b2e..6043e0683c 100644
+--- a/usr/src/tools/libcompat/Makefile
++++ b/usr/src/tools/libcompat/Makefile
+@@ -129,7 +129,24 @@ native_support.o: common/native_support.c
+ $(LIBRARY): $(OBJS)
+ 	$(RM) $@; $(AR) $(ARFLAGS) $@ $(OBJS)
+ 
+-install: all $(ROOTONBLDLIBMACH)/$(LIBRARY)
++#
++# The headers are outputs too, not just scratch for this directory's own -I.
++# They install into two separate trees on purpose, for the reason given at the
++# top: include/ is the gathered illumos headers, include-native/ is the shims,
++# and include-native/sys/elf.h deliberately shadows include/sys/elf.h for a
++# consumer that links the host libelf.  Merging them would make that choice
++# unexpressible.
++#
++ROOTONBLDINC=		$(ROOTONBLD)/include
++ROOTONBLDINCNATIVE=	$(ROOTONBLD)/include-native
++
++install: all $(ROOTONBLDLIBMACH)/$(LIBRARY) install_hdrs
++
++install_hdrs: $(HDRS)
++	$(MKDIR) -p $(ROOTONBLDINC)/sys $(ROOTONBLDINCNATIVE)/sys
++	$(CP) include/sys/*.h $(ROOTONBLDINC)/sys/
++	$(CP) common/*.h $(ROOTONBLDINCNATIVE)/
++	$(CP) common/sys/*.h $(ROOTONBLDINCNATIVE)/sys/
+ 
+ $(ROOTONBLDLIBMACH):
+ 	$(MKDIR) -p $@

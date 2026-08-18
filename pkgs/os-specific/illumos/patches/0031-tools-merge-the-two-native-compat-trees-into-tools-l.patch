@@ -46,40 +46,60 @@ No functional change intended for either existing consumer -- every addition
 each side gains from the other is `#ifndef`-guarded or a new symbol.
 ---
  usr/src/tools/.gitignore                      |   3 +-
- usr/src/tools/Makefile.tools                  |  17 +++
+ usr/src/tools/Makefile.tools                  |  17 ++
  usr/src/tools/ctf/Makefile.ctf.native         |  13 +-
  usr/src/tools/ctf/libctf/Makefile.com         |   4 +-
- usr/src/tools/ctf/native/native_compat.h      | 123 -----------------
- usr/src/tools/ctf/native/thread.h             |  83 ------------
- .../common}/native_compat.h                   |  63 +++++++--
- .../common}/native_support.c                  |  76 ++++++++---
- .../{ctf/native => libcompat/common}/synch.h  |  62 +++++++--
- .../native => libcompat/common}/sys/cmn_err.h |   6 +-
- .../native => libcompat/common}/sys/elf.h     |   6 +-
- .../native => libcompat/common}/sys/mman.h    |   6 +-
- .../common}/sys/systeminfo.h                  |   6 +-
- .../native => libcompat/common}/sys/utsname.h |   6 +-
- .../native => libcompat/common}/sys/varargs.h |   6 +-
- .../{sgs/native => libcompat/common}/thread.h |  40 +++++-
+ usr/src/tools/ctf/native/native_compat.h      | 123 ----------
+ usr/src/tools/ctf/native/native_support.c     | 124 ----------
+ usr/src/tools/ctf/native/synch.h              | 172 --------------
+ usr/src/tools/ctf/native/sys/elf.h            |  31 ---
+ usr/src/tools/ctf/native/thread.h             |  83 -------
+ .../tools/libcompat/common/native_compat.h    | 207 +++++++++++++++++
+ .../tools/libcompat/common/native_support.c   | 168 ++++++++++++++
+ usr/src/tools/libcompat/common/synch.h        | 216 ++++++++++++++++++
+ usr/src/tools/libcompat/common/sys/cmn_err.h  |  31 +++
+ usr/src/tools/libcompat/common/sys/elf.h      |  31 +++
+ usr/src/tools/libcompat/common/sys/mman.h     |  54 +++++
+ .../tools/libcompat/common/sys/systeminfo.h   | 105 +++++++++
+ usr/src/tools/libcompat/common/sys/utsname.h  |  30 +++
+ usr/src/tools/libcompat/common/sys/varargs.h  |  22 ++
+ usr/src/tools/libcompat/common/thread.h       | 133 +++++++++++
  usr/src/tools/sgs/Makefile.com                |   2 +-
  usr/src/tools/sgs/libconv/Makefile            |   4 +-
- usr/src/tools/sgs/native/native_support.c     |  62 ---------
- usr/src/tools/sgs/native/synch.h              | 127 ------------------
- 20 files changed, 249 insertions(+), 466 deletions(-)
+ usr/src/tools/sgs/native/native_compat.h      | 168 --------------
+ usr/src/tools/sgs/native/native_support.c     |  62 -----
+ usr/src/tools/sgs/native/synch.h              | 127 ----------
+ usr/src/tools/sgs/native/sys/cmn_err.h        |  31 ---
+ usr/src/tools/sgs/native/sys/mman.h           |  54 -----
+ usr/src/tools/sgs/native/sys/systeminfo.h     | 105 ---------
+ usr/src/tools/sgs/native/sys/utsname.h        |  30 ---
+ usr/src/tools/sgs/native/sys/varargs.h        |  22 --
+ usr/src/tools/sgs/native/thread.h             |  99 --------
+ 30 files changed, 1027 insertions(+), 1244 deletions(-)
  delete mode 100644 usr/src/tools/ctf/native/native_compat.h
+ delete mode 100644 usr/src/tools/ctf/native/native_support.c
+ delete mode 100644 usr/src/tools/ctf/native/synch.h
+ delete mode 100644 usr/src/tools/ctf/native/sys/elf.h
  delete mode 100644 usr/src/tools/ctf/native/thread.h
- rename usr/src/tools/{sgs/native => libcompat/common}/native_compat.h (63%)
- rename usr/src/tools/{ctf/native => libcompat/common}/native_support.c (62%)
- rename usr/src/tools/{ctf/native => libcompat/common}/synch.h (73%)
- rename usr/src/tools/{sgs/native => libcompat/common}/sys/cmn_err.h (86%)
- rename usr/src/tools/{ctf/native => libcompat/common}/sys/elf.h (91%)
- rename usr/src/tools/{sgs/native => libcompat/common}/sys/mman.h (93%)
- rename usr/src/tools/{sgs/native => libcompat/common}/sys/systeminfo.h (94%)
- rename usr/src/tools/{sgs/native => libcompat/common}/sys/utsname.h (85%)
- rename usr/src/tools/{sgs/native => libcompat/common}/sys/varargs.h (83%)
- rename usr/src/tools/{sgs/native => libcompat/common}/thread.h (68%)
+ create mode 100644 usr/src/tools/libcompat/common/native_compat.h
+ create mode 100644 usr/src/tools/libcompat/common/native_support.c
+ create mode 100644 usr/src/tools/libcompat/common/synch.h
+ create mode 100644 usr/src/tools/libcompat/common/sys/cmn_err.h
+ create mode 100644 usr/src/tools/libcompat/common/sys/elf.h
+ create mode 100644 usr/src/tools/libcompat/common/sys/mman.h
+ create mode 100644 usr/src/tools/libcompat/common/sys/systeminfo.h
+ create mode 100644 usr/src/tools/libcompat/common/sys/utsname.h
+ create mode 100644 usr/src/tools/libcompat/common/sys/varargs.h
+ create mode 100644 usr/src/tools/libcompat/common/thread.h
+ delete mode 100644 usr/src/tools/sgs/native/native_compat.h
  delete mode 100644 usr/src/tools/sgs/native/native_support.c
  delete mode 100644 usr/src/tools/sgs/native/synch.h
+ delete mode 100644 usr/src/tools/sgs/native/sys/cmn_err.h
+ delete mode 100644 usr/src/tools/sgs/native/sys/mman.h
+ delete mode 100644 usr/src/tools/sgs/native/sys/systeminfo.h
+ delete mode 100644 usr/src/tools/sgs/native/sys/utsname.h
+ delete mode 100644 usr/src/tools/sgs/native/sys/varargs.h
+ delete mode 100644 usr/src/tools/sgs/native/thread.h
 
 diff --git a/usr/src/tools/.gitignore b/usr/src/tools/.gitignore
 index 1987ac1f0b..2d5bffaeb4 100644
@@ -300,6 +320,351 @@ index 0e88de6d32..0000000000
 -#endif
 -
 -#endif	/* _CTF_NATIVE_COMPAT_H */
+diff --git a/usr/src/tools/ctf/native/native_support.c b/usr/src/tools/ctf/native/native_support.c
+deleted file mode 100644
+index 2e976de74f..0000000000
+--- a/usr/src/tools/ctf/native/native_support.c
++++ /dev/null
+@@ -1,124 +0,0 @@
+-/*
+- * This file and its contents are supplied under the terms of the
+- * Common Development and Distribution License ("CDDL"), version 1.0.
+- * You may only use this file in accordance with the terms of version
+- * 1.0 of the CDDL.
+- *
+- * A full copy of the text of the CDDL should have accompanied this
+- * source.  A copy of the CDDL is also available via the Internet at
+- * http://www.illumos.org/license/CDDL.
+- */
+-
+-/*
+- * The handful of libc entry points that the CTF sources use and that a foreign
+- * libc does not have.  Built into the native libctf, which ctfconvert(1) and
+- * ctfmerge(1) both link against, so one copy serves all three.
+- */
+-
+-#include <stdio.h>
+-#include <stdlib.h>
+-#include <string.h>
+-#include <errno.h>
+-#include <limits.h>
+-#include <inttypes.h>
+-#include <unistd.h>
+-
+-/*
+- * Declared rather than reached through <errno.h>, which only exposes it under
+- * _GNU_SOURCE -- and this file is compiled with the same flags as the rest of
+- * libctf, where turning that on would quietly swap strerror_r() and friends
+- * for their GNU variants.
+- */
+-extern char *program_invocation_name;
+-
+-/*
+- * ASSERT()/VERIFY() and ASSERT3*()/VERIFY3*() from <sys/debug.h>.  On illumos
+- * both live in libc.
+- */
+-void
+-assfail(const char *a, const char *f, int l)
+-{
+-	(void) fprintf(stderr, "assertion failed: %s, file: %s, line: %d\n",
+-	    a, f, l);
+-	abort();
+-}
+-
+-void
+-assfail3(const char *a, uintmax_t lv, const char *op, uintmax_t rv,
+-    const char *f, int l)
+-{
+-	(void) fprintf(stderr,
+-	    "assertion failed: %s (0x%jx %s 0x%jx), file: %s, line: %d\n",
+-	    a, lv, op, rv, f, l);
+-	abort();
+-}
+-
+-/*
+- * getexecname(3C).  tools/ctf/common/utils.c uses it to derive the program
+- * name for diagnostics.  glibc's nearest equivalent is program_invocation_name,
+- * which is the argv[0] the process was started with rather than the resolved
+- * path; that is the same thing for every caller here, and /proc/self/exe is
+- * the fallback when it is unset.
+- */
+-const char *
+-getexecname(void)
+-{
+-	static char path[PATH_MAX];
+-	ssize_t n;
+-
+-	if (program_invocation_name != NULL && *program_invocation_name != '\0')
+-		return (program_invocation_name);
+-
+-	n = readlink("/proc/self/exe", path, sizeof (path) - 1);
+-	if (n < 0)
+-		return (NULL);
+-	path[n] = '\0';
+-
+-	return (path);
+-}
+-
+-/*
+- * strtonum(3C), which illumos took from OpenBSD.  ctfconvert(1) uses it to
+- * parse -b/-j.  This is the documented behaviour: on success the value is
+- * returned and *errstrp is set to NULL; on failure 0 is returned and *errstrp
+- * names the problem, with errno set to EINVAL or ERANGE.
+- */
+-long long
+-strtonum(const char *numstr, long long minval, long long maxval,
+-    const char **errstrp)
+-{
+-	const char *errstr = NULL;
+-	long long val = 0;
+-	char *end;
+-	int saved_errno = errno;
+-
+-	if (minval > maxval) {
+-		errstr = "invalid";
+-		errno = EINVAL;
+-		goto out;
+-	}
+-
+-	errno = 0;
+-	val = strtoll(numstr, &end, 10);
+-	if (end == numstr || *end != '\0') {
+-		errstr = "invalid";
+-		errno = EINVAL;
+-		val = 0;
+-	} else if ((val == LLONG_MIN && errno == ERANGE) || val < minval) {
+-		errstr = "too small";
+-		errno = ERANGE;
+-		val = 0;
+-	} else if ((val == LLONG_MAX && errno == ERANGE) || val > maxval) {
+-		errstr = "too large";
+-		errno = ERANGE;
+-		val = 0;
+-	}
+-
+-out:
+-	if (errstrp != NULL)
+-		*errstrp = errstr;
+-	if (errstr == NULL)
+-		errno = saved_errno;
+-
+-	return (val);
+-}
+diff --git a/usr/src/tools/ctf/native/synch.h b/usr/src/tools/ctf/native/synch.h
+deleted file mode 100644
+index f260e49e8d..0000000000
+--- a/usr/src/tools/ctf/native/synch.h
++++ /dev/null
+@@ -1,172 +0,0 @@
+-/*
+- * This file and its contents are supplied under the terms of the
+- * Common Development and Distribution License ("CDDL"), version 1.0.
+- * You may only use this file in accordance with the terms of version
+- * 1.0 of the CDDL.
+- *
+- * A full copy of the text of the CDDL should have accompanied this
+- * source.  A copy of the CDDL is also available via the Internet at
+- * http://www.illumos.org/license/CDDL.
+- */
+-
+-/*
+- * illumos' <synch.h> over POSIX threads, for the native build of the CTF
+- * tools.  See the comment in thread.h for why this is a shim rather than the
+- * real header.
+- */
+-
+-#ifndef	_CTF_NATIVE_SYNCH_H
+-#define	_CTF_NATIVE_SYNCH_H
+-
+-#include <pthread.h>
+-#include <stdlib.h>
+-#include <errno.h>
+-
+-#ifdef	__cplusplus
+-extern "C" {
+-#endif
+-
+-typedef pthread_mutex_t		mutex_t;
+-typedef pthread_rwlock_t	rwlock_t;
+-typedef pthread_cond_t		cond_t;
+-
+-#define	DEFAULTMUTEX	PTHREAD_MUTEX_INITIALIZER
+-#define	DEFAULTRWLOCK	PTHREAD_RWLOCK_INITIALIZER
+-#define	DEFAULTCV	PTHREAD_COND_INITIALIZER
+-
+-#define	USYNC_THREAD	0
+-#define	USYNC_PROCESS	1
+-
+-/*
+- * The lock "types" illumos ORs into the mutex_init() type argument.  Only
+- * LOCK_ERRORCHECK is used here (lib/mergeq/mergeq.c), and it has a direct
+- * pthread equivalent.
+- */
+-#define	LOCK_NORMAL		0x0
+-#define	LOCK_ERRORCHECK		0x2
+-#define	LOCK_RECURSIVE		0x4
+-
+-/*
+- * illumos' ERRORCHECKMUTEX is a statically initialised mutex of type
+- * LOCK_ERRORCHECK; PTHREAD_ERRORCHECK_MUTEX_INITIALIZER_NP is the same thing
+- * on glibc.
+- */
+-#ifdef	PTHREAD_ERRORCHECK_MUTEX_INITIALIZER_NP
+-#define	ERRORCHECKMUTEX	PTHREAD_ERRORCHECK_MUTEX_INITIALIZER_NP
+-#else
+-#define	ERRORCHECKMUTEX	PTHREAD_MUTEX_INITIALIZER
+-#endif
+-
+-static inline int
+-mutex_init(mutex_t *mp, int type, void *arg __attribute__((__unused__)))
+-{
+-	pthread_mutexattr_t attr;
+-	int ret;
+-
+-	if ((type & ~(USYNC_THREAD | LOCK_ERRORCHECK | LOCK_RECURSIVE)) != 0)
+-		return (EINVAL);
+-
+-	if ((type & (LOCK_ERRORCHECK | LOCK_RECURSIVE)) == 0)
+-		return (pthread_mutex_init(mp, NULL));
+-
+-	if ((ret = pthread_mutexattr_init(&attr)) != 0)
+-		return (ret);
+-	ret = pthread_mutexattr_settype(&attr,
+-	    (type & LOCK_RECURSIVE) != 0 ? PTHREAD_MUTEX_RECURSIVE :
+-	    PTHREAD_MUTEX_ERRORCHECK);
+-	if (ret == 0)
+-		ret = pthread_mutex_init(mp, &attr);
+-	(void) pthread_mutexattr_destroy(&attr);
+-
+-	return (ret);
+-}
+-
+-static inline int
+-mutex_destroy(mutex_t *mp)
+-{
+-	return (pthread_mutex_destroy(mp));
+-}
+-
+-static inline int
+-mutex_lock(mutex_t *mp)
+-{
+-	return (pthread_mutex_lock(mp));
+-}
+-
+-static inline int
+-mutex_trylock(mutex_t *mp)
+-{
+-	return (pthread_mutex_trylock(mp));
+-}
+-
+-static inline int
+-mutex_unlock(mutex_t *mp)
+-{
+-	return (pthread_mutex_unlock(mp));
+-}
+-
+-static inline int
+-cond_init(cond_t *cvp, int type __attribute__((__unused__)),
+-    void *arg __attribute__((__unused__)))
+-{
+-	return (pthread_cond_init(cvp, NULL));
+-}
+-
+-static inline int
+-cond_destroy(cond_t *cvp)
+-{
+-	return (pthread_cond_destroy(cvp));
+-}
+-
+-static inline int
+-cond_wait(cond_t *cvp, mutex_t *mp)
+-{
+-	return (pthread_cond_wait(cvp, mp));
+-}
+-
+-static inline int
+-cond_signal(cond_t *cvp)
+-{
+-	return (pthread_cond_signal(cvp));
+-}
+-
+-static inline int
+-cond_broadcast(cond_t *cvp)
+-{
+-	return (pthread_cond_broadcast(cvp));
+-}
+-
+-/*
+- * illumos' <synch.h> also spells lock/unlock the kernel way, aborting rather
+- * than returning an error.  ctf_dwarf.c's DWARF_LOCK()/DWARF_UNLOCK() use
+- * those.
+- */
+-static inline void
+-mutex_enter(mutex_t *mp)
+-{
+-	if (pthread_mutex_lock(mp) != 0)
+-		abort();
+-}
+-
+-static inline void
+-mutex_exit(mutex_t *mp)
+-{
+-	if (pthread_mutex_unlock(mp) != 0)
+-		abort();
+-}
+-
+-/*
+- * POSIX exposes no way to ask whether the calling thread holds a
+- * pthread_mutex_t, so these can only answer "yes" -- the assertions that use
+- * them become vacuous rather than wrong.
+- */
+-#define	MUTEX_HELD(mp)		(1)
+-#define	RW_LOCK_HELD(rw)	(1)
+-#define	RW_READ_HELD(rw)	(1)
+-#define	RW_WRITE_HELD(rw)	(1)
+-
+-#ifdef	__cplusplus
+-}
+-#endif
+-
+-#endif	/* _CTF_NATIVE_SYNCH_H */
+diff --git a/usr/src/tools/ctf/native/sys/elf.h b/usr/src/tools/ctf/native/sys/elf.h
+deleted file mode 100644
+index 3dfb76269d..0000000000
+--- a/usr/src/tools/ctf/native/sys/elf.h
++++ /dev/null
+@@ -1,31 +0,0 @@
+-/*
+- * This file and its contents are supplied under the terms of the
+- * Common Development and Distribution License ("CDDL"), version 1.0.
+- * You may only use this file in accordance with the terms of version
+- * 1.0 of the CDDL.
+- *
+- * A full copy of the text of the CDDL should have accompanied this
+- * source.  A copy of the CDDL is also available via the Internet at
+- * http://www.illumos.org/license/CDDL.
+- */
+-
+-/*
+- * On illumos, <sys/elf.h> is where the ELF type and constant definitions live,
+- * and $(SRC)/common/ctf/ctf_impl.h includes it by that name.  glibc puts them
+- * in <elf.h> and ships a <sys/elf.h> whose entire content is
+- *
+- *	#error This header is unsupported on x86-64.
+- *
+- * Because a -I is searched ahead of the host's own directories and the
+- * -idirafter on $(SRC)/uts/common is searched behind them, this shim is what
+- * <sys/elf.h> resolves to for the CTF tools -- and illumos' own <sys/elf.h>
+- * is deliberately not used, since it would drag in the illumos <sys/types.h>
+- * chain that collides head-on with the host libc.
+- */
+-
+-#ifndef	_CTF_NATIVE_SYS_ELF_H
+-#define	_CTF_NATIVE_SYS_ELF_H
+-
+-#include <elf.h>
+-
+-#endif	/* _CTF_NATIVE_SYS_ELF_H */
 diff --git a/usr/src/tools/ctf/native/thread.h b/usr/src/tools/ctf/native/thread.h
 deleted file mode 100644
 index 10f9601760..0000000000
@@ -389,30 +754,28 @@ index 10f9601760..0000000000
 -#endif
 -
 -#endif	/* _CTF_NATIVE_THREAD_H */
-diff --git a/usr/src/tools/sgs/native/native_compat.h b/usr/src/tools/libcompat/common/native_compat.h
-similarity index 63%
-rename from usr/src/tools/sgs/native/native_compat.h
-rename to usr/src/tools/libcompat/common/native_compat.h
-index ff62f992f1..14dc358dd0 100644
---- a/usr/src/tools/sgs/native/native_compat.h
+diff --git a/usr/src/tools/libcompat/common/native_compat.h b/usr/src/tools/libcompat/common/native_compat.h
+new file mode 100644
+index 0000000000..14dc358dd0
+--- /dev/null
 +++ b/usr/src/tools/libcompat/common/native_compat.h
-@@ -10,20 +10,35 @@
-  */
- 
- /*
-- * Compatibility shims for building the native link-editor on a host whose
-- * libc is not illumos'.  Force-included (via -include) from
-- * tools/sgs/Makefile.com, so it must be safe to include first, before
-- * anything else.
+@@ -0,0 +1,207 @@
++/*
++ * This file and its contents are supplied under the terms of the
++ * Common Development and Distribution License ("CDDL"), version 1.0.
++ * You may only use this file in accordance with the terms of version
++ * 1.0 of the CDDL.
++ *
++ * A full copy of the text of the CDDL should have accompanied this
++ * source.  A copy of the CDDL is also available via the Internet at
++ * http://www.illumos.org/license/CDDL.
++ */
++
++/*
 + * Compatibility shims for building gate source on a host whose libc is not
 + * illumos.  Force-included (via -include) by every consumer, so it must be
 + * safe to include first, before anything else.
-  *
-- * The headers staged by tools/sgs/include are illumos' own, and they expect
-- * illumos' <sys/types.h> to have already supplied the "_t" spellings of the
-- * base integer types and boolean_t.  A foreign libc supplies none of that,
-- * so define it here.  Nothing in here is illumos-specific behaviour; it is
-- * purely the vocabulary the staged headers assume.
++ *
 + * This is the merge of what used to be tools/ctf/native/native_compat.h and
 + * tools/sgs/native/native_compat.h.  Those were two spellings of one job --
 + * "gate source, foreign libc" -- kept apart only because each grew next to
@@ -425,10 +788,8 @@ index ff62f992f1..14dc358dd0 100644
 + * boolean_t; a foreign libc supplies none of that, so define it here.
 + * Nothing in here is illumos-specific behaviour.  It is purely the vocabulary
 + * the gate headers assume.
-  */
- 
--#ifndef	_SGS_NATIVE_COMPAT_H
--#define	_SGS_NATIVE_COMPAT_H
++ */
++
 +#ifndef	_ONBLD_COMPAT_H
 +#define	_ONBLD_COMPAT_H
 +
@@ -440,13 +801,143 @@ index ff62f992f1..14dc358dd0 100644
 +#ifndef	_LARGEFILE64_SOURCE
 +#define	_LARGEFILE64_SOURCE
 +#endif
- 
- 
- /*
-@@ -161,8 +176,32 @@ typedef long long		hrtime_t;
- #define	NL_TEXTMAX	2048
- #endif
- 
++
++
++/*
++ * On illumos every sys header reaches <sys/isa_defs.h> by way of
++ * <sys/param.h>.  Here <sys/param.h> is the host's, so the staged illumos
++ * headers would never see _BIT_FIELDS_LTOH, _LP64 and friends.  Pull it in
++ * up front instead.
++ */
++#include <sys/isa_defs.h>
++
++/*
++ * <sys/ccompile.h> supplies __GNU_INLINE and the __sun_attr__ family that the
++ * staged headers use; on illumos it too arrives via <sys/types.h>.
++ */
++#include <sys/ccompile.h>
++
++#include <stddef.h>
++#include <stdint.h>
++#include <sys/types.h>
++/*
++ * illumos' <strings.h> pulls in <string.h>; the host's does not, and the sgs
++ * sources rely on the illumos behaviour.
++ */
++#include <string.h>
++#include <strings.h>
++
++#ifdef	__cplusplus
++extern "C" {
++#endif
++
++#ifndef	_BOOLEAN_T
++#define	_BOOLEAN_T
++typedef enum { B_FALSE, B_TRUE } boolean_t;
++#endif
++
++typedef unsigned char		uchar_t;
++typedef unsigned short		ushort_t;
++typedef unsigned int		uint_t;
++typedef unsigned long		ulong_t;
++typedef long long		longlong_t;
++typedef unsigned long long	u_longlong_t;
++typedef long long		hrtime_t;
++
++
++/*
++ * illumos' <sys/sysmacros.h> carries these; the host's has only the
++ * major/minor/makedev trio, so a bare #include silently loses them.
++ */
++#ifndef	MAX
++#define	MAX(a, b)	((a) < (b) ? (b) : (a))
++#endif
++#ifndef	MIN
++#define	MIN(a, b)	((a) > (b) ? (b) : (a))
++#endif
++#ifndef	ABS
++#define	ABS(a)		((a) < 0 ? -(a) : (a))
++#endif
++#ifndef	howmany
++#define	howmany(x, y)	(((x) + ((y) - 1)) / (y))
++#endif
++#ifndef	roundup
++#define	roundup(x, y)	((((x) + ((y) - 1)) / (y)) * (y))
++#endif
++#ifndef	P2ROUNDUP
++#define	P2ROUNDUP(x, align)	(-(-(x) & -(align)))
++#endif
++#ifndef	P2PHASE
++#define	P2PHASE(x, align)	((x) & ((align) - 1))
++#endif
++#ifndef	P2ALIGN
++#define	P2ALIGN(x, align)	((x) & -(align))
++#endif
++#ifndef	P2NPHASE
++#define	P2NPHASE(x, align)	(-(x) & ((align) - 1))
++#endif
++#ifndef	IS_P2ALIGNED
++#define	IS_P2ALIGNED(v, a)	((((uintptr_t)(v)) & ((uintptr_t)(a) - 1)) == 0)
++#endif
++
++/*
++ * auxv_t, which liblddbg's interfaces take by pointer.  On illumos it
++ * arrives through the <sys/procfs.h> chain; here that chain is the host's.
++ * This resolves to the staged illumos header, not the host's <sys/auxv.h>,
++ * and must come after the typedefs above.
++ */
++#include <sys/auxv.h>
++
++/*
++ * illumos' <sys/int_types.h> announces the availability of 64-bit integer
++ * types this way, and <gelf.h> refuses to compile without it.  We are not
++ * staging <sys/int_types.h> -- it redefines the whole intN_t family and
++ * collides with the host's <stdint.h> -- so state the fact directly.
++ */
++#ifndef	_INT64_TYPE
++#define	_INT64_TYPE
++#endif
++#ifndef	_LONGLONG_TYPE
++#define	_LONGLONG_TYPE
++#endif
++
++/*
++ * illumos' <sys/param.h> exposes the runtime page size as PAGESIZE.
++ */
++#ifndef	PAGESIZE
++#include <unistd.h>
++#define	PAGESIZE	((size_t)sysconf(_SC_PAGESIZE))
++#endif
++
++/*
++ * From illumos' <sys/time.h>.
++ */
++#ifndef	SEC
++#define	SEC		1
++#endif
++#ifndef	MILLISEC
++#define	MILLISEC	1000
++#endif
++#ifndef	MICROSEC
++#define	MICROSEC	1000000
++#endif
++#ifndef	NANOSEC
++#define	NANOSEC		1000000000
++#endif
++
++/*
++ * From illumos' <limits.h>; the host's has no notion of message catalogues.
++ */
++#ifndef	NL_MSGMAX
++#define	NL_MSGMAX	32767
++#endif
++#ifndef	NL_SETMAX
++#define	NL_SETMAX	255
++#endif
++#ifndef	NL_TEXTMAX
++#define	NL_TEXTMAX	2048
++#endif
++
 +
 +/*
 + * illumos' <sys/sysmacros.h> carries ARRAY_SIZE, but that header is
@@ -471,41 +962,43 @@ index ff62f992f1..14dc358dd0 100644
 + * through the gate's <stdlib.h>, which a foreign host does not see.
 + */
 +extern long long strtonum(const char *, long long, long long, const char **);
- #ifdef	__cplusplus
- }
- #endif
- 
--#endif	/* _SGS_NATIVE_COMPAT_H */
++#ifdef	__cplusplus
++}
++#endif
++
 +#endif	/* _ONBLD_COMPAT_H */
-diff --git a/usr/src/tools/ctf/native/native_support.c b/usr/src/tools/libcompat/common/native_support.c
-similarity index 62%
-rename from usr/src/tools/ctf/native/native_support.c
-rename to usr/src/tools/libcompat/common/native_support.c
-index 2e976de74f..b5d7bffee8 100644
---- a/usr/src/tools/ctf/native/native_support.c
+diff --git a/usr/src/tools/libcompat/common/native_support.c b/usr/src/tools/libcompat/common/native_support.c
+new file mode 100644
+index 0000000000..b5d7bffee8
+--- /dev/null
 +++ b/usr/src/tools/libcompat/common/native_support.c
-@@ -10,19 +10,67 @@
-  */
- 
- /*
-- * The handful of libc entry points that the CTF sources use and that a foreign
-- * libc does not have.  Built into the native libctf, which ctfconvert(1) and
-- * ctfmerge(1) both link against, so one copy serves all three.
+@@ -0,0 +1,168 @@
++/*
++ * This file and its contents are supplied under the terms of the
++ * Common Development and Distribution License ("CDDL"), version 1.0.
++ * You may only use this file in accordance with the terms of version
++ * 1.0 of the CDDL.
++ *
++ * A full copy of the text of the CDDL should have accompanied this
++ * source.  A copy of the CDDL is also available via the Internet at
++ * http://www.illumos.org/license/CDDL.
++ */
++
++/*
 + * The handful of definitions that a foreign libc, and the objects dropped
 + * from the native libconv, would otherwise leave undefined.  Built into
 + * libconv, which everything else here links against.
-  */
- 
- #include <stdio.h>
- #include <stdlib.h>
++ */
++
++#include <stdio.h>
++#include <stdlib.h>
 +#include <inttypes.h>
 +#include <stdarg.h>
- #include <string.h>
- #include <errno.h>
- #include <limits.h>
--#include <inttypes.h>
- #include <unistd.h>
- 
++#include <string.h>
++#include <errno.h>
++#include <limits.h>
++#include <unistd.h>
++
 +/*
 + * On illumos this is a .note section plus a string, generated from
 + * libconv/common/bld_vernote.ksh by ksh93 and the illumos assembler.  Only
@@ -553,77 +1046,213 @@ index 2e976de74f..b5d7bffee8 100644
 + * job.  `assfail3()` above already covered what the two files shared.
 + * ---------------------------------------------------------------------------
 + */
- /*
-  * Declared rather than reached through <errno.h>, which only exposes it under
-  * _GNU_SOURCE -- and this file is compiled with the same flags as the rest of
-@@ -32,9 +80,14 @@
- extern char *program_invocation_name;
- 
- /*
-- * ASSERT()/VERIFY() and ASSERT3*()/VERIFY3*() from <sys/debug.h>.  On illumos
-- * both live in libc.
++/*
++ * Declared rather than reached through <errno.h>, which only exposes it under
++ * _GNU_SOURCE -- and this file is compiled with the same flags as the rest of
++ * libctf, where turning that on would quietly swap strerror_r() and friends
++ * for their GNU variants.
++ */
++extern char *program_invocation_name;
++
++/*
 + * ASSERT()/VERIFY() from <sys/debug.h>.  On illumos this lives in libc.
 + *
 + * Weak, unlike assfail3() above, because cmd/sgs/common/assfail.c has its own
 + * and libconv links both that and this file.  A strong definition here would
 + * be a duplicate symbol for every sgs consumer; weak lets the one that comes
 + * with the sources win and leaves this as the fallback for everyone else.
-  */
++ */
 +__attribute__((__weak__))
- void
- assfail(const char *a, const char *f, int l)
- {
-@@ -43,16 +96,6 @@ assfail(const char *a, const char *f, int l)
- 	abort();
- }
- 
--void
--assfail3(const char *a, uintmax_t lv, const char *op, uintmax_t rv,
--    const char *f, int l)
--{
--	(void) fprintf(stderr,
--	    "assertion failed: %s (0x%jx %s 0x%jx), file: %s, line: %d\n",
--	    a, lv, op, rv, f, l);
--	abort();
--}
--
- /*
-  * getexecname(3C).  tools/ctf/common/utils.c uses it to derive the program
-  * name for diagnostics.  glibc's nearest equivalent is program_invocation_name,
-@@ -122,3 +165,4 @@ out:
- 
- 	return (val);
- }
++void
++assfail(const char *a, const char *f, int l)
++{
++	(void) fprintf(stderr, "assertion failed: %s, file: %s, line: %d\n",
++	    a, f, l);
++	abort();
++}
 +
-diff --git a/usr/src/tools/ctf/native/synch.h b/usr/src/tools/libcompat/common/synch.h
-similarity index 73%
-rename from usr/src/tools/ctf/native/synch.h
-rename to usr/src/tools/libcompat/common/synch.h
-index f260e49e8d..fdb029d558 100644
---- a/usr/src/tools/ctf/native/synch.h
++/*
++ * getexecname(3C).  tools/ctf/common/utils.c uses it to derive the program
++ * name for diagnostics.  glibc's nearest equivalent is program_invocation_name,
++ * which is the argv[0] the process was started with rather than the resolved
++ * path; that is the same thing for every caller here, and /proc/self/exe is
++ * the fallback when it is unset.
++ */
++const char *
++getexecname(void)
++{
++	static char path[PATH_MAX];
++	ssize_t n;
++
++	if (program_invocation_name != NULL && *program_invocation_name != '\0')
++		return (program_invocation_name);
++
++	n = readlink("/proc/self/exe", path, sizeof (path) - 1);
++	if (n < 0)
++		return (NULL);
++	path[n] = '\0';
++
++	return (path);
++}
++
++/*
++ * strtonum(3C), which illumos took from OpenBSD.  ctfconvert(1) uses it to
++ * parse -b/-j.  This is the documented behaviour: on success the value is
++ * returned and *errstrp is set to NULL; on failure 0 is returned and *errstrp
++ * names the problem, with errno set to EINVAL or ERANGE.
++ */
++long long
++strtonum(const char *numstr, long long minval, long long maxval,
++    const char **errstrp)
++{
++	const char *errstr = NULL;
++	long long val = 0;
++	char *end;
++	int saved_errno = errno;
++
++	if (minval > maxval) {
++		errstr = "invalid";
++		errno = EINVAL;
++		goto out;
++	}
++
++	errno = 0;
++	val = strtoll(numstr, &end, 10);
++	if (end == numstr || *end != '\0') {
++		errstr = "invalid";
++		errno = EINVAL;
++		val = 0;
++	} else if ((val == LLONG_MIN && errno == ERANGE) || val < minval) {
++		errstr = "too small";
++		errno = ERANGE;
++		val = 0;
++	} else if ((val == LLONG_MAX && errno == ERANGE) || val > maxval) {
++		errstr = "too large";
++		errno = ERANGE;
++		val = 0;
++	}
++
++out:
++	if (errstrp != NULL)
++		*errstrp = errstr;
++	if (errstr == NULL)
++		errno = saved_errno;
++
++	return (val);
++}
++
+diff --git a/usr/src/tools/libcompat/common/synch.h b/usr/src/tools/libcompat/common/synch.h
+new file mode 100644
+index 0000000000..fdb029d558
+--- /dev/null
 +++ b/usr/src/tools/libcompat/common/synch.h
-@@ -10,13 +10,12 @@
-  */
- 
- /*
-- * illumos' <synch.h> over POSIX threads, for the native build of the CTF
-- * tools.  See the comment in thread.h for why this is a shim rather than the
-- * real header.
+@@ -0,0 +1,216 @@
++/*
++ * This file and its contents are supplied under the terms of the
++ * Common Development and Distribution License ("CDDL"), version 1.0.
++ * You may only use this file in accordance with the terms of version
++ * 1.0 of the CDDL.
++ *
++ * A full copy of the text of the CDDL should have accompanied this
++ * source.  A copy of the CDDL is also available via the Internet at
++ * http://www.illumos.org/license/CDDL.
++ */
++
++/*
 + * illumos' <synch.h> over POSIX threads, for the native build.  See the
 + * comment in thread.h for why this is a shim rather than the real header.
-  */
- 
--#ifndef	_CTF_NATIVE_SYNCH_H
--#define	_CTF_NATIVE_SYNCH_H
++ */
++
 +#ifndef	_ONBLD_COMPAT_SYNCH_H
 +#define	_ONBLD_COMPAT_SYNCH_H
- 
- #include <pthread.h>
- #include <stdlib.h>
-@@ -105,6 +104,49 @@ mutex_unlock(mutex_t *mp)
- 	return (pthread_mutex_unlock(mp));
- }
- 
++
++#include <pthread.h>
++#include <stdlib.h>
++#include <errno.h>
++
++#ifdef	__cplusplus
++extern "C" {
++#endif
++
++typedef pthread_mutex_t		mutex_t;
++typedef pthread_rwlock_t	rwlock_t;
++typedef pthread_cond_t		cond_t;
++
++#define	DEFAULTMUTEX	PTHREAD_MUTEX_INITIALIZER
++#define	DEFAULTRWLOCK	PTHREAD_RWLOCK_INITIALIZER
++#define	DEFAULTCV	PTHREAD_COND_INITIALIZER
++
++#define	USYNC_THREAD	0
++#define	USYNC_PROCESS	1
++
++/*
++ * The lock "types" illumos ORs into the mutex_init() type argument.  Only
++ * LOCK_ERRORCHECK is used here (lib/mergeq/mergeq.c), and it has a direct
++ * pthread equivalent.
++ */
++#define	LOCK_NORMAL		0x0
++#define	LOCK_ERRORCHECK		0x2
++#define	LOCK_RECURSIVE		0x4
++
++/*
++ * illumos' ERRORCHECKMUTEX is a statically initialised mutex of type
++ * LOCK_ERRORCHECK; PTHREAD_ERRORCHECK_MUTEX_INITIALIZER_NP is the same thing
++ * on glibc.
++ */
++#ifdef	PTHREAD_ERRORCHECK_MUTEX_INITIALIZER_NP
++#define	ERRORCHECKMUTEX	PTHREAD_ERRORCHECK_MUTEX_INITIALIZER_NP
++#else
++#define	ERRORCHECKMUTEX	PTHREAD_MUTEX_INITIALIZER
++#endif
++
++static inline int
++mutex_init(mutex_t *mp, int type, void *arg __attribute__((__unused__)))
++{
++	pthread_mutexattr_t attr;
++	int ret;
++
++	if ((type & ~(USYNC_THREAD | LOCK_ERRORCHECK | LOCK_RECURSIVE)) != 0)
++		return (EINVAL);
++
++	if ((type & (LOCK_ERRORCHECK | LOCK_RECURSIVE)) == 0)
++		return (pthread_mutex_init(mp, NULL));
++
++	if ((ret = pthread_mutexattr_init(&attr)) != 0)
++		return (ret);
++	ret = pthread_mutexattr_settype(&attr,
++	    (type & LOCK_RECURSIVE) != 0 ? PTHREAD_MUTEX_RECURSIVE :
++	    PTHREAD_MUTEX_ERRORCHECK);
++	if (ret == 0)
++		ret = pthread_mutex_init(mp, &attr);
++	(void) pthread_mutexattr_destroy(&attr);
++
++	return (ret);
++}
++
++static inline int
++mutex_destroy(mutex_t *mp)
++{
++	return (pthread_mutex_destroy(mp));
++}
++
++static inline int
++mutex_lock(mutex_t *mp)
++{
++	return (pthread_mutex_lock(mp));
++}
++
++static inline int
++mutex_trylock(mutex_t *mp)
++{
++	return (pthread_mutex_trylock(mp));
++}
++
++static inline int
++mutex_unlock(mutex_t *mp)
++{
++	return (pthread_mutex_unlock(mp));
++}
++
 +static inline int
 +rwlock_init(rwlock_t *rw, int type __attribute__((__unused__)),
 +    void *arg __attribute__((__unused__)))
@@ -667,192 +1296,465 @@ index f260e49e8d..fdb029d558 100644
 +	return (pthread_rwlock_unlock(rw));
 +}
 +
- static inline int
- cond_init(cond_t *cvp, int type __attribute__((__unused__)),
-     void *arg __attribute__((__unused__)))
-@@ -156,9 +198,11 @@ mutex_exit(mutex_t *mp)
- }
- 
- /*
-- * POSIX exposes no way to ask whether the calling thread holds a
-- * pthread_mutex_t, so these can only answer "yes" -- the assertions that use
-- * them become vacuous rather than wrong.
++static inline int
++cond_init(cond_t *cvp, int type __attribute__((__unused__)),
++    void *arg __attribute__((__unused__)))
++{
++	return (pthread_cond_init(cvp, NULL));
++}
++
++static inline int
++cond_destroy(cond_t *cvp)
++{
++	return (pthread_cond_destroy(cvp));
++}
++
++static inline int
++cond_wait(cond_t *cvp, mutex_t *mp)
++{
++	return (pthread_cond_wait(cvp, mp));
++}
++
++static inline int
++cond_signal(cond_t *cvp)
++{
++	return (pthread_cond_signal(cvp));
++}
++
++static inline int
++cond_broadcast(cond_t *cvp)
++{
++	return (pthread_cond_broadcast(cvp));
++}
++
++/*
++ * illumos' <synch.h> also spells lock/unlock the kernel way, aborting rather
++ * than returning an error.  ctf_dwarf.c's DWARF_LOCK()/DWARF_UNLOCK() use
++ * those.
++ */
++static inline void
++mutex_enter(mutex_t *mp)
++{
++	if (pthread_mutex_lock(mp) != 0)
++		abort();
++}
++
++static inline void
++mutex_exit(mutex_t *mp)
++{
++	if (pthread_mutex_unlock(mp) != 0)
++		abort();
++}
++
++/*
 + * libelf asserts that it holds a lock before touching shared state.  POSIX
 + * exposes no way to ask whether the calling thread holds a pthread_rwlock_t
 + * or a default pthread_mutex_t, so these can only answer "yes" -- the
 + * assertions become vacuous rather than wrong.  ld is single threaded, so
 + * nothing is lost.
-  */
- #define	MUTEX_HELD(mp)		(1)
- #define	RW_LOCK_HELD(rw)	(1)
-@@ -169,4 +213,4 @@ mutex_exit(mutex_t *mp)
- }
- #endif
- 
--#endif	/* _CTF_NATIVE_SYNCH_H */
++ */
++#define	MUTEX_HELD(mp)		(1)
++#define	RW_LOCK_HELD(rw)	(1)
++#define	RW_READ_HELD(rw)	(1)
++#define	RW_WRITE_HELD(rw)	(1)
++
++#ifdef	__cplusplus
++}
++#endif
++
 +#endif	/* _ONBLD_COMPAT_SYNCH_H */
-diff --git a/usr/src/tools/sgs/native/sys/cmn_err.h b/usr/src/tools/libcompat/common/sys/cmn_err.h
-similarity index 86%
-rename from usr/src/tools/sgs/native/sys/cmn_err.h
-rename to usr/src/tools/libcompat/common/sys/cmn_err.h
-index a46f6e34e6..9fbb19c30a 100644
---- a/usr/src/tools/sgs/native/sys/cmn_err.h
+diff --git a/usr/src/tools/libcompat/common/sys/cmn_err.h b/usr/src/tools/libcompat/common/sys/cmn_err.h
+new file mode 100644
+index 0000000000..9fbb19c30a
+--- /dev/null
 +++ b/usr/src/tools/libcompat/common/sys/cmn_err.h
-@@ -15,8 +15,8 @@
-  * plumbing that has no meaning here.
-  */
- 
--#ifndef	_SGS_NATIVE_SYS_CMN_ERR_H
--#define	_SGS_NATIVE_SYS_CMN_ERR_H
+@@ -0,0 +1,31 @@
++/*
++ * This file and its contents are supplied under the terms of the
++ * Common Development and Distribution License ("CDDL"), version 1.0.
++ * You may only use this file in accordance with the terms of version
++ * 1.0 of the CDDL.
++ *
++ * A full copy of the text of the CDDL should have accompanied this
++ * source.  A copy of the CDDL is also available via the Internet at
++ * http://www.illumos.org/license/CDDL.
++ */
++
++/*
++ * A stand-in for illumos' <sys/cmn_err.h> for the native build.  common/avl
++ * includes it solely for panic(); the rest of that header is kernel console
++ * plumbing that has no meaning here.
++ */
++
 +#ifndef	_ONBLD_COMPAT_SYS_CMN_ERR_H
 +#define	_ONBLD_COMPAT_SYS_CMN_ERR_H
- 
- #ifdef	__cplusplus
- extern "C" {
-@@ -28,4 +28,4 @@ extern void panic(const char *, ...) __attribute__((__noreturn__));
- }
- #endif
- 
--#endif	/* _SGS_NATIVE_SYS_CMN_ERR_H */
++
++#ifdef	__cplusplus
++extern "C" {
++#endif
++
++extern void panic(const char *, ...) __attribute__((__noreturn__));
++
++#ifdef	__cplusplus
++}
++#endif
++
 +#endif	/* _ONBLD_COMPAT_SYS_CMN_ERR_H */
-diff --git a/usr/src/tools/ctf/native/sys/elf.h b/usr/src/tools/libcompat/common/sys/elf.h
-similarity index 91%
-rename from usr/src/tools/ctf/native/sys/elf.h
-rename to usr/src/tools/libcompat/common/sys/elf.h
-index 3dfb76269d..8a8e5bde90 100644
---- a/usr/src/tools/ctf/native/sys/elf.h
+diff --git a/usr/src/tools/libcompat/common/sys/elf.h b/usr/src/tools/libcompat/common/sys/elf.h
+new file mode 100644
+index 0000000000..8a8e5bde90
+--- /dev/null
 +++ b/usr/src/tools/libcompat/common/sys/elf.h
-@@ -23,9 +23,9 @@
-  * chain that collides head-on with the host libc.
-  */
- 
--#ifndef	_CTF_NATIVE_SYS_ELF_H
--#define	_CTF_NATIVE_SYS_ELF_H
+@@ -0,0 +1,31 @@
++/*
++ * This file and its contents are supplied under the terms of the
++ * Common Development and Distribution License ("CDDL"), version 1.0.
++ * You may only use this file in accordance with the terms of version
++ * 1.0 of the CDDL.
++ *
++ * A full copy of the text of the CDDL should have accompanied this
++ * source.  A copy of the CDDL is also available via the Internet at
++ * http://www.illumos.org/license/CDDL.
++ */
++
++/*
++ * On illumos, <sys/elf.h> is where the ELF type and constant definitions live,
++ * and $(SRC)/common/ctf/ctf_impl.h includes it by that name.  glibc puts them
++ * in <elf.h> and ships a <sys/elf.h> whose entire content is
++ *
++ *	#error This header is unsupported on x86-64.
++ *
++ * Because a -I is searched ahead of the host's own directories and the
++ * -idirafter on $(SRC)/uts/common is searched behind them, this shim is what
++ * <sys/elf.h> resolves to for the CTF tools -- and illumos' own <sys/elf.h>
++ * is deliberately not used, since it would drag in the illumos <sys/types.h>
++ * chain that collides head-on with the host libc.
++ */
++
 +#ifndef	_ONBLD_COMPAT_SYS_ELF_H
 +#define	_ONBLD_COMPAT_SYS_ELF_H
- 
- #include <elf.h>
- 
--#endif	/* _CTF_NATIVE_SYS_ELF_H */
++
++#include <elf.h>
++
 +#endif	/* _ONBLD_COMPAT_SYS_ELF_H */
-diff --git a/usr/src/tools/sgs/native/sys/mman.h b/usr/src/tools/libcompat/common/sys/mman.h
-similarity index 93%
-rename from usr/src/tools/sgs/native/sys/mman.h
-rename to usr/src/tools/libcompat/common/sys/mman.h
-index 1ec3e23cf8..3cf369f751 100644
---- a/usr/src/tools/sgs/native/sys/mman.h
+diff --git a/usr/src/tools/libcompat/common/sys/mman.h b/usr/src/tools/libcompat/common/sys/mman.h
+new file mode 100644
+index 0000000000..3cf369f751
+--- /dev/null
 +++ b/usr/src/tools/libcompat/common/sys/mman.h
-@@ -16,8 +16,8 @@
-  * results the runtime linker reports.
-  */
- 
--#ifndef	_SGS_NATIVE_SYS_MMAN_H
--#define	_SGS_NATIVE_SYS_MMAN_H
+@@ -0,0 +1,54 @@
++/*
++ * This file and its contents are supplied under the terms of the
++ * Common Development and Distribution License ("CDDL"), version 1.0.
++ * You may only use this file in accordance with the terms of version
++ * 1.0 of the CDDL.
++ *
++ * A full copy of the text of the CDDL should have accompanied this
++ * source.  A copy of the CDDL is also available via the Internet at
++ * http://www.illumos.org/license/CDDL.
++ */
++
++/*
++ * The host's <sys/mman.h> plus the mmapobj(2) vocabulary from illumos'.
++ * rtld.h and liblddbg describe mappings in terms of mmapobj_result_t; the
++ * link-editor never calls mmapobj(2) itself, it only needs the shape of the
++ * results the runtime linker reports.
++ */
++
 +#ifndef	_ONBLD_COMPAT_SYS_MMAN_H
 +#define	_ONBLD_COMPAT_SYS_MMAN_H
- 
- #include_next <sys/mman.h>
- 
-@@ -51,4 +51,4 @@ typedef struct mmapobj_result {
- }
- #endif
- 
--#endif	/* _SGS_NATIVE_SYS_MMAN_H */
++
++#include_next <sys/mman.h>
++
++#include <sys/types.h>
++
++#ifdef	__cplusplus
++extern "C" {
++#endif
++
++#define	MMOBJ_PADDING		0x10000
++#define	MMOBJ_INTERPRET		0x20000
++#define	MMOBJ_ALL_FLAGS		(MMOBJ_PADDING | MMOBJ_INTERPRET)
++
++#define	MR_PADDING	0x1
++#define	MR_HDR_ELF	0x2
++#define	MR_HDR_AOUT	0x3
++
++#define	MR_TYPE_MASK	0x0000ffff
++#define	MR_GET_TYPE(val)	((val) & MR_TYPE_MASK)
++
++typedef struct mmapobj_result {
++	caddr_t		mr_addr;	/* mapping address */
++	size_t		mr_msize;	/* mapping size */
++	size_t		mr_fsize;	/* file size */
++	size_t		mr_offset;	/* offset into file */
++	uint_t		mr_prot;	/* the protections provided */
++	uint_t		mr_flags;	/* info on the mapping */
++} mmapobj_result_t;
++
++#ifdef	__cplusplus
++}
++#endif
++
 +#endif	/* _ONBLD_COMPAT_SYS_MMAN_H */
-diff --git a/usr/src/tools/sgs/native/sys/systeminfo.h b/usr/src/tools/libcompat/common/sys/systeminfo.h
-similarity index 94%
-rename from usr/src/tools/sgs/native/sys/systeminfo.h
-rename to usr/src/tools/libcompat/common/sys/systeminfo.h
-index c01b61d0a3..735557968d 100644
---- a/usr/src/tools/sgs/native/sys/systeminfo.h
+diff --git a/usr/src/tools/libcompat/common/sys/systeminfo.h b/usr/src/tools/libcompat/common/sys/systeminfo.h
+new file mode 100644
+index 0000000000..735557968d
+--- /dev/null
 +++ b/usr/src/tools/libcompat/common/sys/systeminfo.h
-@@ -21,8 +21,8 @@
-  * $PLATFORM in runpaths, and building the isalist.
-  */
- 
--#ifndef	_SGS_NATIVE_SYS_SYSTEMINFO_H
--#define	_SGS_NATIVE_SYS_SYSTEMINFO_H
+@@ -0,0 +1,105 @@
++/*
++ * This file and its contents are supplied under the terms of the
++ * Common Development and Distribution License ("CDDL"), version 1.0.
++ * You may only use this file in accordance with the terms of version
++ * 1.0 of the CDDL.
++ *
++ * A full copy of the text of the CDDL should have accompanied this
++ * source.  A copy of the CDDL is also available via the Internet at
++ * http://www.illumos.org/license/CDDL.
++ */
++
++/*
++ * illumos' sysinfo(2) over uname(2), for the native build.
++ *
++ * Note that illumos' own <sys/systeminfo.h> is deliberately NOT staged into
++ * ../include: it only declares sysinfo(), and the host libc has no such
++ * function -- `sysinfo' there is an unrelated Linux syscall taking a `struct
++ * sysinfo *'.  Defining our own here keeps the two from meeting.
++ *
++ * ld(1) reaches sysinfo(2) for exactly three things: expanding $MACHINE and
++ * $PLATFORM in runpaths, and building the isalist.
++ */
++
 +#ifndef	_ONBLD_COMPAT_SYS_SYSTEMINFO_H
 +#define	_ONBLD_COMPAT_SYS_SYSTEMINFO_H
- 
- #include <string.h>
- #include <sys/utsname.h>
-@@ -102,4 +102,4 @@ sysinfo(int command, char *buf, long count)
- }
- #endif
- 
--#endif	/* _SGS_NATIVE_SYS_SYSTEMINFO_H */
++
++#include <string.h>
++#include <sys/utsname.h>
++
++#ifdef	__cplusplus
++extern "C" {
++#endif
++
++#define	SI_SYSNAME		1
++#define	SI_HOSTNAME		2
++#define	SI_RELEASE		3
++#define	SI_VERSION		4
++#define	SI_MACHINE		5
++#define	SI_ARCHITECTURE		6
++#define	SI_HW_SERIAL		7
++#define	SI_HW_PROVIDER		8
++#define	SI_SRPC_DOMAIN		9
++#define	SI_PLATFORM		513
++#define	SI_ISALIST		514
++
++static inline long
++sysinfo(int command, char *buf, long count)
++{
++	struct utsname	un;
++	const char	*val;
++	size_t		len;
++
++	switch (command) {
++	case SI_ISALIST:
++		/*
++		 * The host has no isalist.  illumos' own sysinfo() returns -1
++		 * here on machines that predate the interface, and every
++		 * caller in the tree copes with that, so say the same.
++		 */
++		return (-1);
++	default:
++		break;
++	}
++
++	if (uname(&un) < 0)
++		return (-1);
++
++	switch (command) {
++	case SI_SYSNAME:
++		val = un.sysname;
++		break;
++	case SI_HOSTNAME:
++		val = un.nodename;
++		break;
++	case SI_RELEASE:
++		val = un.release;
++		break;
++	case SI_VERSION:
++		val = un.version;
++		break;
++	case SI_MACHINE:
++	case SI_ARCHITECTURE:
++	case SI_PLATFORM:
++		val = un.machine;
++		break;
++	default:
++		return (-1);
++	}
++
++	/* sysinfo(2) returns the size including the terminating null. */
++	len = strlen(val) + 1;
++	if (buf != NULL && count > 0) {
++		size_t n = ((size_t)count < len) ? (size_t)count : len;
++
++		(void) memcpy(buf, val, n);
++		buf[n - 1] = '\0';
++	}
++	return ((long)len);
++}
++
++#ifdef	__cplusplus
++}
++#endif
++
 +#endif	/* _ONBLD_COMPAT_SYS_SYSTEMINFO_H */
-diff --git a/usr/src/tools/sgs/native/sys/utsname.h b/usr/src/tools/libcompat/common/sys/utsname.h
-similarity index 85%
-rename from usr/src/tools/sgs/native/sys/utsname.h
-rename to usr/src/tools/libcompat/common/sys/utsname.h
-index c89dad7302..7c489e5602 100644
---- a/usr/src/tools/sgs/native/sys/utsname.h
+diff --git a/usr/src/tools/libcompat/common/sys/utsname.h b/usr/src/tools/libcompat/common/sys/utsname.h
+new file mode 100644
+index 0000000000..7c489e5602
+--- /dev/null
 +++ b/usr/src/tools/libcompat/common/sys/utsname.h
-@@ -14,8 +14,8 @@
-  * size of a struct utsname field.
-  */
- 
--#ifndef	_SGS_NATIVE_SYS_UTSNAME_H
--#define	_SGS_NATIVE_SYS_UTSNAME_H
+@@ -0,0 +1,30 @@
++/*
++ * This file and its contents are supplied under the terms of the
++ * Common Development and Distribution License ("CDDL"), version 1.0.
++ * You may only use this file in accordance with the terms of version
++ * 1.0 of the CDDL.
++ *
++ * A full copy of the text of the CDDL should have accompanied this
++ * source.  A copy of the CDDL is also available via the Internet at
++ * http://www.illumos.org/license/CDDL.
++ */
++
++/*
++ * The host's <sys/utsname.h> plus SYS_NMLN, which is how illumos spells the
++ * size of a struct utsname field.
++ */
++
 +#ifndef	_ONBLD_COMPAT_SYS_UTSNAME_H
 +#define	_ONBLD_COMPAT_SYS_UTSNAME_H
- 
- #include_next <sys/utsname.h>
- 
-@@ -27,4 +27,4 @@
- #endif
- #endif
- 
--#endif	/* _SGS_NATIVE_SYS_UTSNAME_H */
++
++#include_next <sys/utsname.h>
++
++#ifndef	SYS_NMLN
++#ifdef	_UTSNAME_LENGTH
++#define	SYS_NMLN	_UTSNAME_LENGTH
++#else
++#define	SYS_NMLN	257
++#endif
++#endif
++
 +#endif	/* _ONBLD_COMPAT_SYS_UTSNAME_H */
-diff --git a/usr/src/tools/sgs/native/sys/varargs.h b/usr/src/tools/libcompat/common/sys/varargs.h
-similarity index 83%
-rename from usr/src/tools/sgs/native/sys/varargs.h
-rename to usr/src/tools/libcompat/common/sys/varargs.h
-index d19c5f6494..18453b021f 100644
---- a/usr/src/tools/sgs/native/sys/varargs.h
+diff --git a/usr/src/tools/libcompat/common/sys/varargs.h b/usr/src/tools/libcompat/common/sys/varargs.h
+new file mode 100644
+index 0000000000..18453b021f
+--- /dev/null
 +++ b/usr/src/tools/libcompat/common/sys/varargs.h
-@@ -14,9 +14,9 @@
-  * <stdarg.h>.  The host has no such header, so redirect.
-  */
- 
--#ifndef	_SGS_NATIVE_SYS_VARARGS_H
--#define	_SGS_NATIVE_SYS_VARARGS_H
+@@ -0,0 +1,22 @@
++/*
++ * This file and its contents are supplied under the terms of the
++ * Common Development and Distribution License ("CDDL"), version 1.0.
++ * You may only use this file in accordance with the terms of version
++ * 1.0 of the CDDL.
++ *
++ * A full copy of the text of the CDDL should have accompanied this
++ * source.  A copy of the CDDL is also available via the Internet at
++ * http://www.illumos.org/license/CDDL.
++ */
++
++/*
++ * illumos' <sys/varargs.h> is, for a userland ISO C compilation, exactly
++ * <stdarg.h>.  The host has no such header, so redirect.
++ */
++
 +#ifndef	_ONBLD_COMPAT_SYS_VARARGS_H
 +#define	_ONBLD_COMPAT_SYS_VARARGS_H
- 
- #include <stdarg.h>
- 
--#endif	/* _SGS_NATIVE_SYS_VARARGS_H */
++
++#include <stdarg.h>
++
 +#endif	/* _ONBLD_COMPAT_SYS_VARARGS_H */
-diff --git a/usr/src/tools/sgs/native/thread.h b/usr/src/tools/libcompat/common/thread.h
-similarity index 68%
-rename from usr/src/tools/sgs/native/thread.h
-rename to usr/src/tools/libcompat/common/thread.h
-index 9badac0e2d..8b4ed2ef1e 100644
---- a/usr/src/tools/sgs/native/thread.h
+diff --git a/usr/src/tools/libcompat/common/thread.h b/usr/src/tools/libcompat/common/thread.h
+new file mode 100644
+index 0000000000..8b4ed2ef1e
+--- /dev/null
 +++ b/usr/src/tools/libcompat/common/thread.h
-@@ -20,11 +20,12 @@
-  * onto pthreads directly.
-  */
- 
--#ifndef	_SGS_NATIVE_THREAD_H
--#define	_SGS_NATIVE_THREAD_H
+@@ -0,0 +1,133 @@
++/*
++ * This file and its contents are supplied under the terms of the
++ * Common Development and Distribution License ("CDDL"), version 1.0.
++ * You may only use this file in accordance with the terms of version
++ * 1.0 of the CDDL.
++ *
++ * A full copy of the text of the CDDL should have accompanied this
++ * source.  A copy of the CDDL is also available via the Internet at
++ * http://www.illumos.org/license/CDDL.
++ */
++
++/*
++ * illumos' <thread.h> over POSIX threads, for the native build.
++ *
++ * Staging illumos' own <thread.h> is not an option: it reaches <synch.h>,
++ * <sys/machlock.h>, <sys/time_impl.h> and <sys/int_types.h>, i.e. the whole
++ * illumos type system, which then collides head-on with the host libc's.
++ * The link-editor's actual use of the Solaris threads API is tiny -- libelf
++ * locking and one thread-specific error buffer -- and every piece of it maps
++ * onto pthreads directly.
++ */
++
 +#ifndef	_ONBLD_COMPAT_THREAD_H
 +#define	_ONBLD_COMPAT_THREAD_H
- 
- #include <pthread.h>
- #include <synch.h>
++
++#include <pthread.h>
++#include <synch.h>
 +#include <errno.h>
- 
- #ifdef	__cplusplus
- extern "C" {
-@@ -74,6 +75,39 @@ thr_getspecific(thread_key_t key)
- 	return (pthread_getspecific(key));
- }
- 
++
++#ifdef	__cplusplus
++extern "C" {
++#endif
++
++typedef pthread_t	thread_t;
++typedef pthread_key_t	thread_key_t;
++
++/*
++ * illumos spells "this key has not been created yet" as THR_ONCE_KEY, a
++ * reserved key value of 0.  pthread_key_create() hands out 0 as an ordinary
++ * key, so pick a sentinel it will never return instead.
++ */
++#define	THR_ONCE_KEY	((pthread_key_t)-1)
++
++#define	THR_BOUND	0x00000001
++#define	THR_DETACHED	0x00000040
++
++static inline int
++thr_keycreate(thread_key_t *keyp, void (*destructor)(void *))
++{
++	return (pthread_key_create(keyp, destructor));
++}
++
++/*
++ * illumos' thr_keycreate_once() creates the key exactly once across all
++ * threads, keyed on *keyp still holding THR_ONCE_KEY.  With ld being single
++ * threaded, "has it been created yet" is an ordinary test.
++ */
++static inline int
++thr_keycreate_once(thread_key_t *keyp, void (*destructor)(void *))
++{
++	if (*keyp == (thread_key_t)THR_ONCE_KEY)
++		return (pthread_key_create(keyp, destructor));
++	return (0);
++}
++
++static inline int
++thr_setspecific(thread_key_t key, void *value)
++{
++	return (pthread_setspecific(key, value));
++}
++
++static inline void *
++thr_getspecific(thread_key_t key)
++{
++	return (pthread_getspecific(key));
++}
++
 +/*
 + * illumos' thr_create() takes a stack address and size up front and returns
 + * the new thread's id through its last argument.  workq.c passes NULL/0 for
@@ -886,14 +1788,28 @@ index 9badac0e2d..8b4ed2ef1e 100644
 +	return (pthread_join(wait_for, status));
 +}
 +
- static inline thread_t
- thr_self(void)
- {
-@@ -96,4 +130,4 @@ thr_main(void)
- }
- #endif
- 
--#endif	/* _SGS_NATIVE_THREAD_H */
++static inline thread_t
++thr_self(void)
++{
++	return (pthread_self());
++}
++
++/*
++ * illumos' thr_main() reports whether the caller is the initial thread, and
++ * returns -1 when libthread is not linked in at all -- which is what callers
++ * treat as "single threaded, no locking needed".  ld is single threaded, so
++ * that is always the honest answer here.
++ */
++static inline int
++thr_main(void)
++{
++	return (-1);
++}
++
++#ifdef	__cplusplus
++}
++#endif
++
 +#endif	/* _ONBLD_COMPAT_THREAD_H */
 diff --git a/usr/src/tools/sgs/Makefile.com b/usr/src/tools/sgs/Makefile.com
 index d1a86a0618..aa81120c02 100644
@@ -923,6 +1839,180 @@ index b3e2aaa42f..b426269f0e 100644
  		$(POST_PROCESS_O)
  
  pics/assfail.o:		$(SGSCOMMON)/assfail.c
+diff --git a/usr/src/tools/sgs/native/native_compat.h b/usr/src/tools/sgs/native/native_compat.h
+deleted file mode 100644
+index ff62f992f1..0000000000
+--- a/usr/src/tools/sgs/native/native_compat.h
++++ /dev/null
+@@ -1,168 +0,0 @@
+-/*
+- * This file and its contents are supplied under the terms of the
+- * Common Development and Distribution License ("CDDL"), version 1.0.
+- * You may only use this file in accordance with the terms of version
+- * 1.0 of the CDDL.
+- *
+- * A full copy of the text of the CDDL should have accompanied this
+- * source.  A copy of the CDDL is also available via the Internet at
+- * http://www.illumos.org/license/CDDL.
+- */
+-
+-/*
+- * Compatibility shims for building the native link-editor on a host whose
+- * libc is not illumos'.  Force-included (via -include) from
+- * tools/sgs/Makefile.com, so it must be safe to include first, before
+- * anything else.
+- *
+- * The headers staged by tools/sgs/include are illumos' own, and they expect
+- * illumos' <sys/types.h> to have already supplied the "_t" spellings of the
+- * base integer types and boolean_t.  A foreign libc supplies none of that,
+- * so define it here.  Nothing in here is illumos-specific behaviour; it is
+- * purely the vocabulary the staged headers assume.
+- */
+-
+-#ifndef	_SGS_NATIVE_COMPAT_H
+-#define	_SGS_NATIVE_COMPAT_H
+-
+-
+-/*
+- * On illumos every sys header reaches <sys/isa_defs.h> by way of
+- * <sys/param.h>.  Here <sys/param.h> is the host's, so the staged illumos
+- * headers would never see _BIT_FIELDS_LTOH, _LP64 and friends.  Pull it in
+- * up front instead.
+- */
+-#include <sys/isa_defs.h>
+-
+-/*
+- * <sys/ccompile.h> supplies __GNU_INLINE and the __sun_attr__ family that the
+- * staged headers use; on illumos it too arrives via <sys/types.h>.
+- */
+-#include <sys/ccompile.h>
+-
+-#include <stddef.h>
+-#include <stdint.h>
+-#include <sys/types.h>
+-/*
+- * illumos' <strings.h> pulls in <string.h>; the host's does not, and the sgs
+- * sources rely on the illumos behaviour.
+- */
+-#include <string.h>
+-#include <strings.h>
+-
+-#ifdef	__cplusplus
+-extern "C" {
+-#endif
+-
+-#ifndef	_BOOLEAN_T
+-#define	_BOOLEAN_T
+-typedef enum { B_FALSE, B_TRUE } boolean_t;
+-#endif
+-
+-typedef unsigned char		uchar_t;
+-typedef unsigned short		ushort_t;
+-typedef unsigned int		uint_t;
+-typedef unsigned long		ulong_t;
+-typedef long long		longlong_t;
+-typedef unsigned long long	u_longlong_t;
+-typedef long long		hrtime_t;
+-
+-
+-/*
+- * illumos' <sys/sysmacros.h> carries these; the host's has only the
+- * major/minor/makedev trio, so a bare #include silently loses them.
+- */
+-#ifndef	MAX
+-#define	MAX(a, b)	((a) < (b) ? (b) : (a))
+-#endif
+-#ifndef	MIN
+-#define	MIN(a, b)	((a) > (b) ? (b) : (a))
+-#endif
+-#ifndef	ABS
+-#define	ABS(a)		((a) < 0 ? -(a) : (a))
+-#endif
+-#ifndef	howmany
+-#define	howmany(x, y)	(((x) + ((y) - 1)) / (y))
+-#endif
+-#ifndef	roundup
+-#define	roundup(x, y)	((((x) + ((y) - 1)) / (y)) * (y))
+-#endif
+-#ifndef	P2ROUNDUP
+-#define	P2ROUNDUP(x, align)	(-(-(x) & -(align)))
+-#endif
+-#ifndef	P2PHASE
+-#define	P2PHASE(x, align)	((x) & ((align) - 1))
+-#endif
+-#ifndef	P2ALIGN
+-#define	P2ALIGN(x, align)	((x) & -(align))
+-#endif
+-#ifndef	P2NPHASE
+-#define	P2NPHASE(x, align)	(-(x) & ((align) - 1))
+-#endif
+-#ifndef	IS_P2ALIGNED
+-#define	IS_P2ALIGNED(v, a)	((((uintptr_t)(v)) & ((uintptr_t)(a) - 1)) == 0)
+-#endif
+-
+-/*
+- * auxv_t, which liblddbg's interfaces take by pointer.  On illumos it
+- * arrives through the <sys/procfs.h> chain; here that chain is the host's.
+- * This resolves to the staged illumos header, not the host's <sys/auxv.h>,
+- * and must come after the typedefs above.
+- */
+-#include <sys/auxv.h>
+-
+-/*
+- * illumos' <sys/int_types.h> announces the availability of 64-bit integer
+- * types this way, and <gelf.h> refuses to compile without it.  We are not
+- * staging <sys/int_types.h> -- it redefines the whole intN_t family and
+- * collides with the host's <stdint.h> -- so state the fact directly.
+- */
+-#ifndef	_INT64_TYPE
+-#define	_INT64_TYPE
+-#endif
+-#ifndef	_LONGLONG_TYPE
+-#define	_LONGLONG_TYPE
+-#endif
+-
+-/*
+- * illumos' <sys/param.h> exposes the runtime page size as PAGESIZE.
+- */
+-#ifndef	PAGESIZE
+-#include <unistd.h>
+-#define	PAGESIZE	((size_t)sysconf(_SC_PAGESIZE))
+-#endif
+-
+-/*
+- * From illumos' <sys/time.h>.
+- */
+-#ifndef	SEC
+-#define	SEC		1
+-#endif
+-#ifndef	MILLISEC
+-#define	MILLISEC	1000
+-#endif
+-#ifndef	MICROSEC
+-#define	MICROSEC	1000000
+-#endif
+-#ifndef	NANOSEC
+-#define	NANOSEC		1000000000
+-#endif
+-
+-/*
+- * From illumos' <limits.h>; the host's has no notion of message catalogues.
+- */
+-#ifndef	NL_MSGMAX
+-#define	NL_MSGMAX	32767
+-#endif
+-#ifndef	NL_SETMAX
+-#define	NL_SETMAX	255
+-#endif
+-#ifndef	NL_TEXTMAX
+-#define	NL_TEXTMAX	2048
+-#endif
+-
+-#ifdef	__cplusplus
+-}
+-#endif
+-
+-#endif	/* _SGS_NATIVE_COMPAT_H */
 diff --git a/usr/src/tools/sgs/native/native_support.c b/usr/src/tools/sgs/native/native_support.c
 deleted file mode 100644
 index bf631f3be7..0000000000
@@ -1124,3 +2214,380 @@ index f4f84a8911..0000000000
 -#endif
 -
 -#endif	/* _SGS_NATIVE_SYNCH_H */
+diff --git a/usr/src/tools/sgs/native/sys/cmn_err.h b/usr/src/tools/sgs/native/sys/cmn_err.h
+deleted file mode 100644
+index a46f6e34e6..0000000000
+--- a/usr/src/tools/sgs/native/sys/cmn_err.h
++++ /dev/null
+@@ -1,31 +0,0 @@
+-/*
+- * This file and its contents are supplied under the terms of the
+- * Common Development and Distribution License ("CDDL"), version 1.0.
+- * You may only use this file in accordance with the terms of version
+- * 1.0 of the CDDL.
+- *
+- * A full copy of the text of the CDDL should have accompanied this
+- * source.  A copy of the CDDL is also available via the Internet at
+- * http://www.illumos.org/license/CDDL.
+- */
+-
+-/*
+- * A stand-in for illumos' <sys/cmn_err.h> for the native build.  common/avl
+- * includes it solely for panic(); the rest of that header is kernel console
+- * plumbing that has no meaning here.
+- */
+-
+-#ifndef	_SGS_NATIVE_SYS_CMN_ERR_H
+-#define	_SGS_NATIVE_SYS_CMN_ERR_H
+-
+-#ifdef	__cplusplus
+-extern "C" {
+-#endif
+-
+-extern void panic(const char *, ...) __attribute__((__noreturn__));
+-
+-#ifdef	__cplusplus
+-}
+-#endif
+-
+-#endif	/* _SGS_NATIVE_SYS_CMN_ERR_H */
+diff --git a/usr/src/tools/sgs/native/sys/mman.h b/usr/src/tools/sgs/native/sys/mman.h
+deleted file mode 100644
+index 1ec3e23cf8..0000000000
+--- a/usr/src/tools/sgs/native/sys/mman.h
++++ /dev/null
+@@ -1,54 +0,0 @@
+-/*
+- * This file and its contents are supplied under the terms of the
+- * Common Development and Distribution License ("CDDL"), version 1.0.
+- * You may only use this file in accordance with the terms of version
+- * 1.0 of the CDDL.
+- *
+- * A full copy of the text of the CDDL should have accompanied this
+- * source.  A copy of the CDDL is also available via the Internet at
+- * http://www.illumos.org/license/CDDL.
+- */
+-
+-/*
+- * The host's <sys/mman.h> plus the mmapobj(2) vocabulary from illumos'.
+- * rtld.h and liblddbg describe mappings in terms of mmapobj_result_t; the
+- * link-editor never calls mmapobj(2) itself, it only needs the shape of the
+- * results the runtime linker reports.
+- */
+-
+-#ifndef	_SGS_NATIVE_SYS_MMAN_H
+-#define	_SGS_NATIVE_SYS_MMAN_H
+-
+-#include_next <sys/mman.h>
+-
+-#include <sys/types.h>
+-
+-#ifdef	__cplusplus
+-extern "C" {
+-#endif
+-
+-#define	MMOBJ_PADDING		0x10000
+-#define	MMOBJ_INTERPRET		0x20000
+-#define	MMOBJ_ALL_FLAGS		(MMOBJ_PADDING | MMOBJ_INTERPRET)
+-
+-#define	MR_PADDING	0x1
+-#define	MR_HDR_ELF	0x2
+-#define	MR_HDR_AOUT	0x3
+-
+-#define	MR_TYPE_MASK	0x0000ffff
+-#define	MR_GET_TYPE(val)	((val) & MR_TYPE_MASK)
+-
+-typedef struct mmapobj_result {
+-	caddr_t		mr_addr;	/* mapping address */
+-	size_t		mr_msize;	/* mapping size */
+-	size_t		mr_fsize;	/* file size */
+-	size_t		mr_offset;	/* offset into file */
+-	uint_t		mr_prot;	/* the protections provided */
+-	uint_t		mr_flags;	/* info on the mapping */
+-} mmapobj_result_t;
+-
+-#ifdef	__cplusplus
+-}
+-#endif
+-
+-#endif	/* _SGS_NATIVE_SYS_MMAN_H */
+diff --git a/usr/src/tools/sgs/native/sys/systeminfo.h b/usr/src/tools/sgs/native/sys/systeminfo.h
+deleted file mode 100644
+index c01b61d0a3..0000000000
+--- a/usr/src/tools/sgs/native/sys/systeminfo.h
++++ /dev/null
+@@ -1,105 +0,0 @@
+-/*
+- * This file and its contents are supplied under the terms of the
+- * Common Development and Distribution License ("CDDL"), version 1.0.
+- * You may only use this file in accordance with the terms of version
+- * 1.0 of the CDDL.
+- *
+- * A full copy of the text of the CDDL should have accompanied this
+- * source.  A copy of the CDDL is also available via the Internet at
+- * http://www.illumos.org/license/CDDL.
+- */
+-
+-/*
+- * illumos' sysinfo(2) over uname(2), for the native build.
+- *
+- * Note that illumos' own <sys/systeminfo.h> is deliberately NOT staged into
+- * ../include: it only declares sysinfo(), and the host libc has no such
+- * function -- `sysinfo' there is an unrelated Linux syscall taking a `struct
+- * sysinfo *'.  Defining our own here keeps the two from meeting.
+- *
+- * ld(1) reaches sysinfo(2) for exactly three things: expanding $MACHINE and
+- * $PLATFORM in runpaths, and building the isalist.
+- */
+-
+-#ifndef	_SGS_NATIVE_SYS_SYSTEMINFO_H
+-#define	_SGS_NATIVE_SYS_SYSTEMINFO_H
+-
+-#include <string.h>
+-#include <sys/utsname.h>
+-
+-#ifdef	__cplusplus
+-extern "C" {
+-#endif
+-
+-#define	SI_SYSNAME		1
+-#define	SI_HOSTNAME		2
+-#define	SI_RELEASE		3
+-#define	SI_VERSION		4
+-#define	SI_MACHINE		5
+-#define	SI_ARCHITECTURE		6
+-#define	SI_HW_SERIAL		7
+-#define	SI_HW_PROVIDER		8
+-#define	SI_SRPC_DOMAIN		9
+-#define	SI_PLATFORM		513
+-#define	SI_ISALIST		514
+-
+-static inline long
+-sysinfo(int command, char *buf, long count)
+-{
+-	struct utsname	un;
+-	const char	*val;
+-	size_t		len;
+-
+-	switch (command) {
+-	case SI_ISALIST:
+-		/*
+-		 * The host has no isalist.  illumos' own sysinfo() returns -1
+-		 * here on machines that predate the interface, and every
+-		 * caller in the tree copes with that, so say the same.
+-		 */
+-		return (-1);
+-	default:
+-		break;
+-	}
+-
+-	if (uname(&un) < 0)
+-		return (-1);
+-
+-	switch (command) {
+-	case SI_SYSNAME:
+-		val = un.sysname;
+-		break;
+-	case SI_HOSTNAME:
+-		val = un.nodename;
+-		break;
+-	case SI_RELEASE:
+-		val = un.release;
+-		break;
+-	case SI_VERSION:
+-		val = un.version;
+-		break;
+-	case SI_MACHINE:
+-	case SI_ARCHITECTURE:
+-	case SI_PLATFORM:
+-		val = un.machine;
+-		break;
+-	default:
+-		return (-1);
+-	}
+-
+-	/* sysinfo(2) returns the size including the terminating null. */
+-	len = strlen(val) + 1;
+-	if (buf != NULL && count > 0) {
+-		size_t n = ((size_t)count < len) ? (size_t)count : len;
+-
+-		(void) memcpy(buf, val, n);
+-		buf[n - 1] = '\0';
+-	}
+-	return ((long)len);
+-}
+-
+-#ifdef	__cplusplus
+-}
+-#endif
+-
+-#endif	/* _SGS_NATIVE_SYS_SYSTEMINFO_H */
+diff --git a/usr/src/tools/sgs/native/sys/utsname.h b/usr/src/tools/sgs/native/sys/utsname.h
+deleted file mode 100644
+index c89dad7302..0000000000
+--- a/usr/src/tools/sgs/native/sys/utsname.h
++++ /dev/null
+@@ -1,30 +0,0 @@
+-/*
+- * This file and its contents are supplied under the terms of the
+- * Common Development and Distribution License ("CDDL"), version 1.0.
+- * You may only use this file in accordance with the terms of version
+- * 1.0 of the CDDL.
+- *
+- * A full copy of the text of the CDDL should have accompanied this
+- * source.  A copy of the CDDL is also available via the Internet at
+- * http://www.illumos.org/license/CDDL.
+- */
+-
+-/*
+- * The host's <sys/utsname.h> plus SYS_NMLN, which is how illumos spells the
+- * size of a struct utsname field.
+- */
+-
+-#ifndef	_SGS_NATIVE_SYS_UTSNAME_H
+-#define	_SGS_NATIVE_SYS_UTSNAME_H
+-
+-#include_next <sys/utsname.h>
+-
+-#ifndef	SYS_NMLN
+-#ifdef	_UTSNAME_LENGTH
+-#define	SYS_NMLN	_UTSNAME_LENGTH
+-#else
+-#define	SYS_NMLN	257
+-#endif
+-#endif
+-
+-#endif	/* _SGS_NATIVE_SYS_UTSNAME_H */
+diff --git a/usr/src/tools/sgs/native/sys/varargs.h b/usr/src/tools/sgs/native/sys/varargs.h
+deleted file mode 100644
+index d19c5f6494..0000000000
+--- a/usr/src/tools/sgs/native/sys/varargs.h
++++ /dev/null
+@@ -1,22 +0,0 @@
+-/*
+- * This file and its contents are supplied under the terms of the
+- * Common Development and Distribution License ("CDDL"), version 1.0.
+- * You may only use this file in accordance with the terms of version
+- * 1.0 of the CDDL.
+- *
+- * A full copy of the text of the CDDL should have accompanied this
+- * source.  A copy of the CDDL is also available via the Internet at
+- * http://www.illumos.org/license/CDDL.
+- */
+-
+-/*
+- * illumos' <sys/varargs.h> is, for a userland ISO C compilation, exactly
+- * <stdarg.h>.  The host has no such header, so redirect.
+- */
+-
+-#ifndef	_SGS_NATIVE_SYS_VARARGS_H
+-#define	_SGS_NATIVE_SYS_VARARGS_H
+-
+-#include <stdarg.h>
+-
+-#endif	/* _SGS_NATIVE_SYS_VARARGS_H */
+diff --git a/usr/src/tools/sgs/native/thread.h b/usr/src/tools/sgs/native/thread.h
+deleted file mode 100644
+index 9badac0e2d..0000000000
+--- a/usr/src/tools/sgs/native/thread.h
++++ /dev/null
+@@ -1,99 +0,0 @@
+-/*
+- * This file and its contents are supplied under the terms of the
+- * Common Development and Distribution License ("CDDL"), version 1.0.
+- * You may only use this file in accordance with the terms of version
+- * 1.0 of the CDDL.
+- *
+- * A full copy of the text of the CDDL should have accompanied this
+- * source.  A copy of the CDDL is also available via the Internet at
+- * http://www.illumos.org/license/CDDL.
+- */
+-
+-/*
+- * illumos' <thread.h> over POSIX threads, for the native build.
+- *
+- * Staging illumos' own <thread.h> is not an option: it reaches <synch.h>,
+- * <sys/machlock.h>, <sys/time_impl.h> and <sys/int_types.h>, i.e. the whole
+- * illumos type system, which then collides head-on with the host libc's.
+- * The link-editor's actual use of the Solaris threads API is tiny -- libelf
+- * locking and one thread-specific error buffer -- and every piece of it maps
+- * onto pthreads directly.
+- */
+-
+-#ifndef	_SGS_NATIVE_THREAD_H
+-#define	_SGS_NATIVE_THREAD_H
+-
+-#include <pthread.h>
+-#include <synch.h>
+-
+-#ifdef	__cplusplus
+-extern "C" {
+-#endif
+-
+-typedef pthread_t	thread_t;
+-typedef pthread_key_t	thread_key_t;
+-
+-/*
+- * illumos spells "this key has not been created yet" as THR_ONCE_KEY, a
+- * reserved key value of 0.  pthread_key_create() hands out 0 as an ordinary
+- * key, so pick a sentinel it will never return instead.
+- */
+-#define	THR_ONCE_KEY	((pthread_key_t)-1)
+-
+-#define	THR_BOUND	0x00000001
+-#define	THR_DETACHED	0x00000040
+-
+-static inline int
+-thr_keycreate(thread_key_t *keyp, void (*destructor)(void *))
+-{
+-	return (pthread_key_create(keyp, destructor));
+-}
+-
+-/*
+- * illumos' thr_keycreate_once() creates the key exactly once across all
+- * threads, keyed on *keyp still holding THR_ONCE_KEY.  With ld being single
+- * threaded, "has it been created yet" is an ordinary test.
+- */
+-static inline int
+-thr_keycreate_once(thread_key_t *keyp, void (*destructor)(void *))
+-{
+-	if (*keyp == (thread_key_t)THR_ONCE_KEY)
+-		return (pthread_key_create(keyp, destructor));
+-	return (0);
+-}
+-
+-static inline int
+-thr_setspecific(thread_key_t key, void *value)
+-{
+-	return (pthread_setspecific(key, value));
+-}
+-
+-static inline void *
+-thr_getspecific(thread_key_t key)
+-{
+-	return (pthread_getspecific(key));
+-}
+-
+-static inline thread_t
+-thr_self(void)
+-{
+-	return (pthread_self());
+-}
+-
+-/*
+- * illumos' thr_main() reports whether the caller is the initial thread, and
+- * returns -1 when libthread is not linked in at all -- which is what callers
+- * treat as "single threaded, no locking needed".  ld is single threaded, so
+- * that is always the honest answer here.
+- */
+-static inline int
+-thr_main(void)
+-{
+-	return (-1);
+-}
+-
+-#ifdef	__cplusplus
+-}
+-#endif
+-
+-#endif	/* _SGS_NATIVE_THREAD_H */

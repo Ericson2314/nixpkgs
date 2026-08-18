@@ -1,0 +1,49 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Tue, 18 Aug 2026 02:15:10 -0400
+Subject: [PATCH] tools/libcompat: compile native_support.c against the
+ gathered headers
+
+`native_compat.h` is force-included into every compile here and reaches
+`<sys/isa_defs.h>`, which is one of the headers this makefile gathers into
+`include/`. `$(COMPAT_CPPFLAGS)` only puts `common/` on the include path, so
+the compile of `native_support.o` failed with
+
+    native_compat.h:50:10: fatal error: sys/isa_defs.h: No such file or directory
+
+Search `include/` as well, and make the object depend on `$(HDRS)` so the
+gather is ordered before the compile rather than racing it under `-j`.
+
+Assisted-By: Claude Opus 5 (claude-opus-5)
+---
+ usr/src/tools/libcompat/Makefile | 10 ++++++++--
+ 1 file changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/usr/src/tools/libcompat/Makefile b/usr/src/tools/libcompat/Makefile
+index 6043e0683c..d4468e7692 100644
+--- a/usr/src/tools/libcompat/Makefile
++++ b/usr/src/tools/libcompat/Makefile
+@@ -91,7 +91,13 @@ HDRS=		$(SYSHDRS:%=include/%) $(MACHSYSHDRS:%=include/%)
+ LIBRARY=	libcompat.a
+ OBJS=		native_support.o
+ 
+-CPPFLAGS +=	$(COMPAT_CPPFLAGS)
++#
++# $(COMPAT_CPPFLAGS) is -I on common/ plus the force-include of
++# native_compat.h.  That header reaches <sys/isa_defs.h>, which is one of the
++# gathered ones, so include/ has to be searched too -- and the gather has to
++# have happened, hence the $(HDRS) dependency on the object below.
++#
++CPPFLAGS +=	$(COMPAT_CPPFLAGS) -Iinclude
+ 
+ .KEEP_STATE:
+ 
+@@ -118,7 +124,7 @@ include/sys/types32.h: include/sys $(SRC)/uts/common/sys/types32.h
+ 	    $(SRC)/uts/common/sys/types32.h > $@
+ 	$(CHMOD) 644 $@
+ 
+-native_support.o: common/native_support.c
++native_support.o: common/native_support.c $(HDRS)
+ 	$(NATIVECC) $(NATIVE_CFLAGS) $(CPPFLAGS) -c -o $@ common/native_support.c
+ 
+ #
