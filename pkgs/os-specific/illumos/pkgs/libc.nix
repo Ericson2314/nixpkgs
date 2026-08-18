@@ -1,5 +1,6 @@
 {
   lib,
+  buildPackages,
   symlinkJoin,
   libcMinimal,
   libm,
@@ -163,17 +164,63 @@ symlinkJoin {
   # so it always loses.
   #
   # libc.so.1 already exports the whole dl* family (dlopen, dlsym, dlclose,
-  # dlerror, dladdr, dlinfo), so nothing needs libdl.so.1 at run time. Making
-  # the linker-visible libdl.so resolve to libc.so.1 means `-ldl` records
-  # DT_NEEDED libc.so.1 -- already in every closure -- so there is no filter,
-  # no second linker and no ordering sensitivity. glibc did the same when it
-  # emptied libdl in 2.34. libdl.so.1 stays for anything already linked
-  # against it.
+  # dlerror, dladdr, dlinfo), so nothing needs libdl.so.1 at run time. glibc
+  # did the same when it emptied libdl in 2.34.
+  #
+  # It must NOT be done by pointing libdl.so at libc.so.1, though, which is the
+  # obvious spelling and is what stood here. `-ldl` then records DT_NEEDED
+  # **libc.so.1**, at the position -ldl occupied on the link line -- which for
+  # anything using pkg-config is early, ahead of the -lstdc++ -lgcc_s that
+  # gcc's own specs append at the end. illumos libc.so.1 exports the C++ unwind
+  # ABI itself (_Unwind_RaiseException, _Unwind_Resume, _Unwind_GetIP, ... --
+  # the Solaris unwinder in lib/libc/port/unwind), so ld.so.1's breadth-first
+  # search then binds libstdc++'s __cxa_throw to *libc's* unwinder rather than
+  # libgcc_s's. That unwinder does not do gcc's PT_GNU_EH_FRAME/dl_iterate_phdr
+  # FDE lookup, finds no handler for anything, and every C++ throw in the
+  # process calls std::terminate:
+  #
+  #     terminate called after throwing an instance of 'nix::BadURL'
+  #     terminate called recursively
+  #
+  # Not hypothetical: that is exactly why `svc:/site/nix-daemon:default` crash
+  # looped. bdw-gc.pc says `Libs: -lgc -lpthread -lrt -ldl`, so libnixexpr and
+  # every nix binary got libc.so.1 into DT_NEEDED slot 6, ahead of libgcc_s,
+  # and nix could not complete a single throw. -lpthread and -lrt do not do
+  # this, because they resolve to real libpthread.so.1/librt.so.1 SONAMEs and
+  # so leave libc at depth 2 of the graph, behind libgcc_s.
+  #
+  # So: an empty shared object with SONAME libdl.so.1 that merely NEEDs
+  # libc.so.1. `-ldl` resolves, libc stays at depth 2 where it belongs, and
+  # there is no filter -- which is the other half of why the stock
+  # libdl-illumos filter cannot be used here either. Its DT_FILTER is a path to
+  # ld.so.1 that does not match this store's PT_INTERP, so ld.so.1 maps a
+  # second copy of itself as an ordinary object ("loading after relocation has
+  # started: interposition request (DF_1_INTERPOSE) ignored"), libc hands its
+  # interface table to the copy that is not driving the process, and the
+  # program dies with SIGSEGV before main(). Verified in a booted guest: a
+  # program linked against the real libdl.so.1 filter dies before printing its
+  # first line.
+  #
+  # crti.o/crtn.o are there only to give ld an input file -- it refuses a link
+  # with none ("ld: fatal: no files on input command line"). They contribute no
+  # code beyond the empty .init/.fini frames.
   + ''
-    ln -sfn libc.so.1 "$out/lib/libdl.so"
+    "$illumosLd/bin/ld-unwrapped" -64 -G \
+      -h libdl.so.1 -N libc.so.1 \
+      -o "$TMPDIR/libdl.so.1" \
+      "$out/lib/crti.o" "$out/lib/crtn.o"
+
+    rm -f "$out/lib/libdl.so.1" "$out/lib/libdl.so"
+    cp "$TMPDIR/libdl.so.1" "$out/lib/libdl.so.1"
+    ln -s libdl.so.1 "$out/lib/libdl.so"
 
     fixupPhase
   '';
+
+  # Used by the postBuild above. Passed as a plain env var rather than through
+  # nativeBuildInputs, since this is a symlinkJoin and nothing else here wants
+  # a linker on PATH.
+  illumosLd = buildPackages.illumos.ld;
 
   # illumos' threads are POSIX threads, and they live in libc.so.1 itself --
   # libpthread.so.1 is joined in above only as a filter, so that an
