@@ -294,19 +294,50 @@ lib.makeOverridable (
     # and stays in the individual packages.
     isLib = attrs.illumosLib or false;
 
-    # A package built from illumos source whose host platform *is* the build
-    # platform is a build-host tool, and needs the overlay above by definition.
-    # Nothing to opt into: the platforms already say it.
+    # This overlay means one specific thing: "illumos source is being compiled
+    # with a GNU toolchain" -- a gcc with no -msave-args, a linker that rejects
+    # the Z* options, and no illumos CTF tooling. Both halves of the test are
+    # load-bearing, and each covers a case the other gets wrong:
     #
-    # Deliberately `hostPlatform == buildPlatform` rather than
-    # `!hostPlatform.isIllumos`. `isIllumos` means "runs in illumos userland",
-    # and the kernel does not -- it is written for bare metal, so `unix` having
-    # `hostPlatform.isIllumos = true` is strictly wrong even though nothing
-    # depends on it being right. Were that ever corrected, a `!isIllumos` test
-    # would silently reclassify the entire kernel as a build-host tool and apply
-    # this overlay to it. Comparing the two platforms is true only for something
-    # genuinely built to run on the builder, whatever the kernel is labelled.
-    isNativeBuild = stdenv'.hostPlatform == stdenv'.buildPlatform;
+    #   host==build       is false for any cross build, which is what keeps the
+    #                     overlay off illumos userland AND off the kernel. On
+    #                     its own it is wrong for a NATIVE build on illumos --
+    #                     host==build==solaris -- where the real illumos
+    #                     toolchain is present and CTF and the Z* options all
+    #                     work. That is a plausible thing to want, not a
+    #                     hypothetical.
+    #
+    #   !isIllumos        excludes exactly that case. On its own it is wrong for
+    #                     the kernel: `isOS` means "runs in that OS's userland",
+    #                     and the kernel runs on bare metal, so `unix` carrying
+    #                     hostPlatform.isIllumos = true is strictly wrong today.
+    #                     Correcting it -- modelling the kernel as its own
+    #                     target, which no other OS in nixpkgs does yet -- would
+    #                     silently reclassify the whole kernel as a build-host
+    #                     tool and apply this overlay to it.
+    #
+    #
+    # TODO: revisit. This gates the whole overlay on one condition, but the
+    # macros in it do not share a rationale, and some may belong on the other
+    # test:
+    #
+    #   o SAVEARGS, the Z* options and the MAPFILE.* set are about the
+    #     TOOLCHAIN being GNU. They are wrong to apply wherever illumos' own
+    #     compiler and link-editor are in use, whatever is being built.
+    #
+    #   o POST_PROCESS*, PROCESS_CTF, CTFCONVERT_POST, CTFMERGE_POST and
+    #     STRIP_STABS are about the ARTIFACT being a throwaway build tool that
+    #     nobody will debug. That stays true on a native illumos build, where
+    #     the Z* options above would be perfectly valid.
+    #
+    # So a native illumos build of a build-host tool arguably wants the second
+    # group and not the first. Nothing exercises that combination today, which
+    # is why this is one list and not two.
+    # Together they are true only when something is built to run on the builder
+    # AND the builder is not illumos, which is precisely when the GNU toolchain
+    # is in play.
+    isNativeBuild =
+      stdenv'.hostPlatform == stdenv'.buildPlatform && !stdenv'.hostPlatform.isIllumos;
 
     # Link through illumos' own link-editor. On by default for `illumosLib`;
     # a static-only library (libssp_ns) never links anything and turns it off.
