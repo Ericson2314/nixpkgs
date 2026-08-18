@@ -260,6 +260,20 @@ lib.makeOverridable (
       #    here.
       __structuredAttrs = true;
 
+      # `make -j`. Without this every illumos build is serial, which compounds
+      # badly with the `--max-jobs 1` this project builds with: derivations run
+      # one at a time AND make is serial inside each, so `--cores N` bought
+      # nothing at all across ~90 kmod derivations plus uts-base plus userland.
+      #
+      # illumos' makefiles are written for `dmake`, not `make -j`, so expect
+      # races. `libsec` already has one: `acl_lex.c` reads `acl.h` while it is
+      # being regenerated and the tokens near the end vanish --
+      # `acl_lex.l:97: error: 'USER_TOK' undeclared`, which reads like a missing
+      # include rather than a race. The response to each new one is a per-package
+      # `enableParallelBuilding = false` WITH a comment naming the race, as
+      # libsec does, not turning this back off wholesale.
+      enableParallelBuilding = true;
+
       meta = with lib; {
         maintainers = with maintainers; [ ericson2314 ];
         platforms = platforms.illumos;
