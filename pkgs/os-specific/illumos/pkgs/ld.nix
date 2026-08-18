@@ -107,28 +107,65 @@ let
     "usr/src/cmd/sgs/tools/libconv_mk_report_bufsize.pl"
   ];
 
-  native = {
-    path = "usr/src/tools/sgs";
-    extraPaths = commonPaths ++ nativeOnlyPaths;
+in
+mkDerivation (
+  {
+    pname = "ld";
 
-    makeFlags = [
-      # ROOTONBLD is where this installs; ONBLD_TOOLS is where its own
-      # makefiles then look for the sgsmsg it just built. tools/sgs/Makefile
-      # forwards both to the sub-makes.
-      "ROOTONBLD=${builtins.placeholder "out"}"
-      "ONBLD_TOOLS=${builtins.placeholder "out"}"
+    # For an illumos host, usr/src/cmd/sgs/ld/amd64 -- the amd64 subdirectory
+    # directly, not cmd/sgs/ld: the parent's `cd amd64; make all` recursion
+    # does not forward our command-line macros, so ONBLD_TOOLS below would
+    # revert to its /ws/onnv-tools default. Every sibling here (sgs-libconv,
+    # sgs-libld, rtld) enters .../amd64 for the same reason.
+    #
+    # For the build platform, usr/src/tools/sgs. This is illumos' own
+    # bootstrapping arrangement: the same link-editor sources compiled
+    # -DNATIVE_BUILD against tools/sgs/native/native_compat.h, with its own
+    # libld/libconv/liblddbg/libelf built alongside, so that it depends on
+    # nothing illumos-hosted. It is what an illumos-on-illumos cross-build
+    # uses, and the only form that can exist before we have a libc.
+    path = if forIllumos then "usr/src/cmd/sgs/ld/amd64" else "usr/src/tools/sgs";
 
-      # illumos' MACH/MACH64 are not uname strings: on x86 they are
-      # i386/amd64, and the makefiles index directories with them.
-      "MACH=i386"
-      "MACH64=amd64"
+    # tools/sgs builds the support libraries itself rather than linking the
+    # illumos-hosted ones, so it needs their sources too.
+    extraPaths =
+      commonPaths
+      ++ (if forIllumos then [ "usr/src/common/mapfiles" ] else nativeOnlyPaths);
+  }
+  // lib.optionalAttrs forIllumos {
+    libcMinimal = true;
+
+    illumosLib = true;
+
+    buildInputs = [
+      headers
+      crt
+      libcMinimal
+      sgs-libconv
+      sgs-libelf
+      sgs-liblddbg
+      sgs-libld
     ];
 
+    env.NIX_CFLAGS_COMPILE = builtins.toString [
+      "-B${crt}/lib"
+      "-Wno-error"
+    ];
+
+    installPhase = ''
+      runHook preInstall
+
+      mkdir -p "$out/bin"
+      cp amd64/ld "$out/bin/ld"
+
+      runHook postInstall
+    '';
+  }
+  // lib.optionalAttrs (!forIllumos) {
     # `make` with no target picks the first one, `all`, and dmake does not
     # apply `all := TARGET= install` to it -- the sub-makes then get an empty
     # target and silently build nothing. Naming `install` explicitly avoids
     # that.
-    buildFlags = [ "install" ];
     dontInstall = true;
 
     nativeBuildInputs = [
@@ -172,90 +209,60 @@ let
       EOF
       chmod +x $out/bin/ld
     '';
-  };
-
-  # The shipping ld(1) -- INCOMPLETE, and marked broken accordingly.
-  #
-  # Nothing we build consumes an illumos-hosted link-editor (everything uses
-  # `buildPackages.illumos.ld`), so this branch exists to give the attribute
-  # the right shape rather than because anything needs it yet. It gets as far
-  # as generating msg.c with sgsmsg and compiling every object; what stops it
-  # is the final executable link. cmd/Makefile.cmd:122 links programs through
-  # the compiler driver, so the link runs GNU ld via collect2, which rejects
-  # -Bdirect -- the same problem libm has, and it wants the same treatment:
-  # override the link rule to invoke $(LD) directly. That plus running the
-  # result (which needs an illumos host or emulator) is the remaining work.
-  #
-  # `meta.broken` rather than a plausible-looking derivation: a cross build of
-  # this used to fail obscurely inside sgsmsg, and someone reaching for it
-  # should get told it is unfinished, not debug it afresh.
-  hosted = {
-    libcMinimal = true;
-
-    # The amd64 subdirectory directly, not cmd/sgs/ld: the parent's
-    # `cd amd64; make all` recursion does not forward our command-line macros,
-    # so ONBLD_TOOLS below would revert to its /ws/onnv-tools default. Every
-    # sibling here (sgs-libconv, sgs-libld, rtld) enters .../amd64 for the same
-    # reason.
-    path = "usr/src/cmd/sgs/ld/amd64";
-    extraPaths = commonPaths ++ [ "usr/src/common/mapfiles" ];
-
-    illumosLib = true;
-
-    buildInputs = [
-      headers
-      crt
-      libcMinimal
-      sgs-libconv
-      sgs-libelf
-      sgs-liblddbg
-      sgs-libld
-    ];
-
-    env.NIX_CFLAGS_COMPILE = builtins.toString [
-      "-B${crt}/lib"
-      "-Wno-error"
-    ];
-
-    buildFlags = [ "all" ];
-
-    makeFlags = [
-      # $(SGSMSG) is $(ONBLD_TOOLS)/bin/$(MACH)/sgsmsg, which otherwise
-      # defaults to the /ws/onnv-tools path a real onbld build would use. The
-      # build-platform `ld` already builds and installs sgsmsg, so point at
-      # that -- the same thing sgs-libconv and friends do. This is a
-      # cross-package-set reference, and it terminates: the attribute it names
-      # is the tools/sgs branch above, which needs nothing from here.
-      "ONBLD_TOOLS=${buildPackages.illumos.ld}"
-
-      # $(MAPFILE.NGB) is common/mapfiles/gen/$(MACH)_gcc_map.noexeglobs,
-      # which common/mapfiles/gen builds by compiling and *running* a helper
-      # (its Makefile links against NATIVE_LIBS += libc.so). It is a link-time
-      # assertion that the object exports no writable globals, not something
-      # ld needs to function, so drop it rather than add another
-      # compile-and-run bootstrap step.
-      "MAPFILE.NGB="
-    ];
-
-    installPhase = ''
-      runHook preInstall
-
-      mkdir -p "$out/bin"
-      cp amd64/ld "$out/bin/ld"
-
-      runHook postInstall
-    '';
-  };
-in
-mkDerivation (
-  {
-    pname = "ld";
   }
-  // (if forIllumos then hosted else native)
   // {
+    buildFlags = if forIllumos then [ "all" ] else [ "install" ];
+
+    makeFlags =
+      if forIllumos then
+        [
+          # $(SGSMSG) is $(ONBLD_TOOLS)/bin/$(MACH)/sgsmsg, which otherwise
+          # defaults to the /ws/onnv-tools path a real onbld build would use. The
+          # build-platform `ld` already builds and installs sgsmsg, so point at
+          # that -- the same thing sgs-libconv and friends do. This is a
+          # cross-package-set reference, and it terminates: the attribute it names
+          # is the tools/sgs branch above, which needs nothing from here.
+          "ONBLD_TOOLS=${buildPackages.illumos.ld}"
+
+          # $(MAPFILE.NGB) is common/mapfiles/gen/$(MACH)_gcc_map.noexeglobs,
+          # which common/mapfiles/gen builds by compiling and *running* a helper
+          # (its Makefile links against NATIVE_LIBS += libc.so). It is a link-time
+          # assertion that the object exports no writable globals, not something
+          # ld needs to function, so drop it rather than add another
+          # compile-and-run bootstrap step.
+          "MAPFILE.NGB="
+        ]
+      else
+        [
+          # ROOTONBLD is where this installs; ONBLD_TOOLS is where its own
+          # makefiles then look for the sgsmsg it just built. tools/sgs/Makefile
+          # forwards both to the sub-makes.
+          "ROOTONBLD=${builtins.placeholder "out"}"
+          "ONBLD_TOOLS=${builtins.placeholder "out"}"
+
+          # illumos' MACH/MACH64 are not uname strings: on x86 they are
+          # i386/amd64, and the makefiles index directories with them.
+          "MACH=i386"
+          "MACH64=amd64"
+        ];
+
     meta = {
       platforms = lib.platforms.unix;
-      # See the comment on `hosted` above.
+      # The shipping ld(1) -- INCOMPLETE, and marked broken accordingly.
+      #
+      # Nothing we build consumes an illumos-hosted link-editor (everything uses
+      # `buildPackages.illumos.ld`), so this branch exists to give the attribute
+      # the right shape rather than because anything needs it yet. It gets as far
+      # as generating msg.c with sgsmsg and compiling every object; what stops it
+      # is the final executable link. cmd/Makefile.cmd:122 links programs through
+      # the compiler driver, so the link runs GNU ld via collect2, which rejects
+      # -Bdirect -- the same problem libm has, and it wants the same treatment:
+      # override the link rule to invoke $(LD) directly. That plus running the
+      # result (which needs an illumos host or emulator) is the remaining work.
+      #
+      # `meta.broken` rather than a plausible-looking derivation: a cross build of
+      # this used to fail obscurely inside sgsmsg, and someone reaching for it
+      # should get told it is unfinished, not debug it afresh.
       broken = forIllumos;
     };
   }
