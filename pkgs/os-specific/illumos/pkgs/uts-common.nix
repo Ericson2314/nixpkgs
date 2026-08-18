@@ -265,7 +265,18 @@
     while IFS= read -r -d "" f; do
       [ "$(head -c 4 "$f" | tr -d '\0')" = $'\177ELF' ] || continue
 
-      ino=$(stat -c %i "$f")
+      # `ls -di` rather than `stat`, to keep a literal percent sign out of
+      # this script entirely. nix-shell renders the derivation environment
+      # through boost::format, which reads a percent-i as a format specifier
+      # and dies with
+      #
+      #     boost::bad_format_string: format-string is ill-formed
+      #
+      # BEFORE running anything -- so `nix-shell -A ...unix.kmods.<mod>`, the
+      # documented fast loop for kernel-module work, breaks outright, even
+      # though that loop drives `make` by hand and never reaches a fixup
+      # phase. Respelling the flag does not help: the percent is the problem.
+      ino=$(ls -di "$f" | awk '{print $1}')
       if [ -n "''${splitDebugSeen[$ino]:-}" ]; then
         ln -f "''${splitDebugSeen[$ino]}" "$f"
         continue
