@@ -10,19 +10,67 @@
  */
 
 /*
- * The handful of libc entry points that the CTF sources use and that a foreign
- * libc does not have.  Built into the native libctf, which ctfconvert(1) and
- * ctfmerge(1) both link against, so one copy serves all three.
+ * The handful of definitions that a foreign libc, and the objects dropped
+ * from the native libconv, would otherwise leave undefined.  Built into
+ * libconv, which everything else here links against.
  */
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <inttypes.h>
+#include <stdarg.h>
 #include <string.h>
 #include <errno.h>
 #include <limits.h>
-#include <inttypes.h>
 #include <unistd.h>
 
+/*
+ * On illumos this is a .note section plus a string, generated from
+ * libconv/common/bld_vernote.ksh by ksh93 and the illumos assembler.  Only
+ * the string is ever read (ldmain.c stamps it into .comment, liblddbg prints
+ * it), so build it with the C compiler instead.
+ */
+#ifndef	LINK_VER_STRING
+#define	LINK_VER_STRING	"native (illumos)"
+#endif
+const char link_ver_string[] = LINK_VER_STRING;
+
+/*
+ * ASSERT3*()/VERIFY3*() from <sys/debug.h> call this; illumos has it in libc.
+ * assfail() itself comes from cmd/sgs/common/assfail.c.
+ */
+void
+assfail3(const char *a, uintmax_t lv, const char *op, uintmax_t rv,
+    const char *f, int l)
+{
+	(void) fprintf(stderr,
+	    "assertion failed: %s (0x%jx %s 0x%jx), file: %s, line: %d\n",
+	    a, lv, op, rv, f, l);
+	abort();
+}
+
+/*
+ * common/avl calls panic() on an impossible tree state.  In the kernel that
+ * is a system panic; here, the same thing an assertion failure does.
+ */
+void
+panic(const char *fmt, ...)
+{
+	va_list	ap;
+
+	va_start(ap, fmt);
+	(void) vfprintf(stderr, fmt, ap);
+	va_end(ap);
+	(void) fputc('\n', stderr);
+	abort();
+}
+
+/*
+ * ---------------------------------------------------------------------------
+ * From tools/ctf/native/native_support.c -- the CTF tools' half of the same
+ * job.  `assfail3()` above already covered what the two files shared.
+ * ---------------------------------------------------------------------------
+ */
 /*
  * Declared rather than reached through <errno.h>, which only exposes it under
  * _GNU_SOURCE -- and this file is compiled with the same flags as the rest of
@@ -32,24 +80,19 @@
 extern char *program_invocation_name;
 
 /*
- * ASSERT()/VERIFY() and ASSERT3*()/VERIFY3*() from <sys/debug.h>.  On illumos
- * both live in libc.
+ * ASSERT()/VERIFY() from <sys/debug.h>.  On illumos this lives in libc.
+ *
+ * Weak, unlike assfail3() above, because cmd/sgs/common/assfail.c has its own
+ * and libconv links both that and this file.  A strong definition here would
+ * be a duplicate symbol for every sgs consumer; weak lets the one that comes
+ * with the sources win and leaves this as the fallback for everyone else.
  */
+__attribute__((__weak__))
 void
 assfail(const char *a, const char *f, int l)
 {
 	(void) fprintf(stderr, "assertion failed: %s, file: %s, line: %d\n",
 	    a, f, l);
-	abort();
-}
-
-void
-assfail3(const char *a, uintmax_t lv, const char *op, uintmax_t rv,
-    const char *f, int l)
-{
-	(void) fprintf(stderr,
-	    "assertion failed: %s (0x%jx %s 0x%jx), file: %s, line: %d\n",
-	    a, lv, op, rv, f, l);
 	abort();
 }
 
@@ -122,3 +165,4 @@ out:
 
 	return (val);
 }
+

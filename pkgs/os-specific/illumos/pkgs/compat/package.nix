@@ -141,11 +141,18 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     hostSource = "${finalAttrs.finalPackage}/src/compat_host.c";
     gateSource = "${finalAttrs.finalPackage}/src/compat_gate.c";
 
-    # The libc entry points the CTF sources use that a foreign libc does not
-    # have -- assfail()/assfail3() behind ASSERT(), and getexecname(). Compiled
-    # into libctf, which ctfconvert and ctfmerge both link, so one copy serves
-    # all three; that is how tools/ctf/native/native_support.c was used, and
-    # this is that file.
+    # The libc entry points a foreign libc does not have -- assfail()/assfail3()
+    # behind ASSERT(), panic(), getexecname(), strtonum(), and link_ver_string.
+    # Compiled into whichever library the consumer already links: libctf for the
+    # CTF tools, libconv for the link-editor family.
+    #
+    # This is usr/src/tools/libcompat/common/native_support.c, the merge of what
+    # used to be tools/ctf/native and tools/sgs/native. The name below is the
+    # older, CTF-only one, kept because consumers use it; `supportSource` is the
+    # same file under a name that does not claim it is CTF-specific. Do not
+    # narrow this back to the CTF subset -- libconv needs link_ver_string, which
+    # the CTF-only version did not define.
+    supportSource = "${finalAttrs.finalPackage}/src/ctf_support.c";
     ctfSupportSource = "${finalAttrs.finalPackage}/src/ctf_support.c";
     srcDir = "${finalAttrs.finalPackage}/src";
   };
