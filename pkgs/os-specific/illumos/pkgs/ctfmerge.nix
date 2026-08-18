@@ -3,6 +3,7 @@
   stdenv,
   mkDerivation,
 
+  cw,
   compat,
   elfutils,
   libctf,
@@ -12,33 +13,34 @@
 # back into the linked object. The other half of the CTF pipeline; see
 # ctfconvert.nix, which this mirrors.
 #
-# Built from the gate's own source, `usr/src/cmd/ctfmerge/ctfmerge.c`, and
-# not through `usr/src/tools/ctf/ctfmerge` -- which holds no source, only a
-# `%.o: $(SRC)/cmd/ctfmerge/%.c` rule and a makefile saying "build this one
-# for the machine doing the build". See the standing order in ../default.nix.
+# Built from `usr/src/cmd/ctfmerge`, through the gate's own makefile, under
+# dmake -- like every other package in this set. Not through
+# `usr/src/tools/ctf/ctfmerge`, which holds no source: it is a `%.o:
+# $(SRC)/cmd/ctfmerge/%.c` rule and a makefile saying "build this one for the
+# machine doing the build". See the standing order in ../default.nix.
 #
-# Like every other package here, this builds for ITS OWN host platform: plain
-# `stdenv`, `$CC`, `NIX_LDFLAGS`. There is no `depsBuildBuild`, no
-# `$CC_FOR_BUILD` and no `NIX_LDFLAGS_FOR_BUILD`, because those are for helper
-# programs a build runs and discards -- never for the thing being installed.
-#
-# The reason that is enough: `buildPackages.illumos.ctfmerge` is already an
-# instance whose `stdenv` targets the build machine, so in that instance `$CC`
-# *is* the host compiler. Consumers reach it by putting `ctfmerge` in
-# `nativeBuildInputs`, and splicing picks the build-host instance for them --
-# see uts-common.nix and libcMinimal.nix, which already do exactly that and
-# needed no change. (Splicing is the usual route, not the only one: a consumer
-# that would tie a knot through the scope has to name
-# `buildPackages.illumos.<tool>` outright, as ld.nix does for `ONBLD_TOOLS`.)
-#
-# Reproducing that selection inside this file, with `noCC` plus
-# `depsBuildBuild`, is the same mistake as `Makefile.ctf.native`: doing by hand
-# what the package set already does.
+# And built for ITS OWN host platform, with plain `stdenv`/`$CC`/`NIX_LDFLAGS`.
+# `buildPackages.illumos.ctfmerge` is already an instance whose `stdenv`
+# targets the build machine, so there is nothing to arrange: consumers put
+# `ctfmerge` in `nativeBuildInputs` and splicing hands them that instance
+# (uts-common.nix and libcMinimal.nix already do). `depsBuildBuild` with
+# `$CC_FOR_BUILD` is for helpers a build runs and discards, never for the
+# artifact being installed -- and reaching for it is what makes the gate
+# makefile look unusable and invites hand-listing translation units instead.
 mkDerivation {
   pname = "ctfmerge";
   path = "usr/src/cmd/ctfmerge";
 
   extraPaths = [
+    "usr/src/Makefile.master"
+    "usr/src/Makefile.master.64"
+    "usr/src/Makefile.native"
+    "usr/src/Makefile.smatch"
+
+    "usr/src/cmd/Makefile.cmd"
+    "usr/src/cmd/Makefile.ctf"
+    "usr/src/cmd/Makefile.targ"
+
     # <libctf.h> and, through it, <sys/ctf_api.h> and <sys/ctf.h>. illumos does
     # not ship these, so no host has a copy.
     "usr/src/lib/libctf/common"
@@ -46,92 +48,94 @@ mkDerivation {
     "usr/src/head"
   ];
 
+  extraNativeBuildInputs = [ cw ];
+
   buildInputs = [
     libctf
     elfutils
   ];
 
   # libctf installs its shared object into `lib/$(MACH)` rather than `lib/`, so
-  # cc-wrapper's `-L${libctf}/lib` from `buildInputs` does not find it. That is
-  # a wart in libctf.nix -- its build-host form is still built out of
-  # `tools/ctf/libctf`, which uses the onbld layout -- not something this
-  # package can fix, so name the directory explicitly.
+  # cc-wrapper's `-L${libctf}/lib` from `buildInputs` does not find it. A wart
+  # in libctf.nix -- its build-host form is still built out of
+  # `tools/ctf/libctf`, which uses the onbld layout -- so name it explicitly.
   env.NIX_LDFLAGS = toString [
     "-L${libctf}/lib/i386"
     "-rpath"
     "${libctf}/lib/i386"
   ];
 
-  # One translation unit and one link. The gate's `cmd/ctfmerge/Makefile` is
-  # not run: it is `include ../Makefile.cmd`, i.e. a 32-bit build linked by
-  # illumos ld with mapfiles, none of which applies to a program being built
-  # for a foreign host. Invoking the compiler directly is the whole of what it
-  # would have amounted to.
-  #
-  # Include-path shape, which is load-bearing:
-  #
-  #  o `-D_LARGEFILE64_SOURCE` first: <sys/ctf_api.h> declares `off64_t`
-  #    fields, and glibc only defines that type under this feature-test macro.
-  #
-  #  o `compat.hostElfCflags` ahead of `compat.stagedCflags`, so <sys/elf.h>
-  #    forwards to the host's <elf.h> rather than resolving to illumos' own.
-  #    libelf.h has already defined those types by the time <sys/ctf_api.h>
-  #    asks for them; see compat/host-elf/sys/elf.h.
-  #
-  #  o `compat.stagedCflags` for the rest -- the host's libc wins, with
-  #    illumos' "_t" integer spellings and `boolean_t` layered on top.
-  #
-  #  o `-idirafter` for `uts/common` and `head`: both hold headers illumos does
-  #    not ship (<sys/ctf_api.h>, <sys/debug.h>) *and* headers every libc has
-  #    (<sys/types.h>). Searched after the host's own directories, the host
-  #    wins wherever it has an opinion and illumos supplies the rest.
-  #
   # ctfmerge needs no libc gap-filler of its own -- it uses only pthreads, mmap
-  # and libctf -- but is still linked against `compat` for the shared
-  # `_sysconf`/`___errno` shims, which cost nothing unreferenced. compat_host.c
-  # is compiled separately because it is by construction a host-headers
-  # translation unit, needing the `stat64`/`statvfs64` spellings those two
-  # macros unlock; mkfs-ufs.nix compiles it the same way.
-  buildPhase = ''
-    runHook preBuild
-
+  # and libctf -- but still links `compat` for the shared `_sysconf`/`___errno`
+  # shims, which cost nothing unreferenced. It is built here rather than shipped
+  # built because compat_host.c must see the *consumer's* host headers;
+  # mkfs-ufs.nix compiles it the same way.
+  preBuild = ''
     $CC -c -o compat_host.o -D_GNU_SOURCE -D_LARGEFILE64_SOURCE \
       -I${compat.srcDir} "${compat.hostSource}"
-
-    $CC -o ctfmerge \
-      -D_LARGEFILE64_SOURCE \
-      ${compat.hostElfCflags} ${compat.stagedCflags} \
-      -I "$SRC/lib/libctf/common" \
-      -idirafter "$SRC/uts/common" \
-      -idirafter "$SRC/head" \
-      ctfmerge.c compat_host.o \
-      -lctf -lelf -lpthread
-
-    runHook postBuild
+    ar rcs libcompat.a compat_host.o
   '';
 
-  # `install` on $PATH here is illumos' install(1), whose options are not GNU
-  # coreutils'.
-  installPhase = ''
-    runHook preInstall
+  makeFlags = [
+    # illumos' MACH/MACH64 are not uname strings; on x86 they are i386/amd64.
+    "MACH=i386"
+    "MACH64=amd64"
 
+    # cmd/ctfmerge has no amd64 subdirectory, so Makefile.cmd would build it
+    # 32-bit. These are the contents of Makefile.master.64 restricted to what a
+    # command build reads -- the same list getent.nix passes, and for the same
+    # reason. `LDLIBS.cmd` rather than `LDLIBS`, because the package Makefile
+    # appends `-lctf -lelf` to `LDLIBS` and a command-line macro would discard
+    # them.
+    "CFLAGS=$(CFLAGS64)"
+    "ASFLAGS=$(ASFLAGS64)"
+    "COMPILE.c=$(COMPILE64.c)"
+    "LINK.c=$(LINK64.c)"
+    "MAPFILECLASS=-64"
+
+    # The headers illumos does not ship, plus the compat profiles that let gate
+    # source compile against a foreign libc. `CPPFLAGS.first` is placed ahead
+    # of everything else, which matters: `compat.hostElfCflags` must beat the
+    # staged <sys/elf.h>, and `-idirafter` must lose to the host's own
+    # directories. See compat/host-elf/sys/elf.h.
+    "CPPFLAGS.first=-D_LARGEFILE64_SOURCE ${compat.hostElfCflags} ${compat.stagedCflags} -I$(SRC)/lib/libctf/common -idirafter $(SRC)/uts/common -idirafter $(SRC)/head"
+
+    # ...and libcompat, built in preBuild above.
+    "LDLIBS.cmd=-L. -lcompat -lpthread"
+
+    # `-lssp_ns` is illumos' stack-protector support library, added by
+    # Makefile.master's $(LDSTACKPROTECT). glibc implements
+    # `__stack_chk_fail` itself, so only the -l is dropped -- not
+    # `STACKPROTECT=none`, which would also throw away
+    # `-fstack-protector-strong` on the compile.
+    "LDSTACKPROTECT="
+
+    # `$(POST_PROCESS)` ends in strip/CTF steps needing illumos target tools;
+    # this *is* the CTF tool, so there is nothing to run over it anyway.
+    "POST_PROCESS=:"
+    "POST_PROCESS_O=:"
+
+    # Solaris link-editor syntax that GNU ld rejects outright -- `-Bdirect`,
+    # `-zassert-deflib`, `-zguidance`, and the three mapfiles. None is
+    # load-bearing for a command; getent.nix clears them for the same reason.
+    "LDFLAGS.cmd="
+    "LDCHECKS="
+  ];
+
+  # `$(ROOTPROG)` is `$(ROOTBIN)/ctfmerge`, and the setup hook has already
+  # rewritten `$(ROOT)/usr/bin` to `$(BINDIR)`; the directory still has to
+  # exist before `$(INS.file)` runs.
+  preInstall = ''
     mkdir -p $out/bin
-    cp ctfmerge $out/bin/ctfmerge
-
-    runHook postInstall
   '';
 
   meta = {
     platforms = lib.platforms.unix;
     mainProgram = "ctfmerge";
 
-    # Only the foreign-libc build is written. An illumos host needs none of
-    # `compat` and wants `sgs-libelf` rather than elfutils, and nothing here
-    # consumes a ctfmerge that runs on illumos -- every user takes the
-    # build-host instance through `nativeBuildInputs`. Rather than invent an
-    # untested second arm, say so: the previous version of this file guessed at
-    # one, and an earlier version silently answered
-    # `pkgsCross.x86_64-illumos.illumos.ctfmerge` with a Linux binary.
+    # Only the foreign-libc build is exercised. An illumos host needs none of
+    # `compat` and wants sgs-libelf rather than elfutils, and nothing here
+    # consumes a ctfmerge that runs on illumos.
     broken = stdenv.hostPlatform.isSunOS;
   };
 }
