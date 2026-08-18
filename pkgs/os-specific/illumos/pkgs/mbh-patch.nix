@@ -4,18 +4,19 @@
 
   cw,
   compat,
-  buildPackages,
 }:
 
 # mbh_patch(1ONBLD): fills in the multiboot header's load addresses in a linked
 # `unix` (uts/i86pc/unix/Makefile:172).
 #
-# A build-host program, so `noCC` plus the host compiler via `depsBuildBuild`;
+# A build-host program. Nothing here needs to say so: the illumos scope splices
+# (`makeScopeWithSplicing'`), so a `nativeBuildInputs` entry already resolves to
+# the build-platform instance, and mkDerivation derives the native-build overlay
+# from the platforms.
 # see pkgs/libdwarf.nix. Like elfextract it needs no libelf, just illumos'
 # <sys/elf.h> and <sys/multiboot*.h> from the staged set in pkgs/compat.
 mkDerivation {
   pname = "mbh_patch";
-  noCC = true;
 
   path = "usr/src/tools/mbh_patch";
   extraPaths = [
@@ -33,16 +34,9 @@ mkDerivation {
     "MACH=i386"
     "MACH64=amd64"
 
-    # See elfextract.nix for both of these.
+    # See elfextract.nix. LDCHECKS and STRIP_STABS used to be restated here too;
+    # both now come from mkDerivation's build-host overlay.
     "NATIVE_MACH=amd64"
-    "LDCHECKS="
-
-    # POST_PROCESS ends in $(STRIP_STABS), i.e. `$(STRIP) -x $@`
-    # (Makefile.master:979). STRIP is undefined for a `noCC` derivation, so the
-    # recipe degenerates to running `-x` as a command. These are build tools,
-    # not deliverables, and nothing needs them stripped; tools/sgs/Makefile.com
-    # neutralises the same macro.
-    "STRIP_STABS=:"
 
     # Makefile.master:150 spells the installer `install`, which on a Linux
     # build host is coreutils' and does not take -f. illumos' own is
@@ -62,13 +56,12 @@ mkDerivation {
 
   extraNativeBuildInputs = [ cw ];
 
-  depsBuildBuild = [ buildPackages.stdenv.cc ];
 
   # The build installs as it goes, so the target directory has to exist before
   # it starts rather than in preInstall.
   preBuild = ''
     mkdir -p $out/bin/i386
-    export NIX_CFLAGS_COMPILE_FOR_BUILD="$NIX_CFLAGS_COMPILE_FOR_BUILD ${compat.stagedCflags}"
+    export NIX_CFLAGS_COMPILE="$NIX_CFLAGS_COMPILE ${compat.stagedCflags}"
   '';
 
   postFixup = ''

@@ -4,20 +4,20 @@
 
   cw,
   compat,
-  buildPackages,
 }:
 
 # elfextract(1ONBLD): dumps a linked ELF object as assembler `.byte` output,
 # used to embed the 64-bit `dboot` stub into `unix`
 # (uts/i86pc/unix/Makefile:181).
 #
-# A build-host program, so `noCC` plus the host compiler via `depsBuildBuild`;
-# see pkgs/libdwarf.nix. It needs no libelf -- it mmaps the file and walks
+# A build-host program. Nothing here says so: `buildPackages.illumos.elfextract`
+# is this package built for the build platform, and mkDerivation applies the
+# native-build overlay off the platforms. It
+# needs no libelf -- it mmaps the file and walks
 # Elf64_Ehdr by hand -- but it does need illumos' <sys/elf.h>, which comes from
 # the staged header set in pkgs/compat.
 mkDerivation {
   pname = "elfextract";
-  noCC = true;
 
   path = "usr/src/tools/elfextract";
   extraPaths = [
@@ -41,17 +41,9 @@ mkDerivation {
     # for the CTF tools.
     "NATIVE_MACH=amd64"
 
-    # LDCHECKS is -zassert-deflib -zguidance -zfatal-warnings, all Solaris
-    # link-editor options (Makefile.master:720). This is linked by GNU ld on
-    # the build host, which rejects them outright.
-    "LDCHECKS="
-
-    # POST_PROCESS ends in $(STRIP_STABS), i.e. `$(STRIP) -x $@`
-    # (Makefile.master:979). STRIP is undefined for a `noCC` derivation, so the
-    # recipe degenerates to running `-x` as a command. These are build tools,
-    # not deliverables, and nothing needs them stripped; tools/sgs/Makefile.com
-    # neutralises the same macro.
-    "STRIP_STABS=:"
+    # LDCHECKS and STRIP_STABS used to be restated here. Both now come from
+    # mkDerivation's build-host overlay, along with the rest of the Solaris
+    # link-editor options GNU ld rejects.
 
     # Makefile.master:150 spells the installer `install`, which on a Linux
     # build host is coreutils' and does not take -f. illumos' own is
@@ -64,13 +56,12 @@ mkDerivation {
 
   extraNativeBuildInputs = [ cw ];
 
-  depsBuildBuild = [ buildPackages.stdenv.cc ];
 
   # The build installs as it goes, so the target directory has to exist before
   # it starts rather than in preInstall.
   preBuild = ''
     mkdir -p $out/bin/i386
-    export NIX_CFLAGS_COMPILE_FOR_BUILD="$NIX_CFLAGS_COMPILE_FOR_BUILD ${compat.stagedCflags}"
+    export NIX_CFLAGS_COMPILE="$NIX_CFLAGS_COMPILE ${compat.stagedCflags}"
   '';
 
   # The onbld layout puts the tool under bin/$(MACH), which is how
