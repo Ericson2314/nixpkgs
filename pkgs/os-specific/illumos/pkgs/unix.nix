@@ -579,6 +579,42 @@ let
     "intel/pcihp"
     "i86pc/pci"
     "intel/pcieb"
+
+    # ZFS. `drv/zfs` is the whole filesystem, the ZVOL block driver and the
+    # /dev/zfs ioctl device in one module; uts/intel/zfs/Makefile installs it
+    # once and hardlinks it as `fs/zfs` as well (`$(ROOTLINK): ln
+    # $(ROOTMODULE) $@`), which is why the copy in the recipe below has to
+    # keep `--preserve=links`.
+    #
+    # Its `-N` list is `fs/specfs crypto/swrand misc/idmap misc/sha2
+    # misc/skein misc/edonr`; specfs is already above, and the rest come with
+    # dependencies of their own:
+    #
+    #   crypto/swrand   the kernel entropy provider. -Nmisc/kcf -Nmisc/sha1.
+    #   misc/sha2       } the checksum algorithms `zfs set checksum=` names.
+    #   misc/skein      } All three are KCF providers, so all three link
+    #   misc/edonr      } -Nmisc/kcf.
+    #   misc/kcf        the Cryptographic Framework core they register with.
+    #   misc/idmap      SID<->uid/gid mapping for the NFSv4-style ACLs ZFS
+    #                   stores. It links -Nsys/doorfs (already above; the
+    #                   mapping requests go to idmapd over a door) and
+    #                   -Nstrmod/rpcmod, whose own -Nmisc/tlimod brings the
+    #                   TLI transport code with it.
+    #
+    # None of the checksum modules are as optional as "we never asked for
+    # skein" suggests: zio_checksum_table[] (common/fs/zfs/zio_checksum.c) is
+    # indexed by whatever the on-disk label says, so a pool created elsewhere
+    # can name any of them.
+    "intel/kcf"
+    "intel/sha1"
+    "intel/sha2"
+    "intel/skein"
+    "intel/edonr"
+    "intel/swrand"
+    "intel/tlimod"
+    "intel/rpcmod"
+    "intel/idmap"
+    "intel/zfs"
   ];
 in
 
