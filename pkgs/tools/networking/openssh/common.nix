@@ -124,6 +124,30 @@ stdenv.mkDerivation (finalAttrs: {
       # doesn't ship it at /usr/bin/passwd.
       PATH_PASSWD_PROG = "/run/wrappers/bin/passwd";
     }
+    // lib.optionalAttrs stdenv.hostPlatform.isSunOS {
+      # `configure` chooses between the SVR4 `/dev/ptmx` pty API and the legacy
+      # BSD `/dev/ptyXX` one by testing whether `/dev/ptmx` exists -- and when
+      # cross compiling it does not test at all:
+      #
+      #     if test ! -z "$cross_compiling" && test "x$cross_compiling" = "xyes"; then
+      #             AC_MSG_WARN([cross compiling: Disabling /dev/ptmx test])
+      #             disable_ptmx_check=yes
+      #     fi
+      #
+      # so `HAVE_DEV_PTMX` is never defined and the BSD path is compiled in.
+      # (Priming `ac_cv_file__dev_ptmx` does not help: the `AC_CHECK_FILE` that
+      # would consult it is skipped outright.)
+      #
+      # The build succeeds, `ssh host command` works, and only *interactive*
+      # sessions fail -- with `PTY allocation request failed on channel 0` from
+      # the client and nothing at all in sshd's service log. Its debug output
+      # says `openpty: No such file or directory`: it is opening `/dev/ptyp0`,
+      # which no illumos system has. `strings` on the binary shows
+      # `/dev/pty%c%c` and `/dev/ptyp%d`, and no `/dev/ptmx`.
+      #
+      # illumos and Solaris have had `/dev/ptmx` since forever, so state it.
+      NIX_CFLAGS_COMPILE = "-DHAVE_DEV_PTMX=1";
+    }
     // lib.optionalAttrs stdenv.hostPlatform.isStatic {
       NIX_LDFLAGS = lib.concatStringsSep " " (
         lib.optional withKerberos "-lkeyutils"
