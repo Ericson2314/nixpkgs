@@ -1,0 +1,26 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Tue, 18 Aug 2026 02:21:53 -0400
+Subject: [PATCH] tools/libcompat: gather <sys/debug.h>
+
+`common/sgsrtcid/sgsrtcid.h` includes it, and glibc has no counterpart.
+
+Assisted-By: Claude Opus 5 (claude-opus-5)
+---
+ usr/src/tools/libcompat/Makefile | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/usr/src/tools/libcompat/Makefile b/usr/src/tools/libcompat/Makefile
+index bd2a760068..f949d585f6 100644
+--- a/usr/src/tools/libcompat/Makefile
++++ b/usr/src/tools/libcompat/Makefile
+@@ -82,7 +82,8 @@ SYSHDRS=	sys/elf.h \
+ 		sys/link.h \
+ 		sys/machelf.h \
+ 		sys/secflags.h \
+-		sys/procset.h
++		sys/procset.h \
++		sys/debug.h
+ 
+ #
+ # <sys/machtypes.h> is per-ISA; everything above is machine-independent.  The

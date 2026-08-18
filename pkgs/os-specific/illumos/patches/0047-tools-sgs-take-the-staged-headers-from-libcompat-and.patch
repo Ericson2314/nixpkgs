@@ -1,0 +1,64 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Tue, 18 Aug 2026 02:18:03 -0400
+Subject: [PATCH] tools/sgs: take the staged headers from libcompat, and drop
+ tools/sgs/include
+
+`tools/sgs/include` existed to stage the "ELF-y" headers the native link-editor
+needs, and it did so by copying them *into its own source directory*, which
+`Makefile.com` then reached with `-I../include`. That is why the sgs tree could
+only ever be built inside a writable workspace: the include path pointed at a
+directory the build itself had to mutate.
+
+`libcompat` now gathers the same headers and installs them, so point
+`$(COMPAT_CPPFLAGS)` at `$(COMPAT_INC)` and remove both the `-I../include` and
+the `include` SUBDIR. One staging mechanism instead of two, and its output is
+an installed artifact rather than a side effect on the source tree.
+
+Assisted-By: Claude Opus 5 (claude-opus-5)
+---
+ usr/src/tools/Makefile.tools   | 4 +++-
+ usr/src/tools/sgs/Makefile     | 1 -
+ usr/src/tools/sgs/Makefile.com | 2 +-
+ 3 files changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/usr/src/tools/Makefile.tools b/usr/src/tools/Makefile.tools
+index 4096130de8..0db603c9c8 100644
+--- a/usr/src/tools/Makefile.tools
++++ b/usr/src/tools/Makefile.tools
+@@ -76,7 +76,9 @@ NATIVE_LIBS += libc.so
+ # into whichever library the consumer already links.
+ #
+ COMPAT_DIR=		$(SRC)/tools/libcompat/common
+-COMPAT_CPPFLAGS=	-I$(COMPAT_DIR) -include $(COMPAT_DIR)/native_compat.h
++COMPAT_INC=		$(SRC)/tools/libcompat/include
++COMPAT_CPPFLAGS=	-I$(COMPAT_DIR) -I$(COMPAT_INC) \
++			-include $(COMPAT_DIR)/native_compat.h
+ COMPAT_SUPPORT_SRC=	$(COMPAT_DIR)/native_support.c
+ 
+ # To work around a bootstrapping problem, we can't rely on cw(1) knowing how
+diff --git a/usr/src/tools/sgs/Makefile b/usr/src/tools/sgs/Makefile
+index 854308cca0..8976b79d41 100644
+--- a/usr/src/tools/sgs/Makefile
++++ b/usr/src/tools/sgs/Makefile
+@@ -12,7 +12,6 @@
+ # Copyright 2019, Richard Lowe.
+ 
+ SUBDIRS =		\
+-	include		\
+ 	ld		\
+ 	libconv		\
+ 	libelf		\
+diff --git a/usr/src/tools/sgs/Makefile.com b/usr/src/tools/sgs/Makefile.com
+index aa81120c02..53cbf18f26 100644
+--- a/usr/src/tools/sgs/Makefile.com
++++ b/usr/src/tools/sgs/Makefile.com
+@@ -13,7 +13,7 @@
+ 
+ CPPFLAGS =	-I. -I$(SRCDIR) -I$(SRCDIR)/common \
+ 	-I$(SGSHOME)/include -I$(SGSHOME)/include/$(MACH) \
+-	-I../include $(CPPFLAGS.native) -I$(ELFCAP) -DNATIVE_BUILD \
++	$(CPPFLAGS.native) -I$(ELFCAP) -DNATIVE_BUILD \
+ 	$(COMPAT_CPPFLAGS)
+ 
+ #

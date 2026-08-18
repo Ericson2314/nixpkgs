@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Tue, 18 Aug 2026 02:21:00 -0400
+Subject: [PATCH] tools/libcompat: gather <sys/secflags.h> and <sys/procset.h>
+
+`cmd/sgs/include/conv.h` includes <sys/secflags.h>, which includes
+<sys/procset.h>. Both are illumos-only; glibc has no counterpart.
+
+Assisted-By: Claude Opus 5 (claude-opus-5)
+---
+ usr/src/tools/libcompat/Makefile | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/usr/src/tools/libcompat/Makefile b/usr/src/tools/libcompat/Makefile
+index 030881591b..bd2a760068 100644
+--- a/usr/src/tools/libcompat/Makefile
++++ b/usr/src/tools/libcompat/Makefile
+@@ -80,7 +80,9 @@ SYSHDRS=	sys/elf.h \
+ 		sys/avl.h \
+ 		sys/avl_impl.h \
+ 		sys/link.h \
+-		sys/machelf.h
++		sys/machelf.h \
++		sys/secflags.h \
++		sys/procset.h
+ 
+ #
+ # <sys/machtypes.h> is per-ISA; everything above is machine-independent.  The

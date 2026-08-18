@@ -43,6 +43,7 @@ mkDerivation {
     # The Makefile gathers its header list out of these two.
     "usr/src/uts/common/sys"
     "usr/src/uts/intel/sys"
+    "usr/src/head"
   ];
 
   nativeBuildInputs = [

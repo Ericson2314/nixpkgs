@@ -1,0 +1,94 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Tue, 18 Aug 2026 02:17:07 -0400
+Subject: [PATCH] tools/libcompat: gather the ELF API headers too, so
+ tools/sgs/include can go
+
+`tools/sgs/include` stages the other half of what a foreign host needs to
+compile the link-editor -- `libelf.h`, `gelf.h`, `link.h`, `rtld_db.h`,
+`proc_service.h`, `dlfcn.h` from `$(SRC)/head`, plus the `sys/auxv*`, `avl.h`,
+`machelf.h` group -- by copying them *into its own source directory*, which the
+sgs makefiles then `-I`. That is why it works only inside a writable workspace
+and cannot be consumed from anywhere else.
+
+Gather them here instead, where they install as real outputs. With this,
+`tools/sgs/include` has nothing left that is not available from libcompat.
+
+The auxv trio moves together on purpose: `<sys/auxv.h>` does not compile
+without `<sys/auxv_386.h>` and `<sys/auxv_SPARC.h>` beside it, and nothing in
+the list says so -- staging `auxv.h` alone is a known way to break
+`elfextract`.
+
+Assisted-By: Claude Opus 5 (claude-opus-5)
+---
+ usr/src/tools/libcompat/Makefile | 36 ++++++++++++++++++++++++++++++--
+ 1 file changed, 34 insertions(+), 2 deletions(-)
+
+diff --git a/usr/src/tools/libcompat/Makefile b/usr/src/tools/libcompat/Makefile
+index d4468e7692..79d58e9356 100644
+--- a/usr/src/tools/libcompat/Makefile
++++ b/usr/src/tools/libcompat/Makefile
+@@ -73,7 +73,13 @@ SYSHDRS=	sys/elf.h \
+ 		sys/queue.h \
+ 		sys/types32.h \
+ 		sys/containerof.h \
+-		sys/stddef.h
++		sys/stddef.h \
++		sys/auxv.h \
++		sys/auxv_386.h \
++		sys/auxv_SPARC.h \
++		sys/avl.h \
++		sys/link.h \
++		sys/machelf.h
+ 
+ #
+ # <sys/machtypes.h> is per-ISA; everything above is machine-independent.  The
+@@ -86,7 +92,26 @@ UTSDIR=		$($(MACH)_UTSDIR)
+ 
+ MACHSYSHDRS=	sys/machtypes.h
+ 
+-HDRS=		$(SYSHDRS:%=include/%) $(MACHSYSHDRS:%=include/%)
++#
++# The ELF API headers, from $(SRC)/head.  These are the other half of what
++# tools/sgs/include stages: that directory copies them into itself and the sgs
++# makefiles then -I it, which is why it cannot be consumed from outside the
++# workspace.  Gathering them here, installed, makes tools/sgs/include
++# redundant.
++#
++# NOTE the auxv trio.  <sys/auxv.h> does not compile without <sys/auxv_386.h>
++# and <sys/auxv_SPARC.h> beside it, and nothing in the list says so; staging
++# auxv.h alone is a known way to break elfextract.  They move together.
++#
++HEADHDRS=	dlfcn.h \
++		gelf.h \
++		libelf.h \
++		proc_service.h \
++		rtld_db.h \
++		link.h
++
++HDRS=		$(SYSHDRS:%=include/%) $(MACHSYSHDRS:%=include/%) \
++		$(HEADHDRS:%=include/%)
+ 
+ LIBRARY=	libcompat.a
+ OBJS=		native_support.o
+@@ -109,6 +134,12 @@ include/sys:
+ include/sys/%: include/sys $(SRC)/uts/common/sys/%
+ 	$(RM) $@; $(CP) $(SRC)/uts/common/sys/$(@F) $@; $(CHMOD) 644 $@
+ 
++include/%: include $(SRC)/head/%
++	$(RM) $@; $(CP) $(SRC)/head/$(@F) $@; $(CHMOD) 644 $@
++
++include:
++	$(MKDIR) -p include
++
+ include/sys/machtypes.h: include/sys $(SRC)/uts/$(UTSDIR)/sys/machtypes.h
+ 	$(RM) $@; $(CP) $(SRC)/uts/$(UTSDIR)/sys/machtypes.h $@; $(CHMOD) 644 $@
+ 
+@@ -151,6 +182,7 @@ install: all $(ROOTONBLDLIBMACH)/$(LIBRARY) install_hdrs
+ install_hdrs: $(HDRS)
+ 	$(MKDIR) -p $(ROOTONBLDINC)/sys $(ROOTONBLDINCNATIVE)/sys
+ 	$(CP) include/sys/*.h $(ROOTONBLDINC)/sys/
++	$(CP) include/*.h $(ROOTONBLDINC)/
+ 	$(CP) common/*.h $(ROOTONBLDINCNATIVE)/
+ 	$(CP) common/sys/*.h $(ROOTONBLDINCNATIVE)/sys/
+ 

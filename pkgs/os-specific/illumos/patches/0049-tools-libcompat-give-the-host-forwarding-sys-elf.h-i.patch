@@ -1,0 +1,174 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Tue, 18 Aug 2026 02:20:05 -0400
+Subject: [PATCH] tools/libcompat: give the host-forwarding <sys/elf.h> its own
+ profile
+
+The merge of the two `native/` trees put `tools/ctf/native/sys/elf.h` in
+`common/` beside the rest of the shims, which quietly made it apply to
+everything. It must not. It forwards `<sys/elf.h>` to the *host*'s `<elf.h>`,
+which is right for the CTF tools -- they link the host libelf -- and wrong for
+the sgs tree, where illumos' own `<sys/link.h>` then collides with glibc:
+
+    include/sys/link.h:59:3: error: conflicting types for 'Elf32_Dyn'
+
+Move it to `host-elf/`, install it as a third tree, and keep it out of
+`$(COMPAT_CPPFLAGS)`. A consumer that wants it asks, via
+`$(COMPAT_HOSTELF_CPPFLAGS)`; `Makefile.ctf.native` is the one that does.
+
+This is the same three-profile split the nixpkgs `compat` package arrived at
+independently -- staged, host-elf, overlay -- which is some evidence it is the
+shape the problem actually has.
+
+Assisted-By: Claude Opus 5 (claude-opus-5)
+---
+ usr/src/tools/.gitignore                   |  1 +
+ usr/src/tools/Makefile.tools               | 10 +++++++
+ usr/src/tools/ctf/Makefile.ctf.native      |  1 +
+ usr/src/tools/libcompat/Makefile           |  3 +++
+ usr/src/tools/libcompat/common/sys/elf.h   | 31 ----------------------
+ usr/src/tools/libcompat/host-elf/sys/elf.h | 31 ++++++++++++++++++++++
+ 6 files changed, 46 insertions(+), 31 deletions(-)
+ delete mode 100644 usr/src/tools/libcompat/common/sys/elf.h
+ create mode 100644 usr/src/tools/libcompat/host-elf/sys/elf.h
+
+diff --git a/usr/src/tools/.gitignore b/usr/src/tools/.gitignore
+index 2334bb48dd..745e4e3149 100644
+--- a/usr/src/tools/.gitignore
++++ b/usr/src/tools/.gitignore
+@@ -25,6 +25,7 @@ sgs/*/*.[chs]
+ !sgs/sgsmsg/sgsmsg.c
+ !libcompat/common/*.[chs]
+ !libcompat/common/sys/*.h
++!libcompat/host-elf/sys/*.h
+ 
+ svc/libsqlite/*.[ch]
+ svc/svccfg/svccfg_grammar.[ch]
+diff --git a/usr/src/tools/Makefile.tools b/usr/src/tools/Makefile.tools
+index 0db603c9c8..3bef1ff6d1 100644
+--- a/usr/src/tools/Makefile.tools
++++ b/usr/src/tools/Makefile.tools
+@@ -81,6 +81,16 @@ COMPAT_CPPFLAGS=	-I$(COMPAT_DIR) -I$(COMPAT_INC) \
+ 			-include $(COMPAT_DIR)/native_compat.h
+ COMPAT_SUPPORT_SRC=	$(COMPAT_DIR)/native_support.c
+ 
++#
++# The host-forwarding <sys/elf.h>, kept out of $(COMPAT_CPPFLAGS) on purpose.
++# It sends <sys/elf.h> to the *host*'s <elf.h>, which is what the CTF tools
++# want -- they link the host libelf -- and is exactly wrong for the sgs tree,
++# where illumos' own <sys/link.h> then collides with glibc over Elf32_Dyn and
++# friends.  A consumer that wants it asks for it.
++#
++COMPAT_HOSTELF=		$(SRC)/tools/libcompat/host-elf
++COMPAT_HOSTELF_CPPFLAGS=	-I$(COMPAT_HOSTELF)
++
+ # To work around a bootstrapping problem, we can't rely on cw(1) knowing how
+ # to translate -shared as we may be using an older one to build the current
+ # tools.
+diff --git a/usr/src/tools/ctf/Makefile.ctf.native b/usr/src/tools/ctf/Makefile.ctf.native
+index b9f9aff939..f48d50f417 100644
+--- a/usr/src/tools/ctf/Makefile.ctf.native
++++ b/usr/src/tools/ctf/Makefile.ctf.native
+@@ -35,6 +35,7 @@
+ # makefiles, and -include options are processed in the order given, so the
+ # shims have to be pulled in from inside that header to land ahead of it.
+ #
++CPPFLAGS +=	$(COMPAT_HOSTELF_CPPFLAGS)
+ CPPFLAGS +=	$(COMPAT_CPPFLAGS)
+ CPPFLAGS +=	-DCTF_NATIVE_COMPAT
+ 
+diff --git a/usr/src/tools/libcompat/Makefile b/usr/src/tools/libcompat/Makefile
+index 79d58e9356..e30cb7b6b5 100644
+--- a/usr/src/tools/libcompat/Makefile
++++ b/usr/src/tools/libcompat/Makefile
+@@ -176,6 +176,7 @@ $(LIBRARY): $(OBJS)
+ #
+ ROOTONBLDINC=		$(ROOTONBLD)/include
+ ROOTONBLDINCNATIVE=	$(ROOTONBLD)/include-native
++ROOTONBLDINCHOSTELF=	$(ROOTONBLD)/include-host-elf
+ 
+ install: all $(ROOTONBLDLIBMACH)/$(LIBRARY) install_hdrs
+ 
+@@ -185,6 +186,8 @@ install_hdrs: $(HDRS)
+ 	$(CP) include/*.h $(ROOTONBLDINC)/
+ 	$(CP) common/*.h $(ROOTONBLDINCNATIVE)/
+ 	$(CP) common/sys/*.h $(ROOTONBLDINCNATIVE)/sys/
++	$(MKDIR) -p $(ROOTONBLDINCHOSTELF)/sys
++	$(CP) host-elf/sys/*.h $(ROOTONBLDINCHOSTELF)/sys/
+ 
+ $(ROOTONBLDLIBMACH):
+ 	$(MKDIR) -p $@
+diff --git a/usr/src/tools/libcompat/common/sys/elf.h b/usr/src/tools/libcompat/common/sys/elf.h
+deleted file mode 100644
+index 8a8e5bde90..0000000000
+--- a/usr/src/tools/libcompat/common/sys/elf.h
++++ /dev/null
+@@ -1,31 +0,0 @@
+-/*
+- * This file and its contents are supplied under the terms of the
+- * Common Development and Distribution License ("CDDL"), version 1.0.
+- * You may only use this file in accordance with the terms of version
+- * 1.0 of the CDDL.
+- *
+- * A full copy of the text of the CDDL should have accompanied this
+- * source.  A copy of the CDDL is also available via the Internet at
+- * http://www.illumos.org/license/CDDL.
+- */
+-
+-/*
+- * On illumos, <sys/elf.h> is where the ELF type and constant definitions live,
+- * and $(SRC)/common/ctf/ctf_impl.h includes it by that name.  glibc puts them
+- * in <elf.h> and ships a <sys/elf.h> whose entire content is
+- *
+- *	#error This header is unsupported on x86-64.
+- *
+- * Because a -I is searched ahead of the host's own directories and the
+- * -idirafter on $(SRC)/uts/common is searched behind them, this shim is what
+- * <sys/elf.h> resolves to for the CTF tools -- and illumos' own <sys/elf.h>
+- * is deliberately not used, since it would drag in the illumos <sys/types.h>
+- * chain that collides head-on with the host libc.
+- */
+-
+-#ifndef	_ONBLD_COMPAT_SYS_ELF_H
+-#define	_ONBLD_COMPAT_SYS_ELF_H
+-
+-#include <elf.h>
+-
+-#endif	/* _ONBLD_COMPAT_SYS_ELF_H */
+diff --git a/usr/src/tools/libcompat/host-elf/sys/elf.h b/usr/src/tools/libcompat/host-elf/sys/elf.h
+new file mode 100644
+index 0000000000..8a8e5bde90
+--- /dev/null
++++ b/usr/src/tools/libcompat/host-elf/sys/elf.h
+@@ -0,0 +1,31 @@
++/*
++ * This file and its contents are supplied under the terms of the
++ * Common Development and Distribution License ("CDDL"), version 1.0.
++ * You may only use this file in accordance with the terms of version
++ * 1.0 of the CDDL.
++ *
++ * A full copy of the text of the CDDL should have accompanied this
++ * source.  A copy of the CDDL is also available via the Internet at
++ * http://www.illumos.org/license/CDDL.
++ */
++
++/*
++ * On illumos, <sys/elf.h> is where the ELF type and constant definitions live,
++ * and $(SRC)/common/ctf/ctf_impl.h includes it by that name.  glibc puts them
++ * in <elf.h> and ships a <sys/elf.h> whose entire content is
++ *
++ *	#error This header is unsupported on x86-64.
++ *
++ * Because a -I is searched ahead of the host's own directories and the
++ * -idirafter on $(SRC)/uts/common is searched behind them, this shim is what
++ * <sys/elf.h> resolves to for the CTF tools -- and illumos' own <sys/elf.h>
++ * is deliberately not used, since it would drag in the illumos <sys/types.h>
++ * chain that collides head-on with the host libc.
++ */
++
++#ifndef	_ONBLD_COMPAT_SYS_ELF_H
++#define	_ONBLD_COMPAT_SYS_ELF_H
++
++#include <elf.h>
++
++#endif	/* _ONBLD_COMPAT_SYS_ELF_H */

@@ -1,0 +1,67 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Tue, 18 Aug 2026 02:18:49 -0400
+Subject: [PATCH] tools/sgs: link libcompat rather than recompiling its source
+ into libconv
+
+`tools/sgs/libconv` compiled `$(COMPAT_SUPPORT_SRC)` into its own
+`native_support.o` to get `link_ver_string`, `assfail3()` and `panic()`. That
+made every consumer of the archive carry another copy of a source that is now
+built once, into `libcompat.a`, by the directory that owns it.
+
+Drop the object and the rule, and link `-lcompat` in `ld`. `assfail.o` stays
+compiled here -- it is `cmd/sgs/common`'s, not libcompat's.
+
+Assisted-By: Claude Opus 5 (claude-opus-5)
+---
+ usr/src/tools/sgs/ld/Makefile      |  3 ++-
+ usr/src/tools/sgs/libconv/Makefile | 14 ++++++--------
+ 2 files changed, 8 insertions(+), 9 deletions(-)
+
+diff --git a/usr/src/tools/sgs/ld/Makefile b/usr/src/tools/sgs/ld/Makefile
+index 4036a41457..83274e0341 100644
+--- a/usr/src/tools/sgs/ld/Makefile
++++ b/usr/src/tools/sgs/ld/Makefile
+@@ -30,7 +30,8 @@ include		../Makefile.com
+ # -lumem is dropped: nothing under cmd/sgs calls a umem_* interface, it is
+ # linked purely as a faster malloc, and libumem is illumos'.
+ #
+-LDLIBS =	-L../libconv -L$(ROOTONBLDLIBMACH64) -lld -lelf -lconv
++LDLIBS =	-L../libconv -L$(ROOTONBLDLIBMACH64) -lld -lelf -lconv \
++		-L$(ROOTONBLDLIBMACH) -lcompat
+ NATIVE_LIBS +=	libc.so
+ 
+ #
+diff --git a/usr/src/tools/sgs/libconv/Makefile b/usr/src/tools/sgs/libconv/Makefile
+index b426269f0e..ccadc5fdbd 100644
+--- a/usr/src/tools/sgs/libconv/Makefile
++++ b/usr/src/tools/sgs/libconv/Makefile
+@@ -50,11 +50,13 @@ CONV_BLTOBJS_1 =	$(BLTOBJS:corenote_msg.o=)
+ CONV_BLTOBJS =		$(CONV_BLTOBJS_1:lddstub_msg.o=)
+ 
+ #
+-# ...and add back, from ../native, the few definitions the dropped objects
+-# and a foreign libc leave undefined: link_ver_string (normally vernote.o),
+-# assfail3() and panic() (normally libc), and assfail() (cmd/sgs/common).
++# ...and add back the few definitions the dropped objects leave undefined.
++# assfail() is cmd/sgs/common's and is compiled here.  The rest --
++# link_ver_string (normally vernote.o), assfail3() and panic() (normally libc)
++# -- come from libcompat.a, which ld links; there is no reason for every
++# consumer of this archive to compile that source again.
+ #
+-NATIVE_OBJS =	native_support.o assfail.o
++NATIVE_OBJS =	assfail.o
+ 
+ ASOBJS =
+ OBJECTS =	$(CONV_COMOBJS) $(COMOBJS32) $(COMOBJS64) $(ELFCAP_OBJS) \
+@@ -62,10 +64,6 @@ OBJECTS =	$(CONV_COMOBJS) $(COMOBJS32) $(COMOBJS64) $(ELFCAP_OBJS) \
+ 
+ CPPFLAGS +=	-DLINK_VER_STRING='"$(RELEASE) (illumos, native)"'
+ 
+-pics/native_support.o:	$(COMPAT_SUPPORT_SRC)
+-		$(COMPILE.c) $(C_PICFLAGS) -o $@ $(COMPAT_SUPPORT_SRC)
+-		$(POST_PROCESS_O)
+-
+ pics/assfail.o:		$(SGSCOMMON)/assfail.c
+ 		$(COMPILE.c) $(C_PICFLAGS) -o $@ $(SGSCOMMON)/assfail.c
+ 		$(POST_PROCESS_O)

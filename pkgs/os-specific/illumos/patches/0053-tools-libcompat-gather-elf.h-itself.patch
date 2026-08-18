@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Tue, 18 Aug 2026 02:22:28 -0400
+Subject: [PATCH] tools/libcompat: gather <elf.h> itself
+
+`head/link.h` includes <elf.h>, meaning illumos' own. Without it in the
+gathered set the include falls through to glibc's, whose Elf32_Dyn,
+Elf32_Syminfo and friends then conflict with the ones <sys/link.h> just
+declared.
+
+Assisted-By: Claude Opus 5 (claude-opus-5)
+---
+ usr/src/tools/libcompat/Makefile | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/usr/src/tools/libcompat/Makefile b/usr/src/tools/libcompat/Makefile
+index f949d585f6..c173b9259a 100644
+--- a/usr/src/tools/libcompat/Makefile
++++ b/usr/src/tools/libcompat/Makefile
+@@ -107,7 +107,8 @@ MACHSYSHDRS=	sys/machtypes.h
+ # and <sys/auxv_SPARC.h> beside it, and nothing in the list says so; staging
+ # auxv.h alone is a known way to break elfextract.  They move together.
+ #
+-HEADHDRS=	dlfcn.h \
++HEADHDRS=	elf.h \
++		dlfcn.h \
+ 		gelf.h \
+ 		libelf.h \
+ 		proc_service.h \
