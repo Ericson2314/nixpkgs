@@ -1,0 +1,1126 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Tue, 18 Aug 2026 00:57:46 -0400
+Subject: [PATCH] tools: merge the two `native/` compat trees into
+ `tools/libcompat`
+
+`tools/ctf/native` and `tools/sgs/native` were two spellings of one job:
+"compile gate source on a host whose libc is not illumos'". Each grew next to
+the tool that first needed it, so between them we had two `native_compat.h`,
+two `synch.h`, two `thread.h` and two `native_support.c` -- overlapping,
+diverging, and neither of them actually specific to the CTF tools or to the
+link-editor. A third consumer would have had to pick one or start a third.
+
+They are now one tree, `usr/src/tools/libcompat/common`:
+
+  * `native_compat.h` is the union. The two files already shared the illumos
+    type vocabulary (`boolean_t`, `uchar_t` and friends) and the
+    `<sys/isa_defs.h>`/`<sys/ccompile.h>` preamble. From the CTF side it takes
+    `_LARGEFILE64_SOURCE`, which `<sys/ctf_api.h>` needs for `off64_t`; from
+    the sgs side the `<sys/sysmacros.h>` macros, `auxv_t`, `_INT64_TYPE`,
+    `PAGESIZE` and the `NL_*` limits. It also picks up `ARRAY_SIZE` and
+    `__DECONST`, which gate source reaches through headers that are too
+    kernel-flavoured to stage whole.
+
+  * `synch.h` and `thread.h` are likewise unions: the CTF half brought
+    condition variables, `LOCK_ERRORCHECK`, `mutex_enter()`/`mutex_exit()`
+    and `thr_create()`/`thr_join()`; the sgs half brought reader/writer locks,
+    thread-specific data and `thr_main()`. Where both defined `mutex_init()`
+    the CTF one wins, because it honours the lock type rather than ignoring it.
+
+  * `native_support.c` merges both. `assfail()` is **weak**: libconv links
+    `cmd/sgs/common/assfail.c` as well as this file, so a strong definition
+    would be a duplicate symbol for every sgs consumer. Weak lets the copy
+    that ships with the sources win and leaves this as the fallback.
+
+  * `sys/` gathers all six shims -- `elf.h` from the CTF side, `cmn_err.h`,
+    `mman.h`, `systeminfo.h`, `utsname.h` and `varargs.h` from the sgs side.
+
+Consumers no longer spell out their own `-I`/`-include`. `Makefile.tools`
+defines `COMPAT_CPPFLAGS` and `COMPAT_SUPPORT_SRC` once, and
+`Makefile.ctf.native`, `sgs/Makefile.com`, `ctf/libctf/Makefile.com` and
+`sgs/libconv/Makefile` use them. Naming it in one place is the point: the
+duplication this removes started as two makefiles each spelling out a path.
+
+No functional change intended for either existing consumer -- every addition
+each side gains from the other is `#ifndef`-guarded or a new symbol.
+---
+ usr/src/tools/.gitignore                      |   3 +-
+ usr/src/tools/Makefile.tools                  |  17 +++
+ usr/src/tools/ctf/Makefile.ctf.native         |  13 +-
+ usr/src/tools/ctf/libctf/Makefile.com         |   4 +-
+ usr/src/tools/ctf/native/native_compat.h      | 123 -----------------
+ usr/src/tools/ctf/native/thread.h             |  83 ------------
+ .../common}/native_compat.h                   |  63 +++++++--
+ .../common}/native_support.c                  |  76 ++++++++---
+ .../{ctf/native => libcompat/common}/synch.h  |  62 +++++++--
+ .../native => libcompat/common}/sys/cmn_err.h |   6 +-
+ .../native => libcompat/common}/sys/elf.h     |   6 +-
+ .../native => libcompat/common}/sys/mman.h    |   6 +-
+ .../common}/sys/systeminfo.h                  |   6 +-
+ .../native => libcompat/common}/sys/utsname.h |   6 +-
+ .../native => libcompat/common}/sys/varargs.h |   6 +-
+ .../{sgs/native => libcompat/common}/thread.h |  40 +++++-
+ usr/src/tools/sgs/Makefile.com                |   2 +-
+ usr/src/tools/sgs/libconv/Makefile            |   4 +-
+ usr/src/tools/sgs/native/native_support.c     |  62 ---------
+ usr/src/tools/sgs/native/synch.h              | 127 ------------------
+ 20 files changed, 249 insertions(+), 466 deletions(-)
+ delete mode 100644 usr/src/tools/ctf/native/native_compat.h
+ delete mode 100644 usr/src/tools/ctf/native/thread.h
+ rename usr/src/tools/{sgs/native => libcompat/common}/native_compat.h (63%)
+ rename usr/src/tools/{ctf/native => libcompat/common}/native_support.c (62%)
+ rename usr/src/tools/{ctf/native => libcompat/common}/synch.h (73%)
+ rename usr/src/tools/{sgs/native => libcompat/common}/sys/cmn_err.h (86%)
+ rename usr/src/tools/{ctf/native => libcompat/common}/sys/elf.h (91%)
+ rename usr/src/tools/{sgs/native => libcompat/common}/sys/mman.h (93%)
+ rename usr/src/tools/{sgs/native => libcompat/common}/sys/systeminfo.h (94%)
+ rename usr/src/tools/{sgs/native => libcompat/common}/sys/utsname.h (85%)
+ rename usr/src/tools/{sgs/native => libcompat/common}/sys/varargs.h (83%)
+ rename usr/src/tools/{sgs/native => libcompat/common}/thread.h (68%)
+ delete mode 100644 usr/src/tools/sgs/native/native_support.c
+ delete mode 100644 usr/src/tools/sgs/native/synch.h
+
+diff --git a/usr/src/tools/.gitignore b/usr/src/tools/.gitignore
+index 1987ac1f0b..2d5bffaeb4 100644
+--- a/usr/src/tools/.gitignore
++++ b/usr/src/tools/.gitignore
+@@ -22,7 +22,8 @@ __pycache__
+ sgs/include/sys
+ sgs/*/*.[chs]
+ !sgs/sgsmsg/sgsmsg.c
+-!sgs/native/*.[chs]
++!libcompat/common/*.[chs]
++!libcompat/common/sys/*.h
+ 
+ svc/libsqlite/*.[ch]
+ svc/svccfg/svccfg_grammar.[ch]
+diff --git a/usr/src/tools/Makefile.tools b/usr/src/tools/Makefile.tools
+index 0af0719eed..4096130de8 100644
+--- a/usr/src/tools/Makefile.tools
++++ b/usr/src/tools/Makefile.tools
+@@ -62,6 +62,23 @@ LDFLAGS=
+ 
+ NATIVE_LIBS += libc.so
+ 
++#
++# libcompat: what it takes to compile gate source on a host whose libc is not
++# illumos'.  One place, named once, rather than each bootstrap tool spelling
++# out its own -I/-include and growing its own copy of the shims next to it --
++# which is how tools/ctf/native and tools/sgs/native came to be two versions
++# of the same thing.
++#
++# COMPAT_CPPFLAGS is the header half; the force-include has to come first, so
++# it is safe to include before anything else by construction.
++# COMPAT_SUPPORT_SRC is the handful of libc entry points a foreign libc lacks
++# (assfail(), panic(), getexecname(), strtonum(), link_ver_string), compiled
++# into whichever library the consumer already links.
++#
++COMPAT_DIR=		$(SRC)/tools/libcompat/common
++COMPAT_CPPFLAGS=	-I$(COMPAT_DIR) -include $(COMPAT_DIR)/native_compat.h
++COMPAT_SUPPORT_SRC=	$(COMPAT_DIR)/native_support.c
++
+ # To work around a bootstrapping problem, we can't rely on cw(1) knowing how
+ # to translate -shared as we may be using an older one to build the current
+ # tools.
+diff --git a/usr/src/tools/ctf/Makefile.ctf.native b/usr/src/tools/ctf/Makefile.ctf.native
+index 5be6d11259..b9f9aff939 100644
+--- a/usr/src/tools/ctf/Makefile.ctf.native
++++ b/usr/src/tools/ctf/Makefile.ctf.native
+@@ -23,6 +23,11 @@
+ # Makefile.master and would undo every assignment below.
+ #
+ 
++#
++# $(COMPAT_CPPFLAGS) is both halves of libcompat's header profile: the
++# force-include, and a -I that lands ahead of the host's own directories --
++# unlike the -idirafter below.  That ordering is deliberate: libcompat holds
++# the handful of headers where the host has an opinion and it is the wrong one.
+ #
+ # The force-include covers the translation units that reach illumos headers on
+ # their own (libdwarf, avl.c, list.c, mergeq).  -DCTF_NATIVE_COMPAT covers the
+@@ -30,15 +35,9 @@
+ # makefiles, and -include options are processed in the order given, so the
+ # shims have to be pulled in from inside that header to land ahead of it.
+ #
+-CPPFLAGS +=	-include $(SRC)/tools/ctf/native/native_compat.h
++CPPFLAGS +=	$(COMPAT_CPPFLAGS)
+ CPPFLAGS +=	-DCTF_NATIVE_COMPAT
+ 
+-#
+-# Ahead of the host's own directories, unlike the -idirafter below: this holds
+-# the handful of headers where the host has an opinion and it is the wrong one.
+-#
+-CPPFLAGS +=	-I$(SRC)/tools/ctf/native
+-
+ #
+ # $(SRC)/uts/common holds both headers illumos does not ship (<sys/ctf.h>,
+ # <sys/ctf_api.h>, <sys/list.h>) and headers every libc has (<sys/types.h>).
+diff --git a/usr/src/tools/ctf/libctf/Makefile.com b/usr/src/tools/ctf/libctf/Makefile.com
+index fcc0fc0160..587b61a8b6 100644
+--- a/usr/src/tools/ctf/libctf/Makefile.com
++++ b/usr/src/tools/ctf/libctf/Makefile.com
+@@ -41,8 +41,8 @@ OBJECTS +=	avl.o
+ LDLIBS += -lc -lelf -L$(ROOTONBLDLIBMACH) -ldwarf
+ NATIVE_LIBS += libelf.so libc.so
+ 
+-pics/native_support.o:	$(SRC)/tools/ctf/native/native_support.c
+-	$(COMPILE.c) $(C_PICFLAGS) -o $@ $(SRC)/tools/ctf/native/native_support.c
++pics/native_support.o:	$(COMPAT_SUPPORT_SRC)
++	$(COMPILE.c) $(C_PICFLAGS) -o $@ $(COMPAT_SUPPORT_SRC)
+ 	$(POST_PROCESS_O)
+ 
+ pics/avl.o:	$(SRC)/common/avl/avl.c
+diff --git a/usr/src/tools/ctf/native/native_compat.h b/usr/src/tools/ctf/native/native_compat.h
+deleted file mode 100644
+index 0e88de6d32..0000000000
+--- a/usr/src/tools/ctf/native/native_compat.h
++++ /dev/null
+@@ -1,123 +0,0 @@
+-/*
+- * This file and its contents are supplied under the terms of the
+- * Common Development and Distribution License ("CDDL"), version 1.0.
+- * You may only use this file in accordance with the terms of version
+- * 1.0 of the CDDL.
+- *
+- * A full copy of the text of the CDDL should have accompanied this
+- * source.  A copy of the CDDL is also available via the Internet at
+- * http://www.illumos.org/license/CDDL.
+- */
+-
+-/*
+- * Compatibility shims for building the CTF tools on a host whose libc is not
+- * illumos'.  Force-included (via -include) from tools/ctf/Makefile.ctf.native,
+- * so it must be safe to include before anything else.
+- *
+- * The CTF sources reach for illumos headers that illumos does not ship --
+- * <sys/ctf.h>, <sys/ctf_api.h>, <sys/list.h>, <sys/avl.h> -- which
+- * Makefile.ctf.native supplies with an -idirafter on $(SRC)/uts/common.  Those
+- * headers expect illumos' <sys/types.h> to have already supplied the "_t"
+- * spellings of the base integer types; a foreign libc supplies none of it.
+- *
+- * Nothing here is illumos-specific behaviour.  It is purely the vocabulary the
+- * illumos headers assume.  Compare tools/sgs/native/native_compat.h, which
+- * does the same job for the native link-editor.
+- */
+-
+-#ifndef	_CTF_NATIVE_COMPAT_H
+-#define	_CTF_NATIVE_COMPAT_H
+-
+-/*
+- * <sys/ctf_api.h> uses off64_t, which glibc only declares under this feature
+- * test macro.  It has to be defined before any libc header is included, which
+- * is why this file is force-included first.
+- */
+-#ifndef	_LARGEFILE64_SOURCE
+-#define	_LARGEFILE64_SOURCE
+-#endif
+-
+-/*
+- * On illumos every sys header reaches <sys/isa_defs.h> by way of
+- * <sys/param.h>.  Here <sys/param.h> is the host's, so the illumos headers
+- * would never see _BIT_FIELDS_LTOH, _LP64 and friends.  Pull it in up front.
+- * <sys/ccompile.h> likewise supplies __GNU_INLINE and the __sun_attr__ family.
+- */
+-#include <sys/isa_defs.h>
+-#include <sys/ccompile.h>
+-
+-#include <stddef.h>
+-/*
+- * illumos' <sys/types.h> declares the <stdint.h> types; glibc's does not.
+- * libdwarf (dwarf_frame2.c, among others) includes only <sys/types.h> and then
+- * uses uintptr_t.
+- */
+-#include <stdint.h>
+-#include <sys/types.h>
+-/*
+- * illumos' <strings.h> pulls in <string.h>; the host's does not.
+- */
+-#include <string.h>
+-#include <strings.h>
+-
+-#ifdef	__cplusplus
+-extern "C" {
+-#endif
+-
+-#ifndef	_BOOLEAN_T
+-#define	_BOOLEAN_T
+-typedef enum { B_FALSE, B_TRUE } boolean_t;
+-#endif
+-
+-typedef unsigned char		uchar_t;
+-typedef unsigned short		ushort_t;
+-typedef unsigned int		uint_t;
+-typedef unsigned long		ulong_t;
+-typedef long long		longlong_t;
+-typedef unsigned long long	u_longlong_t;
+-typedef long long		hrtime_t;
+-
+-/*
+- * illumos' <sys/sysmacros.h> carries these; the host's has only the
+- * major/minor/makedev trio, so a bare #include silently loses them.
+- */
+-#ifndef	MAX
+-#define	MAX(a, b)	((a) < (b) ? (b) : (a))
+-#endif
+-#ifndef	MIN
+-#define	MIN(a, b)	((a) > (b) ? (b) : (a))
+-#endif
+-#ifndef	ABS
+-#define	ABS(a)		((a) < 0 ? -(a) : (a))
+-#endif
+-#ifndef	howmany
+-#define	howmany(x, y)	(((x) + ((y) - 1)) / (y))
+-#endif
+-#ifndef	roundup
+-#define	roundup(x, y)	((((x) + ((y) - 1)) / (y)) * (y))
+-#endif
+-#ifndef	P2ROUNDUP
+-#define	P2ROUNDUP(x, align)	(-(-(x) & -(align)))
+-#endif
+-#ifndef	IS_P2ALIGNED
+-#define	IS_P2ALIGNED(v, a)	((((uintptr_t)(v)) & ((uintptr_t)(a) - 1)) == 0)
+-#endif
+-
+-/*
+- * illumos' <sys/int_types.h> announces the availability of 64-bit integer
+- * types this way.  We are not using illumos' <sys/int_types.h> -- it redefines
+- * the whole intN_t family and collides with the host's <stdint.h> -- so state
+- * the fact directly.
+- */
+-#ifndef	_INT64_TYPE
+-#define	_INT64_TYPE
+-#endif
+-#ifndef	_LONGLONG_TYPE
+-#define	_LONGLONG_TYPE
+-#endif
+-
+-#ifdef	__cplusplus
+-}
+-#endif
+-
+-#endif	/* _CTF_NATIVE_COMPAT_H */
+diff --git a/usr/src/tools/ctf/native/thread.h b/usr/src/tools/ctf/native/thread.h
+deleted file mode 100644
+index 10f9601760..0000000000
+--- a/usr/src/tools/ctf/native/thread.h
++++ /dev/null
+@@ -1,83 +0,0 @@
+-/*
+- * This file and its contents are supplied under the terms of the
+- * Common Development and Distribution License ("CDDL"), version 1.0.
+- * You may only use this file in accordance with the terms of version
+- * 1.0 of the CDDL.
+- *
+- * A full copy of the text of the CDDL should have accompanied this
+- * source.  A copy of the CDDL is also available via the Internet at
+- * http://www.illumos.org/license/CDDL.
+- */
+-
+-/*
+- * illumos' <thread.h> over POSIX threads, for the native build of the CTF
+- * tools.
+- *
+- * Using illumos' own <thread.h> is not an option: it reaches <synch.h>,
+- * <sys/machlock.h>, <sys/time_impl.h> and <sys/int_types.h>, i.e. the whole
+- * illumos type system, which then collides head-on with the host libc's.  The
+- * CTF tools' use of the Solaris threads API is confined to lib/mergeq/workq.c
+- * -- create N workers, join them -- and maps onto pthreads directly.
+- */
+-
+-#ifndef	_CTF_NATIVE_THREAD_H
+-#define	_CTF_NATIVE_THREAD_H
+-
+-#include <pthread.h>
+-#include <synch.h>
+-#include <errno.h>
+-
+-#ifdef	__cplusplus
+-extern "C" {
+-#endif
+-
+-typedef pthread_t	thread_t;
+-typedef pthread_key_t	thread_key_t;
+-
+-#define	THR_BOUND	0x00000001
+-#define	THR_DETACHED	0x00000040
+-
+-/*
+- * illumos' thr_create() takes a stack address and size up front and returns
+- * the new thread's id through its last argument.  workq.c passes NULL/0 for
+- * the stack and 0 for the flags, which is "give me the defaults" in both
+- * spellings, so the shim only has to handle that case honestly: a non-default
+- * request is refused rather than silently ignored.
+- */
+-static inline int
+-thr_create(void *stack_base, size_t stack_size, void *(*start)(void *),
+-    void *arg, long flags, thread_t *new_thread)
+-{
+-	if (stack_base != NULL || stack_size != 0 || flags != 0)
+-		return (EINVAL);
+-
+-	return (pthread_create(new_thread, NULL, start, arg));
+-}
+-
+-/*
+- * illumos' thr_join() can wait for "any thread" when passed 0, and reports
+- * which one it reaped through its second argument.  workq.c always names a
+- * thread and does not ask, which is exactly pthread_join().
+- */
+-static inline int
+-thr_join(thread_t wait_for, thread_t *departed, void **status)
+-{
+-	if (wait_for == 0)
+-		return (EINVAL);
+-	if (departed != NULL)
+-		*departed = wait_for;
+-
+-	return (pthread_join(wait_for, status));
+-}
+-
+-static inline thread_t
+-thr_self(void)
+-{
+-	return (pthread_self());
+-}
+-
+-#ifdef	__cplusplus
+-}
+-#endif
+-
+-#endif	/* _CTF_NATIVE_THREAD_H */
+diff --git a/usr/src/tools/sgs/native/native_compat.h b/usr/src/tools/libcompat/common/native_compat.h
+similarity index 63%
+rename from usr/src/tools/sgs/native/native_compat.h
+rename to usr/src/tools/libcompat/common/native_compat.h
+index ff62f992f1..14dc358dd0 100644
+--- a/usr/src/tools/sgs/native/native_compat.h
++++ b/usr/src/tools/libcompat/common/native_compat.h
+@@ -10,20 +10,35 @@
+  */
+ 
+ /*
+- * Compatibility shims for building the native link-editor on a host whose
+- * libc is not illumos'.  Force-included (via -include) from
+- * tools/sgs/Makefile.com, so it must be safe to include first, before
+- * anything else.
++ * Compatibility shims for building gate source on a host whose libc is not
++ * illumos.  Force-included (via -include) by every consumer, so it must be
++ * safe to include first, before anything else.
+  *
+- * The headers staged by tools/sgs/include are illumos' own, and they expect
+- * illumos' <sys/types.h> to have already supplied the "_t" spellings of the
+- * base integer types and boolean_t.  A foreign libc supplies none of that,
+- * so define it here.  Nothing in here is illumos-specific behaviour; it is
+- * purely the vocabulary the staged headers assume.
++ * This is the merge of what used to be tools/ctf/native/native_compat.h and
++ * tools/sgs/native/native_compat.h.  Those were two spellings of one job --
++ * "gate source, foreign libc" -- kept apart only because each grew next to
++ * the tool that first needed it.  Neither is specific to the CTF tools or to
++ * the link-editor, and a third consumer would have had to pick one or copy a
++ * third.
++ *
++ * The gate headers a foreign host reaches expect illumos' <sys/types.h> to
++ * have already supplied the "_t" spellings of the base integer types and
++ * boolean_t; a foreign libc supplies none of that, so define it here.
++ * Nothing in here is illumos-specific behaviour.  It is purely the vocabulary
++ * the gate headers assume.
+  */
+ 
+-#ifndef	_SGS_NATIVE_COMPAT_H
+-#define	_SGS_NATIVE_COMPAT_H
++#ifndef	_ONBLD_COMPAT_H
++#define	_ONBLD_COMPAT_H
++
++/*
++ * <sys/ctf_api.h> uses off64_t, which glibc only declares under this feature
++ * test macro.  It has to be defined before any libc header is included, which
++ * is why this file is force-included first.
++ */
++#ifndef	_LARGEFILE64_SOURCE
++#define	_LARGEFILE64_SOURCE
++#endif
+ 
+ 
+ /*
+@@ -161,8 +176,32 @@ typedef long long		hrtime_t;
+ #define	NL_TEXTMAX	2048
+ #endif
+ 
++
++/*
++ * illumos' <sys/sysmacros.h> carries ARRAY_SIZE, but that header is
++ * kernel-flavoured and the rest of it collides with the host's.
++ * common/ctf/ctf_types.c reaches it through <sys/debug.h> on illumos and
++ * finds nothing here.
++ */
++#ifndef	ARRAY_SIZE
++#define	ARRAY_SIZE(x)	(sizeof (x) / sizeof (x[0]))
++#endif
++
++/*
++ * From illumos' <sys/cdefs.h>.  Used by common/lz4, which vtfontcvt links in.
++ */
++#ifndef	__DECONST
++#define	__DECONST(type, var)	((type)(uintptr_t)(const void *)(var))
++#endif
++
++/*
++ * strtonum(3C) is illumos libc, not the host's; native_support.c below
++ * supplies the implementation and this is its declaration.  Not reached
++ * through the gate's <stdlib.h>, which a foreign host does not see.
++ */
++extern long long strtonum(const char *, long long, long long, const char **);
+ #ifdef	__cplusplus
+ }
+ #endif
+ 
+-#endif	/* _SGS_NATIVE_COMPAT_H */
++#endif	/* _ONBLD_COMPAT_H */
+diff --git a/usr/src/tools/ctf/native/native_support.c b/usr/src/tools/libcompat/common/native_support.c
+similarity index 62%
+rename from usr/src/tools/ctf/native/native_support.c
+rename to usr/src/tools/libcompat/common/native_support.c
+index 2e976de74f..b5d7bffee8 100644
+--- a/usr/src/tools/ctf/native/native_support.c
++++ b/usr/src/tools/libcompat/common/native_support.c
+@@ -10,19 +10,67 @@
+  */
+ 
+ /*
+- * The handful of libc entry points that the CTF sources use and that a foreign
+- * libc does not have.  Built into the native libctf, which ctfconvert(1) and
+- * ctfmerge(1) both link against, so one copy serves all three.
++ * The handful of definitions that a foreign libc, and the objects dropped
++ * from the native libconv, would otherwise leave undefined.  Built into
++ * libconv, which everything else here links against.
+  */
+ 
+ #include <stdio.h>
+ #include <stdlib.h>
++#include <inttypes.h>
++#include <stdarg.h>
+ #include <string.h>
+ #include <errno.h>
+ #include <limits.h>
+-#include <inttypes.h>
+ #include <unistd.h>
+ 
++/*
++ * On illumos this is a .note section plus a string, generated from
++ * libconv/common/bld_vernote.ksh by ksh93 and the illumos assembler.  Only
++ * the string is ever read (ldmain.c stamps it into .comment, liblddbg prints
++ * it), so build it with the C compiler instead.
++ */
++#ifndef	LINK_VER_STRING
++#define	LINK_VER_STRING	"native (illumos)"
++#endif
++const char link_ver_string[] = LINK_VER_STRING;
++
++/*
++ * ASSERT3*()/VERIFY3*() from <sys/debug.h> call this; illumos has it in libc.
++ * assfail() itself comes from cmd/sgs/common/assfail.c.
++ */
++void
++assfail3(const char *a, uintmax_t lv, const char *op, uintmax_t rv,
++    const char *f, int l)
++{
++	(void) fprintf(stderr,
++	    "assertion failed: %s (0x%jx %s 0x%jx), file: %s, line: %d\n",
++	    a, lv, op, rv, f, l);
++	abort();
++}
++
++/*
++ * common/avl calls panic() on an impossible tree state.  In the kernel that
++ * is a system panic; here, the same thing an assertion failure does.
++ */
++void
++panic(const char *fmt, ...)
++{
++	va_list	ap;
++
++	va_start(ap, fmt);
++	(void) vfprintf(stderr, fmt, ap);
++	va_end(ap);
++	(void) fputc('\n', stderr);
++	abort();
++}
++
++/*
++ * ---------------------------------------------------------------------------
++ * From tools/ctf/native/native_support.c -- the CTF tools' half of the same
++ * job.  `assfail3()` above already covered what the two files shared.
++ * ---------------------------------------------------------------------------
++ */
+ /*
+  * Declared rather than reached through <errno.h>, which only exposes it under
+  * _GNU_SOURCE -- and this file is compiled with the same flags as the rest of
+@@ -32,9 +80,14 @@
+ extern char *program_invocation_name;
+ 
+ /*
+- * ASSERT()/VERIFY() and ASSERT3*()/VERIFY3*() from <sys/debug.h>.  On illumos
+- * both live in libc.
++ * ASSERT()/VERIFY() from <sys/debug.h>.  On illumos this lives in libc.
++ *
++ * Weak, unlike assfail3() above, because cmd/sgs/common/assfail.c has its own
++ * and libconv links both that and this file.  A strong definition here would
++ * be a duplicate symbol for every sgs consumer; weak lets the one that comes
++ * with the sources win and leaves this as the fallback for everyone else.
+  */
++__attribute__((__weak__))
+ void
+ assfail(const char *a, const char *f, int l)
+ {
+@@ -43,16 +96,6 @@ assfail(const char *a, const char *f, int l)
+ 	abort();
+ }
+ 
+-void
+-assfail3(const char *a, uintmax_t lv, const char *op, uintmax_t rv,
+-    const char *f, int l)
+-{
+-	(void) fprintf(stderr,
+-	    "assertion failed: %s (0x%jx %s 0x%jx), file: %s, line: %d\n",
+-	    a, lv, op, rv, f, l);
+-	abort();
+-}
+-
+ /*
+  * getexecname(3C).  tools/ctf/common/utils.c uses it to derive the program
+  * name for diagnostics.  glibc's nearest equivalent is program_invocation_name,
+@@ -122,3 +165,4 @@ out:
+ 
+ 	return (val);
+ }
++
+diff --git a/usr/src/tools/ctf/native/synch.h b/usr/src/tools/libcompat/common/synch.h
+similarity index 73%
+rename from usr/src/tools/ctf/native/synch.h
+rename to usr/src/tools/libcompat/common/synch.h
+index f260e49e8d..fdb029d558 100644
+--- a/usr/src/tools/ctf/native/synch.h
++++ b/usr/src/tools/libcompat/common/synch.h
+@@ -10,13 +10,12 @@
+  */
+ 
+ /*
+- * illumos' <synch.h> over POSIX threads, for the native build of the CTF
+- * tools.  See the comment in thread.h for why this is a shim rather than the
+- * real header.
++ * illumos' <synch.h> over POSIX threads, for the native build.  See the
++ * comment in thread.h for why this is a shim rather than the real header.
+  */
+ 
+-#ifndef	_CTF_NATIVE_SYNCH_H
+-#define	_CTF_NATIVE_SYNCH_H
++#ifndef	_ONBLD_COMPAT_SYNCH_H
++#define	_ONBLD_COMPAT_SYNCH_H
+ 
+ #include <pthread.h>
+ #include <stdlib.h>
+@@ -105,6 +104,49 @@ mutex_unlock(mutex_t *mp)
+ 	return (pthread_mutex_unlock(mp));
+ }
+ 
++static inline int
++rwlock_init(rwlock_t *rw, int type __attribute__((__unused__)),
++    void *arg __attribute__((__unused__)))
++{
++	return (pthread_rwlock_init(rw, NULL));
++}
++
++static inline int
++rwlock_destroy(rwlock_t *rw)
++{
++	return (pthread_rwlock_destroy(rw));
++}
++
++static inline int
++rw_rdlock(rwlock_t *rw)
++{
++	return (pthread_rwlock_rdlock(rw));
++}
++
++static inline int
++rw_wrlock(rwlock_t *rw)
++{
++	return (pthread_rwlock_wrlock(rw));
++}
++
++static inline int
++rw_tryrdlock(rwlock_t *rw)
++{
++	return (pthread_rwlock_tryrdlock(rw));
++}
++
++static inline int
++rw_trywrlock(rwlock_t *rw)
++{
++	return (pthread_rwlock_trywrlock(rw));
++}
++
++static inline int
++rw_unlock(rwlock_t *rw)
++{
++	return (pthread_rwlock_unlock(rw));
++}
++
+ static inline int
+ cond_init(cond_t *cvp, int type __attribute__((__unused__)),
+     void *arg __attribute__((__unused__)))
+@@ -156,9 +198,11 @@ mutex_exit(mutex_t *mp)
+ }
+ 
+ /*
+- * POSIX exposes no way to ask whether the calling thread holds a
+- * pthread_mutex_t, so these can only answer "yes" -- the assertions that use
+- * them become vacuous rather than wrong.
++ * libelf asserts that it holds a lock before touching shared state.  POSIX
++ * exposes no way to ask whether the calling thread holds a pthread_rwlock_t
++ * or a default pthread_mutex_t, so these can only answer "yes" -- the
++ * assertions become vacuous rather than wrong.  ld is single threaded, so
++ * nothing is lost.
+  */
+ #define	MUTEX_HELD(mp)		(1)
+ #define	RW_LOCK_HELD(rw)	(1)
+@@ -169,4 +213,4 @@ mutex_exit(mutex_t *mp)
+ }
+ #endif
+ 
+-#endif	/* _CTF_NATIVE_SYNCH_H */
++#endif	/* _ONBLD_COMPAT_SYNCH_H */
+diff --git a/usr/src/tools/sgs/native/sys/cmn_err.h b/usr/src/tools/libcompat/common/sys/cmn_err.h
+similarity index 86%
+rename from usr/src/tools/sgs/native/sys/cmn_err.h
+rename to usr/src/tools/libcompat/common/sys/cmn_err.h
+index a46f6e34e6..9fbb19c30a 100644
+--- a/usr/src/tools/sgs/native/sys/cmn_err.h
++++ b/usr/src/tools/libcompat/common/sys/cmn_err.h
+@@ -15,8 +15,8 @@
+  * plumbing that has no meaning here.
+  */
+ 
+-#ifndef	_SGS_NATIVE_SYS_CMN_ERR_H
+-#define	_SGS_NATIVE_SYS_CMN_ERR_H
++#ifndef	_ONBLD_COMPAT_SYS_CMN_ERR_H
++#define	_ONBLD_COMPAT_SYS_CMN_ERR_H
+ 
+ #ifdef	__cplusplus
+ extern "C" {
+@@ -28,4 +28,4 @@ extern void panic(const char *, ...) __attribute__((__noreturn__));
+ }
+ #endif
+ 
+-#endif	/* _SGS_NATIVE_SYS_CMN_ERR_H */
++#endif	/* _ONBLD_COMPAT_SYS_CMN_ERR_H */
+diff --git a/usr/src/tools/ctf/native/sys/elf.h b/usr/src/tools/libcompat/common/sys/elf.h
+similarity index 91%
+rename from usr/src/tools/ctf/native/sys/elf.h
+rename to usr/src/tools/libcompat/common/sys/elf.h
+index 3dfb76269d..8a8e5bde90 100644
+--- a/usr/src/tools/ctf/native/sys/elf.h
++++ b/usr/src/tools/libcompat/common/sys/elf.h
+@@ -23,9 +23,9 @@
+  * chain that collides head-on with the host libc.
+  */
+ 
+-#ifndef	_CTF_NATIVE_SYS_ELF_H
+-#define	_CTF_NATIVE_SYS_ELF_H
++#ifndef	_ONBLD_COMPAT_SYS_ELF_H
++#define	_ONBLD_COMPAT_SYS_ELF_H
+ 
+ #include <elf.h>
+ 
+-#endif	/* _CTF_NATIVE_SYS_ELF_H */
++#endif	/* _ONBLD_COMPAT_SYS_ELF_H */
+diff --git a/usr/src/tools/sgs/native/sys/mman.h b/usr/src/tools/libcompat/common/sys/mman.h
+similarity index 93%
+rename from usr/src/tools/sgs/native/sys/mman.h
+rename to usr/src/tools/libcompat/common/sys/mman.h
+index 1ec3e23cf8..3cf369f751 100644
+--- a/usr/src/tools/sgs/native/sys/mman.h
++++ b/usr/src/tools/libcompat/common/sys/mman.h
+@@ -16,8 +16,8 @@
+  * results the runtime linker reports.
+  */
+ 
+-#ifndef	_SGS_NATIVE_SYS_MMAN_H
+-#define	_SGS_NATIVE_SYS_MMAN_H
++#ifndef	_ONBLD_COMPAT_SYS_MMAN_H
++#define	_ONBLD_COMPAT_SYS_MMAN_H
+ 
+ #include_next <sys/mman.h>
+ 
+@@ -51,4 +51,4 @@ typedef struct mmapobj_result {
+ }
+ #endif
+ 
+-#endif	/* _SGS_NATIVE_SYS_MMAN_H */
++#endif	/* _ONBLD_COMPAT_SYS_MMAN_H */
+diff --git a/usr/src/tools/sgs/native/sys/systeminfo.h b/usr/src/tools/libcompat/common/sys/systeminfo.h
+similarity index 94%
+rename from usr/src/tools/sgs/native/sys/systeminfo.h
+rename to usr/src/tools/libcompat/common/sys/systeminfo.h
+index c01b61d0a3..735557968d 100644
+--- a/usr/src/tools/sgs/native/sys/systeminfo.h
++++ b/usr/src/tools/libcompat/common/sys/systeminfo.h
+@@ -21,8 +21,8 @@
+  * $PLATFORM in runpaths, and building the isalist.
+  */
+ 
+-#ifndef	_SGS_NATIVE_SYS_SYSTEMINFO_H
+-#define	_SGS_NATIVE_SYS_SYSTEMINFO_H
++#ifndef	_ONBLD_COMPAT_SYS_SYSTEMINFO_H
++#define	_ONBLD_COMPAT_SYS_SYSTEMINFO_H
+ 
+ #include <string.h>
+ #include <sys/utsname.h>
+@@ -102,4 +102,4 @@ sysinfo(int command, char *buf, long count)
+ }
+ #endif
+ 
+-#endif	/* _SGS_NATIVE_SYS_SYSTEMINFO_H */
++#endif	/* _ONBLD_COMPAT_SYS_SYSTEMINFO_H */
+diff --git a/usr/src/tools/sgs/native/sys/utsname.h b/usr/src/tools/libcompat/common/sys/utsname.h
+similarity index 85%
+rename from usr/src/tools/sgs/native/sys/utsname.h
+rename to usr/src/tools/libcompat/common/sys/utsname.h
+index c89dad7302..7c489e5602 100644
+--- a/usr/src/tools/sgs/native/sys/utsname.h
++++ b/usr/src/tools/libcompat/common/sys/utsname.h
+@@ -14,8 +14,8 @@
+  * size of a struct utsname field.
+  */
+ 
+-#ifndef	_SGS_NATIVE_SYS_UTSNAME_H
+-#define	_SGS_NATIVE_SYS_UTSNAME_H
++#ifndef	_ONBLD_COMPAT_SYS_UTSNAME_H
++#define	_ONBLD_COMPAT_SYS_UTSNAME_H
+ 
+ #include_next <sys/utsname.h>
+ 
+@@ -27,4 +27,4 @@
+ #endif
+ #endif
+ 
+-#endif	/* _SGS_NATIVE_SYS_UTSNAME_H */
++#endif	/* _ONBLD_COMPAT_SYS_UTSNAME_H */
+diff --git a/usr/src/tools/sgs/native/sys/varargs.h b/usr/src/tools/libcompat/common/sys/varargs.h
+similarity index 83%
+rename from usr/src/tools/sgs/native/sys/varargs.h
+rename to usr/src/tools/libcompat/common/sys/varargs.h
+index d19c5f6494..18453b021f 100644
+--- a/usr/src/tools/sgs/native/sys/varargs.h
++++ b/usr/src/tools/libcompat/common/sys/varargs.h
+@@ -14,9 +14,9 @@
+  * <stdarg.h>.  The host has no such header, so redirect.
+  */
+ 
+-#ifndef	_SGS_NATIVE_SYS_VARARGS_H
+-#define	_SGS_NATIVE_SYS_VARARGS_H
++#ifndef	_ONBLD_COMPAT_SYS_VARARGS_H
++#define	_ONBLD_COMPAT_SYS_VARARGS_H
+ 
+ #include <stdarg.h>
+ 
+-#endif	/* _SGS_NATIVE_SYS_VARARGS_H */
++#endif	/* _ONBLD_COMPAT_SYS_VARARGS_H */
+diff --git a/usr/src/tools/sgs/native/thread.h b/usr/src/tools/libcompat/common/thread.h
+similarity index 68%
+rename from usr/src/tools/sgs/native/thread.h
+rename to usr/src/tools/libcompat/common/thread.h
+index 9badac0e2d..8b4ed2ef1e 100644
+--- a/usr/src/tools/sgs/native/thread.h
++++ b/usr/src/tools/libcompat/common/thread.h
+@@ -20,11 +20,12 @@
+  * onto pthreads directly.
+  */
+ 
+-#ifndef	_SGS_NATIVE_THREAD_H
+-#define	_SGS_NATIVE_THREAD_H
++#ifndef	_ONBLD_COMPAT_THREAD_H
++#define	_ONBLD_COMPAT_THREAD_H
+ 
+ #include <pthread.h>
+ #include <synch.h>
++#include <errno.h>
+ 
+ #ifdef	__cplusplus
+ extern "C" {
+@@ -74,6 +75,39 @@ thr_getspecific(thread_key_t key)
+ 	return (pthread_getspecific(key));
+ }
+ 
++/*
++ * illumos' thr_create() takes a stack address and size up front and returns
++ * the new thread's id through its last argument.  workq.c passes NULL/0 for
++ * the stack and 0 for the flags, which is "give me the defaults" in both
++ * spellings, so the shim only has to handle that case honestly: a non-default
++ * request is refused rather than silently ignored.
++ */
++static inline int
++thr_create(void *stack_base, size_t stack_size, void *(*start)(void *),
++    void *arg, long flags, thread_t *new_thread)
++{
++	if (stack_base != NULL || stack_size != 0 || flags != 0)
++		return (EINVAL);
++
++	return (pthread_create(new_thread, NULL, start, arg));
++}
++
++/*
++ * illumos' thr_join() can wait for "any thread" when passed 0, and reports
++ * which one it reaped through its second argument.  workq.c always names a
++ * thread and does not ask, which is exactly pthread_join().
++ */
++static inline int
++thr_join(thread_t wait_for, thread_t *departed, void **status)
++{
++	if (wait_for == 0)
++		return (EINVAL);
++	if (departed != NULL)
++		*departed = wait_for;
++
++	return (pthread_join(wait_for, status));
++}
++
+ static inline thread_t
+ thr_self(void)
+ {
+@@ -96,4 +130,4 @@ thr_main(void)
+ }
+ #endif
+ 
+-#endif	/* _SGS_NATIVE_THREAD_H */
++#endif	/* _ONBLD_COMPAT_THREAD_H */
+diff --git a/usr/src/tools/sgs/Makefile.com b/usr/src/tools/sgs/Makefile.com
+index d1a86a0618..aa81120c02 100644
+--- a/usr/src/tools/sgs/Makefile.com
++++ b/usr/src/tools/sgs/Makefile.com
+@@ -14,7 +14,7 @@
+ CPPFLAGS =	-I. -I$(SRCDIR) -I$(SRCDIR)/common \
+ 	-I$(SGSHOME)/include -I$(SGSHOME)/include/$(MACH) \
+ 	-I../include $(CPPFLAGS.native) -I$(ELFCAP) -DNATIVE_BUILD \
+-	-I$(SRC)/tools/sgs/native -include $(SRC)/tools/sgs/native/native_compat.h
++	$(COMPAT_CPPFLAGS)
+ 
+ #
+ # The host link-editor is not illumos' -- it understands neither illumos ld's
+diff --git a/usr/src/tools/sgs/libconv/Makefile b/usr/src/tools/sgs/libconv/Makefile
+index b3e2aaa42f..b426269f0e 100644
+--- a/usr/src/tools/sgs/libconv/Makefile
++++ b/usr/src/tools/sgs/libconv/Makefile
+@@ -62,8 +62,8 @@ OBJECTS =	$(CONV_COMOBJS) $(COMOBJS32) $(COMOBJS64) $(ELFCAP_OBJS) \
+ 
+ CPPFLAGS +=	-DLINK_VER_STRING='"$(RELEASE) (illumos, native)"'
+ 
+-pics/native_support.o:	$(SRC)/tools/sgs/native/native_support.c
+-		$(COMPILE.c) $(C_PICFLAGS) -o $@ $(SRC)/tools/sgs/native/native_support.c
++pics/native_support.o:	$(COMPAT_SUPPORT_SRC)
++		$(COMPILE.c) $(C_PICFLAGS) -o $@ $(COMPAT_SUPPORT_SRC)
+ 		$(POST_PROCESS_O)
+ 
+ pics/assfail.o:		$(SGSCOMMON)/assfail.c
+diff --git a/usr/src/tools/sgs/native/native_support.c b/usr/src/tools/sgs/native/native_support.c
+deleted file mode 100644
+index bf631f3be7..0000000000
+--- a/usr/src/tools/sgs/native/native_support.c
++++ /dev/null
+@@ -1,62 +0,0 @@
+-/*
+- * This file and its contents are supplied under the terms of the
+- * Common Development and Distribution License ("CDDL"), version 1.0.
+- * You may only use this file in accordance with the terms of version
+- * 1.0 of the CDDL.
+- *
+- * A full copy of the text of the CDDL should have accompanied this
+- * source.  A copy of the CDDL is also available via the Internet at
+- * http://www.illumos.org/license/CDDL.
+- */
+-
+-/*
+- * The handful of definitions that a foreign libc, and the objects dropped
+- * from the native libconv, would otherwise leave undefined.  Built into
+- * libconv, which everything else here links against.
+- */
+-
+-#include <stdio.h>
+-#include <stdlib.h>
+-#include <inttypes.h>
+-#include <stdarg.h>
+-
+-/*
+- * On illumos this is a .note section plus a string, generated from
+- * libconv/common/bld_vernote.ksh by ksh93 and the illumos assembler.  Only
+- * the string is ever read (ldmain.c stamps it into .comment, liblddbg prints
+- * it), so build it with the C compiler instead.
+- */
+-#ifndef	LINK_VER_STRING
+-#define	LINK_VER_STRING	"native (illumos)"
+-#endif
+-const char link_ver_string[] = LINK_VER_STRING;
+-
+-/*
+- * ASSERT3*()/VERIFY3*() from <sys/debug.h> call this; illumos has it in libc.
+- * assfail() itself comes from cmd/sgs/common/assfail.c.
+- */
+-void
+-assfail3(const char *a, uintmax_t lv, const char *op, uintmax_t rv,
+-    const char *f, int l)
+-{
+-	(void) fprintf(stderr,
+-	    "assertion failed: %s (0x%jx %s 0x%jx), file: %s, line: %d\n",
+-	    a, lv, op, rv, f, l);
+-	abort();
+-}
+-
+-/*
+- * common/avl calls panic() on an impossible tree state.  In the kernel that
+- * is a system panic; here, the same thing an assertion failure does.
+- */
+-void
+-panic(const char *fmt, ...)
+-{
+-	va_list	ap;
+-
+-	va_start(ap, fmt);
+-	(void) vfprintf(stderr, fmt, ap);
+-	va_end(ap);
+-	(void) fputc('\n', stderr);
+-	abort();
+-}
+diff --git a/usr/src/tools/sgs/native/synch.h b/usr/src/tools/sgs/native/synch.h
+deleted file mode 100644
+index f4f84a8911..0000000000
+--- a/usr/src/tools/sgs/native/synch.h
++++ /dev/null
+@@ -1,127 +0,0 @@
+-/*
+- * This file and its contents are supplied under the terms of the
+- * Common Development and Distribution License ("CDDL"), version 1.0.
+- * You may only use this file in accordance with the terms of version
+- * 1.0 of the CDDL.
+- *
+- * A full copy of the text of the CDDL should have accompanied this
+- * source.  A copy of the CDDL is also available via the Internet at
+- * http://www.illumos.org/license/CDDL.
+- */
+-
+-/*
+- * illumos' <synch.h> over POSIX threads, for the native build.  See the
+- * comment in thread.h for why this is a shim rather than the real header.
+- */
+-
+-#ifndef	_SGS_NATIVE_SYNCH_H
+-#define	_SGS_NATIVE_SYNCH_H
+-
+-#include <pthread.h>
+-
+-#ifdef	__cplusplus
+-extern "C" {
+-#endif
+-
+-typedef pthread_mutex_t		mutex_t;
+-typedef pthread_rwlock_t	rwlock_t;
+-typedef pthread_cond_t		cond_t;
+-
+-#define	DEFAULTMUTEX	PTHREAD_MUTEX_INITIALIZER
+-#define	DEFAULTRWLOCK	PTHREAD_RWLOCK_INITIALIZER
+-#define	DEFAULTCV	PTHREAD_COND_INITIALIZER
+-
+-#define	USYNC_THREAD	0
+-#define	USYNC_PROCESS	1
+-
+-static inline int
+-mutex_init(mutex_t *mp, int type __attribute__((__unused__)),
+-    void *arg __attribute__((__unused__)))
+-{
+-	return (pthread_mutex_init(mp, NULL));
+-}
+-
+-static inline int
+-mutex_destroy(mutex_t *mp)
+-{
+-	return (pthread_mutex_destroy(mp));
+-}
+-
+-static inline int
+-mutex_lock(mutex_t *mp)
+-{
+-	return (pthread_mutex_lock(mp));
+-}
+-
+-static inline int
+-mutex_trylock(mutex_t *mp)
+-{
+-	return (pthread_mutex_trylock(mp));
+-}
+-
+-static inline int
+-mutex_unlock(mutex_t *mp)
+-{
+-	return (pthread_mutex_unlock(mp));
+-}
+-
+-static inline int
+-rwlock_init(rwlock_t *rw, int type __attribute__((__unused__)),
+-    void *arg __attribute__((__unused__)))
+-{
+-	return (pthread_rwlock_init(rw, NULL));
+-}
+-
+-static inline int
+-rwlock_destroy(rwlock_t *rw)
+-{
+-	return (pthread_rwlock_destroy(rw));
+-}
+-
+-static inline int
+-rw_rdlock(rwlock_t *rw)
+-{
+-	return (pthread_rwlock_rdlock(rw));
+-}
+-
+-static inline int
+-rw_wrlock(rwlock_t *rw)
+-{
+-	return (pthread_rwlock_wrlock(rw));
+-}
+-
+-static inline int
+-rw_tryrdlock(rwlock_t *rw)
+-{
+-	return (pthread_rwlock_tryrdlock(rw));
+-}
+-
+-static inline int
+-rw_trywrlock(rwlock_t *rw)
+-{
+-	return (pthread_rwlock_trywrlock(rw));
+-}
+-
+-static inline int
+-rw_unlock(rwlock_t *rw)
+-{
+-	return (pthread_rwlock_unlock(rw));
+-}
+-
+-/*
+- * libelf asserts that it holds a lock before touching shared state.  POSIX
+- * exposes no way to ask whether the calling thread holds a pthread_rwlock_t
+- * or a default pthread_mutex_t, so these can only answer "yes" -- the
+- * assertions become vacuous rather than wrong.  ld is single threaded, so
+- * nothing is lost.
+- */
+-#define	MUTEX_HELD(mp)		(1)
+-#define	RW_LOCK_HELD(rw)	(1)
+-#define	RW_READ_HELD(rw)	(1)
+-#define	RW_WRITE_HELD(rw)	(1)
+-
+-#ifdef	__cplusplus
+-}
+-#endif
+-
+-#endif	/* _SGS_NATIVE_SYNCH_H */
