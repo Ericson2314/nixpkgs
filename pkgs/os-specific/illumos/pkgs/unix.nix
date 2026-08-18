@@ -191,11 +191,18 @@ let
     #   shmsys   } System V IPC. Plenty of ported software probes for these
     #   semsys   } and quietly takes a worse path when they are missing,
     #   msgsys   } rather than failing loudly.
+    #
+    #            All three link `-Nmisc/ipc`, which is the shared System V IPC
+    #            core -- and nothing checks that, so leaving it out gives three
+    #            modules that build, stage, and fail to load, with SysV IPC
+    #            simply absent. Tenth instance of the same shape as net_dacf
+    #            and softmac: a declared dependency nobody enforces.
     "intel/doorfs"
     "intel/portfs"
     "intel/shmsys"
     "intel/semsys"
     "intel/msgsys"
+    "intel/ipc"
 
     # main() calls vfs_mountroot() almost immediately after startup, and
     # rootconf() (common/fs/vfs.c:4512) panics unless it can modload the root
