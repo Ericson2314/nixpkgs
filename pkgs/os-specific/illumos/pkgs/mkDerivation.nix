@@ -270,12 +270,6 @@ let
     "MACH64=${mach.mach64}"
   ];
 
-  # For a build-host tool that asks for the onbld layout (`illumosOnbldMach`):
-  # its MACH names the machine it will run on, which is the build platform.
-  nativeMachMakeFlags = [
-    "MACH=${nativeMach.mach}"
-    "MACH64=${nativeMach.mach64}"
-  ];
 in
 
 lib.makeOverridable (
@@ -574,9 +568,7 @@ lib.makeOverridable (
     # still override any single macro by restating it in its own `makeFlags`.
     // {
       makeFlags =
-        lib.optionals (!isNativeBuild || isLib || (attrs.illumosOnbldMach or false)) (
-          if isNativeBuild then nativeMachMakeFlags else machMakeFlags
-        )
+        lib.optionals (!isNativeBuild || isLib || (attrs.illumosOnbldMach or false)) machMakeFlags
         ++ lib.optionals isNativeBuild nativeBuildMakeFlags
         ++ lib.optionals isLib (
           libMakeFlags
