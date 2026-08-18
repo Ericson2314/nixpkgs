@@ -4,197 +4,133 @@
   mkDerivation,
 
   compat,
-  libdwarf,
+  elfutils,
   libctf,
-
-  buildPackages,
-
-  # Only used by the illumos-hosted build; see the split at the bottom.
-  cw,
-  headers,
-  sgs-libelf,
 }:
 
 # ctfconvert(1): turn a compiler's DWARF into CTF. `genunix` cannot be built
 # without it, and `unix` links against `libgenunix.so`, so this gates the whole
 # kernel path.
 #
-# One attribute, one source file -- `usr/src/cmd/ctfconvert/ctfconvert.c` --
-# and two ways of building it, chosen by the platform being built for. The
-# platform comes from the package set, not from the name:
-# `buildPackages.illumos.ctfconvert` is the build-host binary (the one every
-# CTF-producing package here puts in `nativeBuildInputs`), and
-# `illumos.ctfconvert` in a cross set is the illumos-hosted ctfconvert(1) that
-# would ship. See ld.nix and libctf.nix, which have the same shape.
+# Built from the gate's own source, `usr/src/cmd/ctfconvert/ctfconvert.c`, and
+# not through `usr/src/tools/ctf/ctfconvert` -- which holds no source, only a
+# `%.o: $(SRC)/cmd/ctfconvert/%.c` rule and a makefile saying "build this one
+# for the machine doing the build". See the standing order in ../default.nix.
 #
-# This deliberately does NOT go through `usr/src/tools/ctf/ctfconvert`. That
-# directory holds no source: it is `Makefile.com` plus a `%.o:
-# $(SRC)/cmd/ctfconvert/%.c` rule, i.e. illumos' own way of saying "build this
-# one for the machine doing the build". nixpkgs already says that, with
-# `buildPackages`, and saying it twice is what the standing order in
-# ../default.nix exists to stop. Nothing in ctfconvert.c is conditional on
-# `NATIVE_BUILD`; the two builds differ only in which libc and which
-# link-editor they use, which is exactly the difference splicing expresses.
-let
-  forIllumos = stdenv.hostPlatform.isSunOS;
-in
-mkDerivation (
-  {
-    pname = "ctfconvert";
-    path = "usr/src/cmd/ctfconvert";
-  }
-  // (
-    if forIllumos then
-      {
-        # The shipping ctfconvert(1) -- INCOMPLETE, and marked broken
-        # accordingly; see `meta.broken` at the bottom.
-        libcMinimal = true;
+# Like every other package here, this builds for ITS OWN host platform: plain
+# `stdenv`, `$CC`, `NIX_LDFLAGS`. There is no `depsBuildBuild`, no
+# `$CC_FOR_BUILD` and no `NIX_LDFLAGS_FOR_BUILD`, because those are for helper
+# programs a build runs and discards -- never for the thing being installed.
+#
+# The reason that is enough: `buildPackages.illumos.ctfconvert` is already an
+# instance whose `stdenv` targets the build machine, so in that instance `$CC`
+# *is* the host compiler. Consumers reach it by putting `ctfconvert` in
+# `nativeBuildInputs`, and splicing picks the build-host instance for them --
+# see uts-common.nix and libcMinimal.nix, which already do exactly that and
+# needed no change. (Splicing is the usual route, not the only one: a consumer
+# that would tie a knot through the scope has to name
+# `buildPackages.illumos.<tool>` outright, as ld.nix does for `ONBLD_TOOLS`.)
+#
+# Reproducing that selection inside this file, with `noCC` plus
+# `depsBuildBuild`, is the same mistake as `Makefile.ctf.native`: doing by hand
+# what the package set already does.
+mkDerivation {
+  pname = "ctfconvert";
+  path = "usr/src/cmd/ctfconvert";
 
-        extraPaths = [
-          "usr/src/Makefile.master"
-          "usr/src/Makefile.master.64"
-          "usr/src/Makefile.native"
-          "usr/src/Makefile.smatch"
+  extraPaths = [
+    # <libctf.h> and, through it, <sys/ctf_api.h> and <sys/ctf.h>. illumos does
+    # not ship these, so no host has a copy.
+    "usr/src/lib/libctf/common"
+    "usr/src/uts/common/sys"
+    "usr/src/head"
+  ];
 
-          "usr/src/cmd/Makefile.cmd"
-          "usr/src/cmd/Makefile.cmd.64"
-          "usr/src/cmd/Makefile.ctf"
-          "usr/src/cmd/Makefile.targ"
+  buildInputs = [
+    libctf
+    elfutils
+  ];
 
-          "usr/src/lib/libctf/common"
-          "usr/src/common/ctf"
-          "usr/src/uts/common/sys"
-          "usr/src/head"
-        ];
+  # libctf installs its shared object into `lib/$(MACH)` rather than `lib/`, so
+  # cc-wrapper's `-L${libctf}/lib` from `buildInputs` does not find it. That is
+  # a wart in libctf.nix -- its build-host form is still built out of
+  # `tools/ctf/libctf`, which uses the onbld layout -- not something this
+  # package can fix, so name the directory explicitly.
+  env.NIX_LDFLAGS = toString [
+    "-L${libctf}/lib/i386"
+    "-rpath"
+    "${libctf}/lib/i386"
+  ];
 
-        extraNativeBuildInputs = [ cw ];
+  # One translation unit and one link. The gate's `cmd/ctfconvert/Makefile` is
+  # not run: it is `include ../Makefile.cmd`, i.e. a 32-bit build linked by
+  # illumos ld with mapfiles, none of which applies to a program being built
+  # for a foreign host. Invoking the compiler directly is the whole of what it
+  # would have amounted to.
+  #
+  # Include-path shape, which is load-bearing:
+  #
+  #  o `-D_LARGEFILE64_SOURCE` first: <sys/ctf_api.h> declares `off64_t`
+  #    fields, and glibc only defines that type under this feature-test macro.
+  #
+  #  o `compat.hostElfCflags` ahead of `compat.stagedCflags`, so <sys/elf.h>
+  #    forwards to the host's <elf.h> rather than resolving to illumos' own.
+  #    libelf.h has already defined those types by the time <sys/ctf_api.h>
+  #    asks for them; see compat/host-elf/sys/elf.h.
+  #
+  #  o `compat.stagedCflags` for the rest -- the host's libc wins, with
+  #    illumos' "_t" integer spellings and `boolean_t` layered on top.
+  #
+  #  o `-idirafter` for `uts/common` and `head`: both hold headers illumos does
+  #    not ship (<sys/ctf_api.h>, <sys/debug.h>) *and* headers every libc has
+  #    (<sys/types.h>). Searched after the host's own directories, the host
+  #    wins wherever it has an opinion and illumos supplies the rest.
+  #
+  # `compat` also supplies `strtonum(3C)`, which ctfconvert parses `-j` and
+  # `-m` with and which glibc does not have. compat_host.c is compiled
+  # separately because it is by construction a host-headers translation unit,
+  # needing the `stat64`/`statvfs64` spellings those two macros unlock;
+  # mkfs-ufs.nix compiles it the same way.
+  buildPhase = ''
+    runHook preBuild
 
-        buildInputs = [
-          headers
-          libctf
-          sgs-libelf
-        ];
+    $CC -c -o compat_host.o -D_GNU_SOURCE -D_LARGEFILE64_SOURCE \
+      -I${compat.srcDir} "${compat.hostSource}"
 
-        makeFlags = [
-          "MACH=i386"
-          "MACH64=amd64"
-        ];
-      }
-    else
-      {
-        # The build-host binary. `noCC` plus the host compiler via
-        # `depsBuildBuild`, like the rest of the CTF pipeline; see libdwarf.nix.
-        noCC = true;
+    $CC -o ctfconvert \
+      -D_LARGEFILE64_SOURCE \
+      ${compat.hostElfCflags} ${compat.stagedCflags} \
+      -I "$SRC/lib/libctf/common" \
+      -idirafter "$SRC/uts/common" \
+      -idirafter "$SRC/head" \
+      ctfconvert.c compat_host.o \
+      -lctf -lelf
 
-        extraPaths = [
-          # <libctf.h> and, through it, <sys/ctf_api.h> and <sys/ctf.h>.
-          # illumos does not ship these, so the host has no copy.
-          "usr/src/lib/libctf/common"
-          "usr/src/uts/common/sys"
-          "usr/src/head"
-        ];
+    runHook postBuild
+  '';
 
-        # One translation unit, one link. Running the gate makefile would only
-        # be a way of arriving at this command line, and it cannot be run as
-        # written: cmd/Makefile.cmd is an illumos-hosted, 32-bit,
-        # illumos-ld-with-mapfiles build, which is precisely the set of
-        # assumptions `tools/ctf/Makefile.ctf.native` exists to unpick. Doing
-        # it here keeps the build-host variant expressed in nixpkgs.
-        #
-        # Include-path shape, which is load-bearing:
-        #
-        #  o `-D_LARGEFILE64_SOURCE` before anything else: <sys/ctf_api.h>
-        #    declares `off64_t` fields, and glibc only defines that type under
-        #    this feature-test macro.
-        #
-        #  o `compat.hostElfCflags` ahead of `compat.stagedCflags`, so that
-        #    <sys/elf.h> forwards to the host's <elf.h> rather than resolving
-        #    to illumos' own. libelf.h has already defined those types by the
-        #    time <sys/ctf_api.h> asks for them; see host-elf/sys/elf.h.
-        #
-        #  o `compat.stagedCflags` for the rest -- the host's libc wins, with
-        #    illumos' "_t" integer spellings and `boolean_t` layered on top.
-        #    This is the same job `tools/ctf/native/native_compat.h` does
-        #    upstream.
-        #
-        #  o `-I .../lib/libctf/common` for <libctf.h>, which exists nowhere
-        #    else.
-        #
-        #  o `-idirafter` for `uts/common` and `head`: both hold headers
-        #    illumos does not ship (<sys/ctf_api.h>, <sys/debug.h>) *and*
-        #    headers every libc has (<sys/types.h>). Searched after the host's
-        #    own directories, the host wins wherever it has an opinion and
-        #    illumos supplies the rest. Upstream's Makefile.ctf.native reaches
-        #    the same conclusion, in the same way.
-        #
-        # `compat.hostSource` is in the link for `strtonum(3C)`: ctfconvert
-        # parses `-j` and `-m` with it, and glibc has no such function. That is
-        # what the `compat` package is for -- a gap in a foreign libc, filled
-        # on the host side rather than by patching the gate.
-        buildPhase = ''
-          runHook preBuild
+  # `install` on $PATH here is illumos' install(1), whose options are not GNU
+  # coreutils'.
+  installPhase = ''
+    runHook preInstall
 
-          # Compiled on its own, and with its own flags: compat_host.c is by
-          # construction a *host*-headers translation unit, and it needs the
-          # glibc-specific spellings (`stat64`, `statvfs64`) that those two
-          # macros unlock. mkfs-ufs.nix compiles it the same way.
-          $CC_FOR_BUILD -c -o compat_host.o -D_GNU_SOURCE -D_LARGEFILE64_SOURCE \
-            -I${compat.srcDir} "${compat.hostSource}"
+    mkdir -p $out/bin
+    cp ctfconvert $out/bin/ctfconvert
 
-          $CC_FOR_BUILD -o ctfconvert \
-            -D_LARGEFILE64_SOURCE \
-            ${compat.hostElfCflags} ${compat.stagedCflags} \
-            -I "$SRC/lib/libctf/common" \
-            -idirafter "$SRC/uts/common" \
-            -idirafter "$SRC/head" \
-            ctfconvert.c compat_host.o \
-            -lctf -lelf
+    runHook postInstall
+  '';
 
-          runHook postBuild
-        '';
+  meta = {
+    platforms = lib.platforms.unix;
+    mainProgram = "ctfconvert";
 
-        # `install` on $PATH here is illumos' install(1), whose options are not
-        # GNU coreutils'.
-        installPhase = ''
-          runHook preInstall
-
-          mkdir -p $out/bin
-          cp ctfconvert $out/bin/ctfconvert
-
-          runHook postInstall
-        '';
-
-        # libctf and libdwarf install into lib/$(MACH), which is not the lib/
-        # that cc-wrapper picks up from a depsBuildBuild entry, so point at them
-        # by hand. These are the build-platform spellings of NIX_LDFLAGS.
-        NIX_LDFLAGS_FOR_BUILD = toString [
-          "-L${libctf}/lib/i386"
-          "-rpath"
-          "${libctf}/lib/i386"
-          "-L${libdwarf}/lib/i386"
-          "-rpath"
-          "${libdwarf}/lib/i386"
-        ];
-
-        depsBuildBuild = [
-          buildPackages.stdenv.cc
-          buildPackages.elfutils
-          buildPackages.zlib
-        ];
-      }
-  )
-  // {
-    meta = {
-      platforms = lib.platforms.unix;
-      mainProgram = "ctfconvert";
-
-      # The illumos-hosted branch is untested: nothing here consumes a
-      # ctfconvert that runs on illumos, and the cmd/Makefile.cmd link path has
-      # the same GNU-ld-versus-`-Bdirect` problem documented in ld.nix. Marked
-      # broken rather than left to return a plausible-looking binary -- the
-      # previous shape of this file had `noCC` unconditionally and so answered
-      # `pkgsCross.x86_64-illumos.illumos.ctfconvert` with a *Linux* binary.
-      broken = forIllumos;
-    };
-  }
-)
+    # Only the foreign-libc build is written. An illumos host needs none of
+    # `compat` and wants `sgs-libelf` rather than elfutils, and nothing here
+    # consumes a ctfconvert that runs on illumos -- every user takes the
+    # build-host instance through `nativeBuildInputs`. Rather than invent an
+    # untested second arm, say so: the previous version of this file guessed at
+    # one, and an earlier version silently answered
+    # `pkgsCross.x86_64-illumos.illumos.ctfconvert` with a Linux binary.
+    broken = stdenv.hostPlatform.isSunOS;
+  };
+}
