@@ -1,10 +1,9 @@
 {
+  lib,
   mkDerivation,
 
-  crt,
-  headers,
-  libcMinimal,
-  libssp_ns,
+  compatMakeFlags,
+  sharedLink,
 }:
 
 # libavl.so.1 -- the AVL tree implementation shared with the kernel. The whole
@@ -16,6 +15,9 @@
 # `libsec.so.1` and `libidmap.so.1` both carry it as a `DT_NEEDED`, and the
 # illumos link-editor insists on finding a shared object's own dependencies on
 # the link path before it will let a consumer link against it.
+let
+  link = sharedLink { };
+in
 mkDerivation {
   libcMinimal = true;
   illumosLib = true;
@@ -32,27 +34,25 @@ mkDerivation {
     "usr/src/common/avl"
 
     "usr/src/common/mapfiles"
+
+    # Reached by the `-idirafter` that `compatMakeFlags` adds on a foreign
+    # host: avl.c includes <sys/debug.h>, which no other libc has.
+    "usr/src/uts/common/sys"
+    "usr/src/head"
   ];
 
-  buildInputs = [
-    headers
-    crt
-    libcMinimal
-  ];
+  makeFlags = compatMakeFlags { };
 
-  env.NIX_CFLAGS_COMPILE = builtins.toString [
-    "-B${crt}/lib"
-    "-Wno-error"
-  ];
+  buildInputs = link.buildInputs;
+
+  env.NIX_CFLAGS_COMPILE = builtins.toString (link.cflags ++ [ "-Wno-error" ]);
 
   buildFlags = [ "all" ];
 
-  # See libm.nix for why `BUILD.SO` has to be redefined to call `$(LD)`
-  # directly, and libnsl.nix for why crti.o/crtn.o have to be named explicitly
-  # once the compiler driver is out of the picture.
-  preBuild = ''
-    makeFlagsArray+=("BUILD.SO=\$(LD) -o \$@ \$(GSHARED) \$(DYNFLAGS) ${crt}/lib/crti.o \$(PICS) \$(EXTPICS) ${crt}/lib/crtn.o -L${libcMinimal}/lib -L${libssp_ns}/lib \$(LDLIBS)")
-  '';
+  # The link line comes from the scope: see `sharedLink` in ../default.nix,
+  # and libm.nix for why `BUILD.SO` has to call `$(LD)` directly at all. On a
+  # build-host instance it is empty -- GNU ld needs none of it.
+  preBuild = link.preBuild;
 
   installPhase = ''
     runHook preInstall
@@ -63,4 +63,7 @@ mkDerivation {
 
     runHook postInstall
   '';
+
+  # Both instances are real: the CTF tools link the build-host one.
+  meta.platforms = lib.platforms.unix;
 }

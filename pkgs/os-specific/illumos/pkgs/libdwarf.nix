@@ -1,168 +1,97 @@
 {
   lib,
-  stdenv,
   mkDerivation,
 
-  illumosSetupHook,
-  make,
-  install,
-  cw,
-
-  buildPackages,
-
-  # Only used by the illumos-hosted build; see the split at the bottom.
-  crt,
-  headers,
-  libcMinimal,
-  libssp_ns,
-  sgs-libelf,
+  compatMakeFlags,
+  libelf,
+  sharedLink,
   zlib,
 }:
 
-# The libdwarf that the CTF tools link against, built as a *native* library for
-# the build host.
+# The libdwarf that the CTF tools link against.
 #
 # This is illumos' vendored copy of David Anderson's libdwarf (20200612), not
 # the one in nixpkgs: `ctfconvert` consumes the pre-0.x API (`dwarf_elf_init()`
 # and friends), which the modern releases no longer provide.
 #
-# Everything here is a build-host program, so nothing depends on the illumos
-# cross toolchain -- hence `noCC`, plus the host compiler by way of
-# `depsBuildBuild`. illumos' makefiles find it through `$CC_FOR_BUILD`; see
-# `NATIVE_PRIMARY_CC_PATH` in usr/src/Makefile.master.
+# ONE definition, two instances. `illumos.libdwarf` in a cross set is the
+# illumos-hosted shared object; `buildPackages.illumos.libdwarf` is the same
+# sources built to run on the machine doing the build, which is what
+# `ctfconvert`, `ctfmerge` and `ctfstabs` link against. The scope splices, so
+# that is all it takes -- see ../default.nix.
+#
+# This file used to be a `forIllumos ? ... : ...` conditional selecting between
+# `usr/src/lib/libdwarf/amd64` and `usr/src/tools/ctf/dwarf/i386`. Those are
+# not two libraries: `tools/ctf/dwarf/Makefile.com` has no sources of its own,
+# it compiles `$(SRC)/lib/libdwarf/common` with `Makefile.ctf.native` layered
+# on top. That makefile is illumos' answer to "build this for the build
+# machine", and splicing is ours; keeping both meant maintaining a second,
+# drifting expression of the same library. See the standing order in
+# ../default.nix.
+#
+# What `Makefile.ctf.native` supplied is now supplied from the two places it
+# belongs. The link-editor half -- the `Z*` options, the `MAPFILE.*` set,
+# `SAVEARGS`, the `POST_PROCESS*`/`STRIP_STABS` no-ops -- comes from
+# mkDerivation's build-host overlay, which derives it from the platforms. The
+# libc half -- `native_compat.h` and the `-idirafter` search order -- comes
+# from `compat`, whose "staged" profile is that same header, packaged.
 let
-  forIllumos = stdenv.hostPlatform.isSunOS;
+  link = sharedLink {
+    libs = [
+      libelf
+      zlib
+    ];
+  };
 in
-mkDerivation (
-  {
+mkDerivation {
   pname = "libdwarf";
 
-  # The i386 directory is entered directly rather than through
-  # ../Makefile's `SUBDIRS = $(MACH)` recursion, which does not forward
-  # $ROOTONBLD to the sub-make. Despite the name the build is 64-bit; see the
-  # comment in tools/ctf/Makefile.ctf.native.
-  path = if forIllumos then "usr/src/lib/libdwarf/amd64" else "usr/src/tools/ctf/dwarf/i386";
+  illumosLib = true;
+  libcMinimal = true;
+
+  # Entered directly rather than through ../Makefile's `SUBDIRS = $(MACH)`
+  # recursion, which does not forward the macros set here to the sub-make.
+  path = "usr/src/lib/libdwarf/amd64";
   extraPaths = [
-    "usr/src/Makefile.master"
-    "usr/src/Makefile.master.64"
-    "usr/src/Makefile.native"
-    "usr/src/Makefile.smatch"
-
-    "usr/src/tools/Makefile.tools"
-    "usr/src/tools/Makefile.targ"
-
-    # The whole of tools/ctf rather than the individual makefiles: it is a
-    # small, self-contained subtree, and naming pieces of it would not work
-    # anyway -- Makefile.ctf.native does not exist upstream, it is created by
-    # the patch, so filterSource cannot copy it by name.
-    "usr/src/tools/ctf"
-
-    "usr/src/lib/Makefile.lib"
-    "usr/src/lib/Makefile.lib.64"
-    "usr/src/lib/Makefile.targ"
     "usr/src/lib/Makefile.rootfs"
-
+    "usr/src/lib/libdwarf"
     "usr/src/lib/libdwarf/common"
+    "usr/src/common/mapfiles"
 
-    # Reached by the -idirafter in Makefile.ctf.native: the force-included
+    # Reached by the `-idirafter` below on a foreign host: the force-included
     # native_compat.h wants <sys/isa_defs.h> and <sys/ccompile.h>, which no
     # foreign libc has.
     "usr/src/uts/common/sys"
     "usr/src/head"
-  ]
-  # Only the illumos-hosted build links a shared object, so only it needs the
-  # link-editor mapfiles. Kept conditional so that adding them leaves the
-  # build-host derivation's inputs untouched -- that is the one the CTF tools
-  # use, and rebuilding it rebuilds libc and the kernel behind it.
-  ++ lib.optionals forIllumos [
-    # The illumos-hosted build needs the library directory itself, not just
-    # common/: its amd64 Makefile includes ../Makefile.com.
-    "usr/src/lib/libdwarf"
-    "usr/src/common/mapfiles"
   ];
 
+  outputs = [
+    "out"
+    "dev"
+  ];
+
+  buildInputs = link.buildInputs;
+
+  env.NIX_CFLAGS_COMPILE = builtins.toString (link.cflags ++ [ "-Wno-error" ]);
+
+  makeFlags = compatMakeFlags { };
+
+  buildFlags = [ "all" ];
+
+  preBuild = link.preBuild;
+
+  installPhase = ''
+    runHook preInstall
+
+    mkdir -p "$out/lib"
+    cp libdwarf.so.1 "$out/lib/"
+    ln -s libdwarf.so.1 "$out/lib/libdwarf.so"
+
+    mkdir -p "$dev/include"
+    cp ../common/dwarf.h ../common/libdwarf.h "$dev/include/"
+
+    runHook postInstall
+  '';
+
   meta.platforms = lib.platforms.unix;
-  }
-  // (
-    if forIllumos then
-      {
-        # The illumos-hosted build is an ordinary cross-compiled shared
-        # library. None of the build-host machinery below applies: every one
-        # of those attributes exists to make a *native* library, and using
-        # them here compiles target sources with the host gcc.
-        libcMinimal = true;
-        illumosLib = true;
-
-        outputs = [
-          "out"
-          "dev"
-        ];
-
-        buildInputs = [
-          headers
-          crt
-          libcMinimal
-          sgs-libelf
-          zlib
-        ];
-
-        env.NIX_CFLAGS_COMPILE = builtins.toString [
-          "-B${crt}/lib"
-          "-Wno-error"
-        ];
-
-        buildFlags = [ "all" ];
-
-        # See libm.nix for why `BUILD.SO` has to be redefined to call `$(LD)`
-        # directly, and libnsl.nix for why crti.o/crtn.o have to be named
-        # explicitly once the compiler driver is out of the picture.
-        preBuild = ''
-          makeFlagsArray+=("BUILD.SO=\$(LD) -o \$@ \$(GSHARED) \$(DYNFLAGS) ${crt}/lib/crti.o \$(PICS) \$(EXTPICS) ${crt}/lib/crtn.o -L${libcMinimal}/lib -L${libssp_ns}/lib -L${sgs-libelf}/lib -R${sgs-libelf}/lib -L${zlib}/lib -R${zlib}/lib \$(LDLIBS)")
-        '';
-
-        installPhase = ''
-          runHook preInstall
-
-          mkdir -p "$out/lib"
-          cp libdwarf.so.1 "$out/lib/"
-          ln -s libdwarf.so.1 "$out/lib/libdwarf.so"
-
-          mkdir -p "$dev/include"
-          cp ../common/dwarf.h ../common/libdwarf.h "$dev/include/"
-
-          runHook postInstall
-        '';
-      }
-    else
-      {
-        noCC = true;
-
-        makeFlags = [
-          "ROOTONBLD=${builtins.placeholder "out"}"
-          "MACH=i386"
-          "MACH64=amd64"
-        ];
-
-        buildFlags = [ "install" ];
-        dontInstall = true;
-
-        extraNativeBuildInputs = [
-          cw
-        ];
-
-        # Build-platform dependencies, not host-platform ones: the library
-        # produced here runs on the machine doing the build.
-        depsBuildBuild = [
-          buildPackages.stdenv.cc
-          buildPackages.elfutils
-          buildPackages.zlib
-        ];
-
-        # The build installs as it goes, so the target directory has to exist
-        # before it starts rather than in preInstall.
-        preBuild = ''
-          mkdir -p $out/lib/i386
-        '';
-      }
-  )
-)
+}

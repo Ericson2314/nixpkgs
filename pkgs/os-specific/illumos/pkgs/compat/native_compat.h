@@ -110,6 +110,17 @@ typedef unsigned long long	u_longlong_t;
 #endif
 
 /*
+ * ARRAY_SIZE is illumos' <sys/sysmacros.h>, which the staged profile does not
+ * layer in: it is a kernel-flavoured header whose other contents collide with
+ * the host's.  common/ctf/ctf_types.c reaches it through <sys/debug.h> on
+ * illumos and finds nothing here.  Same definition, and the same thing
+ * tools/ctf/common/ctf_headers.h did for the build over there.
+ */
+#ifndef	ARRAY_SIZE
+#define	ARRAY_SIZE(x)	(sizeof (x) / sizeof (x[0]))
+#endif
+
+/*
  * strtonum(3C) is illumos libc, not the host's; libcompat supplies the
  * implementation (compat_host.c) and this is its declaration. Not reached
  * through the gate's <stdlib.h> because the staged profile deliberately lets

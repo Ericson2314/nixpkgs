@@ -60,16 +60,6 @@ mkDerivation {
     elfutils
   ];
 
-  # libctf installs its shared object into `lib/$(MACH)` rather than `lib/`, so
-  # cc-wrapper's `-L${libctf}/lib` from `buildInputs` does not find it. A wart
-  # in libctf.nix -- its build-host form is still built out of
-  # `tools/ctf/libctf`, which uses the onbld layout -- so name it explicitly.
-  env.NIX_LDFLAGS = toString [
-    "-L${libctf}/lib/i386"
-    "-rpath"
-    "${libctf}/lib/i386"
-  ];
-
   # `strtonum(3C)` is illumos libc and glibc has none; ctfconvert parses `-j`
   # and `-m` with it. `compat` fills exactly that kind of gap. It is built here
   # rather than shipped built because compat_host.c must see the *consumer's*

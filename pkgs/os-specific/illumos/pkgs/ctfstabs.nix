@@ -5,19 +5,23 @@
   cw,
   libdwarf,
   libctf,
-
-  buildPackages,
 }:
 
 # ctfstabs(1ONBLD): read an `offsets.in` file plus the CTF of a compiled stub,
 # and emit the C header of struct offsets that assembly sources include. The
 # `-s` half of $(OFFSETS_CREATE) in usr/src/Makefile.master.
 #
-# A build-host program, so `noCC` plus the host compiler via `depsBuildBuild`;
-# see pkgs/libdwarf.nix.
+# Built for ITS OWN host platform, with plain `stdenv`/`$CC`. The scope
+# splices, so `buildPackages.illumos.ctfstabs` is already an instance whose
+# stdenv targets the build machine; consumers put `ctfstabs` in
+# `nativeBuildInputs` and get it. There is nothing here to arrange, and the
+# `noCC` + `depsBuildBuild` + `NIX_LDFLAGS_FOR_BUILD` triple that used to be
+# here was hand-rolling exactly that.
+#
+# `usr/src/tools` rather than `usr/src/cmd` is the documented exemption in
+# ../default.nix: there is no `cmd/ctfstabs`, this is the only copy.
 mkDerivation {
   pname = "ctfstabs";
-  noCC = true;
 
   # Entered directly rather than through ../Makefile's `SUBDIRS = $(MACH)`
   # recursion, which does not forward $ROOTONBLD to the sub-make. Despite the
@@ -52,21 +56,12 @@ mkDerivation {
 
   extraNativeBuildInputs = [ cw ];
 
-  # libctf and libdwarf install into lib/$(MACH), which is not the lib/ that
-  # cc-wrapper picks up from a depsBuildBuild entry, so point at them by hand.
-  NIX_LDFLAGS_FOR_BUILD = toString [
-    "-L${libctf}/lib/i386"
-    "-rpath"
-    "${libctf}/lib/i386"
-    "-L${libdwarf}/lib/i386"
-    "-rpath"
-    "${libdwarf}/lib/i386"
-  ];
-
-  depsBuildBuild = [
-    buildPackages.stdenv.cc
-    buildPackages.elfutils
-    buildPackages.zlib
+  # libctf and libdwarf now install into a plain `lib/`, like any other
+  # library, so cc-wrapper picks them up from `buildInputs` and there is
+  # nothing to point at by hand.
+  buildInputs = [
+    libctf
+    libdwarf
   ];
 
   # The build installs as it goes, so the target directory has to exist before

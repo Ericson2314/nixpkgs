@@ -167,6 +167,20 @@ let
     "STACKPROTECT=none"
   ];
 
+  # The gate's staged headers -- illumos' libc headers, which only make sense
+  # for something that will run on illumos. A build-host instance of the same
+  # library uses the host's own headers, so this is kept out of the shared list
+  # rather than each library asking which instance it is.
+  #
+  # They must be searched *before* the -I flags individual rules add, not
+  # after. Makefile.targ's regex rule adds -I$(LIBCBASE)/../port/regex, and
+  # libc keeps a private regex.h there which does not define REG_ESPACE and
+  # friends. Arriving via -isystem (as buildInputs do) is too late in the
+  # search order; CPPFLAGS.first is placed ahead of everything else.
+  illumosLibMakeFlags = [
+    "CPPFLAGS.first=-I${headers}/include"
+  ];
+
   libMakeFlags = [
     # The libc_pic.a rule runs `mcs -d -n .SUNW_ctf` to drop the per-object CTF
     # from the archive, since only the shared library is meant to carry it. mcs
@@ -180,14 +194,6 @@ let
     # the shared-library links run under illumos ld with -zguidance
     # -zfatal-warnings, which turns a missing -Bdirect into a hard error.
     "LDFLAGS.native="
-    # The installed headers must be searched *before* the -I flags individual
-    # rules add, not after. Makefile.targ's regex rule adds
-    # -I$(LIBCBASE)/../port/regex, and libc keeps a private regex.h there which
-    # does not define REG_ESPACE and friends; a native build gets the public
-    # <regex.h> first because $(COMPILE.c) already carries -I$(SRC)/head.
-    # Arriving via -isystem (as buildInputs do) is too late in the search
-    # order. CPPFLAGS.first is placed ahead of everything else in CPPFLAGS.
-    "CPPFLAGS.first=-I${headers}/include"
     # illumos' MACH/MACH64 are not uname processor strings: on x86 they are
     # "i386" and "amd64". Source lookups depend on this -- Makefile.targ finds
     # the complex-arithmetic sources via $(LIBCBASE)/../$(MACH)/fp/%.c, which
@@ -239,7 +245,11 @@ lib.makeOverridable (
         stdenvNoCC
       else if attrs.noLibc or false then
         stdenvNoLibc
-      else if attrs.libcMinimal or false then
+      # `libcMinimal` names the gate's own bootstrap libc, which only exists for
+      # illumos. A build-host instance of the same package links against the
+      # host's libc like anything else, so the knob is ignored there rather than
+      # each package having to ask which instance it is.
+      else if (attrs.libcMinimal or false) && !isNativeBuild then
         stdenvLibcMinimal
       else
         stdenv;
@@ -366,8 +376,12 @@ lib.makeOverridable (
     # Together they are true only when something is built to run on the builder
     # AND the builder is not illumos, which is precisely when the GNU toolchain
     # is in play.
+    # Computed from the plain `stdenv` rather than from `stdenv'`: the choice of
+    # `stdenv..` below now depends on THIS, because `libcMinimal` is one of the
+    # illumos-only knobs a build-host instance must not honour. Every variant
+    # shares the same platforms, so the answer is the same either way.
     isNativeBuild =
-      stdenv'.hostPlatform == stdenv'.buildPlatform && !stdenv'.hostPlatform.isIllumos;
+      stdenv.hostPlatform == stdenv.buildPlatform && !stdenv.hostPlatform.isIllumos;
 
     # Link through illumos' own link-editor. On by default for `illumosLib`;
     # a static-only library (libssp_ns) never links anything and turns it off.
@@ -379,7 +393,11 @@ lib.makeOverridable (
     # resolves a bare `ld` off PATH. Note the consequence: the only `ld` on
     # PATH is the cross binutils one, so a makefile that did start calling
     # `ld` unqualified would get GNU ld rather than illumos'.
-    useLd = attrs.illumosLd or isLib;
+    #
+    # Never on a build-host instance: there is no illumos link-editor in play
+    # there, GNU ld is, and the overlay above has already emptied the macros it
+    # would choke on.
+    useLd = (attrs.illumosLd or isLib) && !isNativeBuild;
 
     # Produce real CTF rather than stubbing the post-processing out. Opt-in:
     # it needs ctfconvert/ctfmerge on the build host and DWARF in the objects.
@@ -490,6 +508,7 @@ lib.makeOverridable (
         lib.optionals isNativeBuild nativeBuildMakeFlags
         ++ lib.optionals isLib (
           libMakeFlags
+          ++ lib.optionals (!isNativeBuild) illumosLibMakeFlags
           ++ (if enableCtf then ctfMakeFlags else noCtfMakeFlags)
           ++ lib.optional useLd "LD=${ld-wrapper}"
         )

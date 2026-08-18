@@ -140,6 +140,13 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     # The two halves of libcompat, to be compiled by the consumer.
     hostSource = "${finalAttrs.finalPackage}/src/compat_host.c";
     gateSource = "${finalAttrs.finalPackage}/src/compat_gate.c";
+
+    # The libc entry points the CTF sources use that a foreign libc does not
+    # have -- assfail()/assfail3() behind ASSERT(), and getexecname(). Compiled
+    # into libctf, which ctfconvert and ctfmerge both link, so one copy serves
+    # all three; that is how tools/ctf/native/native_support.c was used, and
+    # this is that file.
+    ctfSupportSource = "${finalAttrs.finalPackage}/src/ctf_support.c";
     srcDir = "${finalAttrs.finalPackage}/src";
   };
 
@@ -168,6 +175,17 @@ stdenvNoCC.mkDerivation (finalAttrs: {
 
     cp ${./native_compat.h} "$out/include/native_compat.h"
 
+    # illumos' <synch.h> and <thread.h> over pthreads. The real ones reach
+    # <sys/machlock.h>, <sys/time_impl.h> and <sys/int_types.h> -- the whole
+    # illumos type system -- which collides head-on with the host libc's. The
+    # gate code here that uses the Solaris threads API (lib/mergeq, reached by
+    # libctf) maps onto pthreads directly.
+    #
+    # Copied from usr/src/tools/ctf/native, the tree the CTF packages are being
+    # moved off; this is where those shims live now.
+    cp ${./staged/synch.h} "$out/include/synch.h"
+    cp ${./staged/thread.h} "$out/include/thread.h"
+
     # <sys/inttypes.h> is illumos' spelling of <inttypes.h>. The real one drags
     # in <sys/int_types.h>, which redefines the whole intN_t family and would
     # collide with the host's <stdint.h>, so forward to the host's instead.
@@ -191,6 +209,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     mkdir -p "$out/src"
     cp ${./compat_host.c} "$out/src/compat_host.c"
     cp ${./compat_gate.c} "$out/src/compat_gate.c"
+    cp ${./staged/ctf_support.c} "$out/src/ctf_support.c"
     cp ${./compat_priv.h} "$out/src/compat_priv.h"
   ''
   ;
