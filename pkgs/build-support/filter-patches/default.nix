@@ -78,10 +78,20 @@ let
           (lib.lists.drop 1 partitionedPatches')
         else
           (throw "${patchFile} does not seem to be a unified patch (diff -u). this is required.");
+      # A hunk header is a `--- ` line followed by a `+++ ` line. Normally the
+      # `+++ ` side names the file, but a deletion has `+++ /dev/null`, which
+      # is not a subpath and makes `lib.path.subpath.components` throw. For
+      # those, the `--- ` side is the path that matters. (A creation is the
+      # mirror image, `--- /dev/null`, and already works, because the `+++ `
+      # side names the new file.)
+      hunkPath =
+        line: builtins.elemAt (builtins.split " |\t" line) 2;
       filterFunc =
         patchLines:
         let
-          prefixedPath = builtins.elemAt (builtins.split " |\t" (builtins.elemAt patchLines 1)) 2;
+          newPath = hunkPath (builtins.elemAt patchLines 1);
+          prefixedPath =
+            if newPath == "/dev/null" then hunkPath (builtins.elemAt patchLines 0) else newPath;
           unfixedPath = lib.path.subpath.join (lib.lists.drop 1 (lib.path.subpath.components prefixedPath));
         in
         lib.lists.any (
