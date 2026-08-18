@@ -1,184 +1,60 @@
 {
-  lib,
-  stdenv,
-  mkDerivation,
-
-  illumosSetupHook,
-  make,
-  install,
-  cw,
-  perl,
-
-  ld,
+  libcompat,
+  sgs-libconv,
 }:
 
 # The support environment an sgs program needs in order to be built for a host
-# whose libc is not illumos': a staged set of "ELF-y" headers, and libconv.
+# whose libc is not illumos': the staged "ELF-y" headers, the NATIVE_BUILD
+# shims, and libconv. All three are now packages of their own, so this is only
+# the naming of the compile and link profile they add up to -- stated once
+# rather than copied into each consumer, which is what every other `*Cflags`
+# passthru in this set is for.
 #
-# Both come straight out of `usr/src/tools/sgs`, built by its own makefiles
-# under dmake -- this package runs two of that tree's SUBDIRS and installs what
-# they produce. It exists only because upstream leaves them in the build
-# directory: `tools/sgs/include/Makefile` stages its headers into `.`, and
-# `tools/sgs/libconv` builds `libconv.a` for `tools/sgs/ld` to pick up with a
-# bare `-L../libconv`. Anything else in the tree that wants them -- mcs(1) --
-# has no way to reach them.
+# It used to BUILD all of that: it ran `tools/sgs/include` and
+# `tools/sgs/libconv` under dmake and installed what they left in the build
+# directory, plus a copy of `tools/sgs/native`. Every part of that has since
+# been overtaken:
 #
-# This is `usr/src/tools/`, which the standing order in ../default.nix tells us
-# to avoid, and legitimately so under its own exemption: what lives here exists
-# ONLY here. `tools/sgs/native/native_support.c` and its headers are real
-# source with no counterpart under `cmd/`, and `tools/sgs/libconv/Makefile`'s
-# trimming (dropping `corenote.o` and `lddstub.o`, which need <sys/procfs.h>
-# and `dlinfo(RTLD_DI_ORIGIN)`) is the only statement anywhere of what libconv
-# means on a foreign host. The order objects to *duplicating* what nixpkgs
-# already expresses; it does not ask us to reinvent this.
+#  * `tools/sgs/include` staged its header list into its own source directory,
+#    which is why it could only be consumed from inside a writable workspace.
+#    `tools/libcompat` gathers the same list and INSTALLS it, and the gate
+#    patch that taught it to (`tools/sgs: take the staged headers from
+#    libcompat`) dropped `include` from `tools/sgs/Makefile`'s SUBDIRS. This
+#    file went on running that directory's makefile by hand for a while
+#    afterwards.
 #
-# Kept apart from `ld` rather than published by it, though `ld` builds exactly
-# these on its way to the link-editor. `ld` is the most depended-upon package
-# in the set -- libc and every kernel module are downstream of it -- so adding
-# a file to its output rebuilds the entire tree. Nothing depends on this
-# package except mcs, so it costs one small build instead.
-mkDerivation (finalAttrs: {
-  pname = "sgs-support";
-  path = "usr/src/tools/sgs";
+#  * `tools/sgs/native` no longer exists at all: `tools: merge the two
+#    `native/` compat trees into `tools/libcompat`` moved it to
+#    `tools/libcompat/common`. The `cp -r $SRC/tools/sgs/native` here was
+#    copying a path the patch stack deletes.
+#
+#  * `tools/sgs/libconv` is `sgs-libconv`'s build-platform arm -- literally the
+#    same directory, built by the same makefile.
+#
+# So there is nothing left to build, and this reduces to the two strings its
+# only consumer, `mcs`, actually asked for. `-DNATIVE_BUILD` and the
+# `libintl.h` force-include are the residue that is genuinely this profile's
+# own: they are what `tools/sgs/Makefile.com` puts in CPPFLAGS on top of
+# `$(COMPAT_CPPFLAGS)`, and an sgs program built out of `cmd/` gets neither
+# from its own makefile.
+{
+  # `-I include-native` ahead of `-I include`, matching the gate's own
+  # `$(COMPAT_CPPFLAGS)` (tools/Makefile.tools) and `ld.nix`. The shims stand
+  # in for headers the host libc lacks; the gathered set is illumos' real
+  # headers underneath them.
+  cflags = toString [
+    "-DNATIVE_BUILD"
 
-  extraPaths = [
-    "usr/src/Makefile.master"
-    "usr/src/Makefile.master.64"
-    "usr/src/Makefile.native"
-    "usr/src/Makefile.smatch"
+    # The sgs sources call gettext(3C) without including <libintl.h>, relying
+    # on illumos' <string.h> chain to have pulled it in. glibc's does not.
+    "-include"
+    "libintl.h"
 
-    "usr/src/lib/Makefile.lib"
-    "usr/src/lib/Makefile.lib.64"
-    "usr/src/lib/Makefile.targ"
-    "usr/src/lib/Makefile.rootfs"
-
-    "usr/src/cmd/Makefile.cmd"
-    "usr/src/cmd/Makefile.ctf"
-    "usr/src/cmd/Makefile.targ"
-
-    "usr/src/cmd/sgs/Makefile.com"
-    "usr/src/cmd/sgs/Makefile.sub"
-    "usr/src/cmd/sgs/common"
-    "usr/src/cmd/sgs/include"
-    "usr/src/cmd/sgs/libconv"
-    "usr/src/cmd/sgs/messages"
-    "usr/src/cmd/sgs/tools/libconv_mk_report_bufsize.pl"
-
-    "usr/src/tools/Makefile.tools"
-    "usr/src/tools/Makefile.targ"
-
-    "usr/src/common/elfcap"
-    "usr/src/common/sgsrtcid"
-
-    "usr/src/head"
-    "usr/src/uts/common/sys"
-    "usr/src/uts/intel/sys"
-
-    "usr/src/lib/libc/inc"
-    "usr/src/lib/libdemangle/common"
+    "-I${libcompat}/include-native"
+    "-I${libcompat}/include"
+    "-include"
+    "${libcompat}/include-native/native_compat.h"
   ];
 
-  nativeBuildInputs = [
-    illumosSetupHook
-    make
-    install
-    cw
-    perl
-  ];
-
-  # Upstream's own recursion is `cd $@; make` per SUBDIR, and its ordering
-  # (`libconv: sgsmsg include`) only holds serially: dmake will otherwise enter
-  # `sgsmsg` before `include` has staged, and the build dies on a missing
-  # <sys/isa_defs.h> from the still-empty `-I../include`.
-
-  enableParallelBuilding = false;
-
-  # Each subdirectory's own makefile, entered in dependency order.
-  #
-  # Not `make include libconv` through `tools/sgs/Makefile`: `include` is a
-  # dmake keyword as well as a directory here, so as a command-line target it is
-  # silently swallowed and the staging never runs. Nor the whole tree via
-  # `install`, which is what `ld` already does -- that would build the
-  # link-editor a second time to reach two of its by-products.
-  #
-  # `install` is named explicitly because neither makefile puts its real work
-  # first: `include/Makefile` leads with `sys:` (a bare `mkdir`) and states the
-  # staging under `all install:`, so a target-less `make` succeeds having copied
-  # nothing. Neither actually installs anywhere -- `libconv` has
-  # `install all: $(LIBRARY)` and the header rules copy into the build
-  # directory -- so this only builds.
-  buildPhase = ''
-    runHook preBuild
-
-    local flags=()
-    concatTo flags makeFlags makeFlagsArray
-
-    for d in include libconv; do
-      ( cd "$d" && make "''${flags[@]}" install )
-    done
-
-    runHook postBuild
-  '';
-
-  # Installs into, or reads from, the onbld $(ROOTONBLD)/bin/$(MACH) layout,
-  # so it needs MACH set even when it is built for the build host.
-  illumosOnbldMach = true;
-
-  makeFlags = [
-    # libconv runs the sgsmsg built by tools/sgs to generate its message
-    # catalogue, and looks for it under $(ONBLD_TOOLS)/bin/$(MACH). `ld` is the
-    # package that builds and installs it.
-    "ONBLD_TOOLS=${ld}"
-
-  ];
-
-  # The staged headers land in `include/` and the archive in
-  # `libconv/libconv.a`, both relative to the build directory, because that is
-  # where upstream's consumers look for them.
-  installPhase = ''
-    runHook preInstall
-
-    mkdir -p "$out/include" "$out/lib"
-    cp -r include/. "$out/include/"
-    rm -f "$out/include/Makefile"
-    cp libconv/libconv.a "$out/lib/"
-
-  ''
-  # The shims `tools/sgs/Makefile.com` force-includes. `native_support.c` is
-  # already compiled into libconv.a above; these are its header half, and a
-  # consumer needs them for the same reason libconv did.
-  + ''
-    cp -r "$SRC/tools/sgs/native" "$out/include-native"
-    chmod -R u+w "$out/include-native"
-
-    runHook postInstall
-  '';
-
-  passthru = {
-    # The whole compile profile, named rather than re-derived by each consumer
-    # -- the way `compat` does it, and for the same reason: copied by hand into
-    # two places is how two places drift apart. This is what
-    # `tools/sgs/Makefile.com` puts in CPPFLAGS, which an sgs program compiled
-    # against a foreign libc needs and cannot get from its own `cmd/` makefile.
-    cflags = toString [
-      "-DNATIVE_BUILD"
-
-      # The sgs sources call gettext(3C) without including <libintl.h>, relying
-      # on illumos' <string.h> chain to have pulled it in. glibc's does not.
-      "-include"
-      "libintl.h"
-      "-I${finalAttrs.finalPackage}/include"
-      "-I${finalAttrs.finalPackage}/include-native"
-      "-include"
-      "${finalAttrs.finalPackage}/include-native/native_compat.h"
-    ];
-    ldflags = "-L${finalAttrs.finalPackage}/lib";
-  };
-
-  meta = {
-    platforms = lib.platforms.unix;
-    # Meaningless for an illumos host: there the headers are just <libelf.h>
-    # and friends out of the system, and libconv is the packaged sgs-libconv.
-    broken = stdenv.hostPlatform.isSunOS;
-  };
-})
+  ldflags = "-L${sgs-libconv}/lib";
+}
