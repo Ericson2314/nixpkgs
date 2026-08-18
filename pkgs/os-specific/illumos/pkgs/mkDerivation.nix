@@ -202,7 +202,37 @@ let
 in
 
 lib.makeOverridable (
-  attrs:
+  attrsOrFn:
+  let
+    # Accept both `mkDerivation { ... }` and `mkDerivation (finalAttrs: { ... })`,
+    # so a package that needs to name its own output -- `compat` and
+    # `sgs-support` both publish `passthru` compile flags containing their store
+    # path -- can use the fixed point instead of `let self = mkDerivation {...}`.
+    # That idiom ties the knot by hand and only works by laziness; `finalAttrs`
+    # is what stdenv provides for it.
+    #
+    # The attributes this wrapper reads to configure *itself* -- `noCC`,
+    # `noLibc`, `libcMinimal`, `path`, `pname`, `illumosLib`, `illumosCtf` and
+    # the rest -- are consulted to choose the stdenv, before any derivation
+    # exists. They cannot come from the fixed point, and asking for one is a
+    # cycle rather than a subtle bug, so the probe below makes it say so.
+    # Everything else is free to use `finalAttrs`: the function is applied a
+    # second time, with the real fixed point, where the derivation arguments are
+    # assembled.
+    attrs =
+      if lib.isFunction attrsOrFn then
+        attrsOrFn (
+          throw (
+            "illumos mkDerivation: the attributes that select the stdenv"
+            + " (noCC, noLibc, libcMinimal, path, pname, illumosLib, ...) are read"
+            + " before the derivation exists and cannot depend on finalAttrs"
+          )
+        )
+      else
+        attrsOrFn;
+
+    userAttrs = finalAttrs: if lib.isFunction attrsOrFn then attrsOrFn finalAttrs else attrsOrFn;
+  in
   let
     stdenv' =
       if attrs.noCC or false then
@@ -359,6 +389,7 @@ lib.makeOverridable (
     paths = [ attrs.path ] ++ extraPaths;
   in
   stdenv'.mkDerivation (
+    finalAttrs:
     {
       pname = "${pname}-illumos";
       inherit version;
@@ -437,7 +468,7 @@ lib.makeOverridable (
       installPhase = "includesPhase";
       dontBuild = true;
     }
-    // (builtins.removeAttrs attrs [
+    // (builtins.removeAttrs (userAttrs finalAttrs) [
       "extraNativeBuildInputs"
       "autoPickPatches"
       "patches"
@@ -462,7 +493,7 @@ lib.makeOverridable (
           ++ (if enableCtf then ctfMakeFlags else noCtfMakeFlags)
           ++ lib.optional useLd "LD=${ld-wrapper}"
         )
-        ++ attrs.makeFlags or [ ];
+        ++ (userAttrs finalAttrs).makeFlags or [ ];
     }
   )
 )

@@ -37,8 +37,8 @@
 # in the set -- libc and every kernel module are downstream of it -- so adding
 # a file to its output rebuilds the entire tree. Nothing depends on this
 # package except mcs, so it costs one small build instead.
-let
-  self = mkDerivation {
+mkDerivation (
+  finalAttrs: {
     pname = "sgs-support";
     path = "usr/src/tools/sgs";
 
@@ -166,12 +166,12 @@ let
         # on illumos' <string.h> chain to have pulled it in. glibc's does not.
         "-include"
         "libintl.h"
-        "-I${self}/include"
-        "-I${self}/include-native"
+        "-I${finalAttrs.finalPackage}/include"
+        "-I${finalAttrs.finalPackage}/include-native"
         "-include"
-        "${self}/include-native/native_compat.h"
+        "${finalAttrs.finalPackage}/include-native/native_compat.h"
       ];
-      ldflags = "-L${self}/lib";
+      ldflags = "-L${finalAttrs.finalPackage}/lib";
     };
 
     meta = {
@@ -180,6 +180,5 @@ let
       # and friends out of the system, and libconv is the packaged sgs-libconv.
       broken = stdenv.hostPlatform.isSunOS;
     };
-  };
-in
-self
+  }
+)

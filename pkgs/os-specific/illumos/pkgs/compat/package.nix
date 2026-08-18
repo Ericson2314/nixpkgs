@@ -1,6 +1,6 @@
 {
   lib,
-  runCommand,
+  stdenvNoCC,
   filterSource,
   version,
 }:
@@ -97,44 +97,60 @@ let
     extraPaths = [ "usr/src/uts/intel/sys" ];
   };
 
-  self = runCommand "illumos-compat-${version}"
-  {
-    inherit commonHeaders intelHeaders;
+  # `stdenvNoCC.mkDerivation` with an explicit `buildCommand`, which is exactly
+  # what `runCommand` expands to -- but written out so the fixed point is
+  # available. The flags below name this derivation's own store path, and
+  # `runCommand` is not the fixed-point form, so reaching them through
+  # `runCommand` means `let self = runCommand { passthru = "${self}"; }`: the
+  # knot tied by hand, working only because Nix is lazy. `finalAttrs` is what
+  # stdenv provides for precisely this.
+  #
+  # `enableParallelBuilding` and `passAsFile = [ "buildCommand" ]` are
+  # runCommandWith's own defaults, restated so this stays the same derivation
+  # it was.
+in
+stdenvNoCC.mkDerivation (finalAttrs: {
+  name = "illumos-compat-${version}";
 
-    # The flags each profile needs, so that a consumer names the profile rather
-    # than re-deriving the -I/-include incantation. These were copied by hand
-    # into every consumer before, which is exactly how they drift apart.
-    passthru = {
-      # "staged": host libc wins, illumos ELF headers layered on top.
-      stagedCflags = "-I${self}/include -include ${self}/include/native_compat.h";
+  enableParallelBuilding = true;
+  passAsFile = [ "buildCommand" ];
 
-      # "host ELF": <sys/elf.h> forwarded to the host's <elf.h>, for a
-      # consumer that links the host's libelf and so must not also have
-      # illumos' ELF types in scope. Mutually exclusive with the staged
-      # profile's own <sys/elf.h>, so it has to be searched first; see the
-      # comment in host-elf/sys/elf.h.
-      hostElfCflags = "-I${self}/include-host-elf";
+  inherit commonHeaders intelHeaders;
 
-      # "gate": the gate's headers win; this only prepends the overlay, so it
-      # must come *before* the consumer's own -I flags for the gate tree.
-      # `_REENTRANT` is not optional -- without it the gate's <errno.h> declares
-      # a plain `extern int errno`, which collides with glibc's thread-local one
-      # and fails to link.
-      overlayCflags = "-I${self}/include-overlay -D_REENTRANT";
+  # The flags each profile needs, so that a consumer names the profile rather
+  # than re-deriving the -I/-include incantation. These were copied by hand into
+  # every consumer before, which is exactly how they drift apart.
+  passthru = {
+    # "staged": host libc wins, illumos ELF headers layered on top.
+    stagedCflags = "-I${finalAttrs.finalPackage}/include -include ${finalAttrs.finalPackage}/include/native_compat.h";
 
-      # The two halves of libcompat, to be compiled by the consumer.
-      hostSource = "${self}/src/compat_host.c";
-      gateSource = "${self}/src/compat_gate.c";
-      srcDir = "${self}/src";
-    };
+    # "host ELF": <sys/elf.h> forwarded to the host's <elf.h>, for a consumer
+    # that links the host's libelf and so must not also have illumos' ELF types
+    # in scope. Mutually exclusive with the staged profile's own <sys/elf.h>, so
+    # it has to be searched first; see the comment in host-elf/sys/elf.h.
+    hostElfCflags = "-I${finalAttrs.finalPackage}/include-host-elf";
 
-    meta = {
-      description = "illumos headers and shims for building gate source against a foreign libc";
-      maintainers = with lib.maintainers; [ ericson2314 ];
-      platforms = lib.platforms.unix;
-      license = lib.licenses.cddl;
-    };
-  }
+    # "gate": the gate's headers win; this only prepends the overlay, so it must
+    # come *before* the consumer's own -I flags for the gate tree. `_REENTRANT`
+    # is not optional -- without it the gate's <errno.h> declares a plain
+    # `extern int errno`, which collides with glibc's thread-local one and fails
+    # to link.
+    overlayCflags = "-I${finalAttrs.finalPackage}/include-overlay -D_REENTRANT";
+
+    # The two halves of libcompat, to be compiled by the consumer.
+    hostSource = "${finalAttrs.finalPackage}/src/compat_host.c";
+    gateSource = "${finalAttrs.finalPackage}/src/compat_gate.c";
+    srcDir = "${finalAttrs.finalPackage}/src";
+  };
+
+  meta = {
+    description = "illumos headers and shims for building gate source against a foreign libc";
+    maintainers = with lib.maintainers; [ ericson2314 ];
+    platforms = lib.platforms.unix;
+    license = lib.licenses.cddl;
+  };
+
+  buildCommand =
   ''
     mkdir -p "$out/include/sys"
     for h in $commonHeaders; do
@@ -177,6 +193,5 @@ let
     cp ${./compat_gate.c} "$out/src/compat_gate.c"
     cp ${./compat_priv.h} "$out/src/compat_priv.h"
   ''
-;
-in
-self
+  ;
+})
