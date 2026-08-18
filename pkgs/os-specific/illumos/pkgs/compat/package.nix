@@ -2,6 +2,8 @@
   lib,
   stdenvNoCC,
   filterSource,
+  filterPatches,
+  patchesRoot,
   version,
 }:
 
@@ -60,10 +62,24 @@
 # disagreement it settles.
 #
 # compat_host.c is the function half -- the entry points a foreign libc simply
-# does not have. Its other half, compat_gate.c, lives in `mkfs-ufs`, which is
-# its only consumer; the two are split because they must be compiled against
-# different headers, which is also why compat_priv.h between them may name no
-# libc type at all. That header stays here, since both sides include it.
+# does not have. Its other half, compat_gate.c, is compiled by `mkfs-ufs`,
+# which is its only consumer; the two are split because they must be compiled
+# against different headers, which is also why compat_priv.h between them may
+# name no libc type at all.
+#
+# NOTHING HERE IS VENDORED ANY MORE. Every shim, header and source file this
+# package installs comes out of `usr/src/tools/libcompat` in the gate tree,
+# reached through `filterSource` like any other gate source. They were written
+# for this project, in illumos style and under the CDDL, and always belonged
+# upstream; keeping a second copy in nixpkgs meant the two could drift, and
+# they did -- this file's `native_compat.h` had fallen behind the gate's to the
+# point where anything from cmd/sgs failed to build against it.
+#
+# That directory does not exist in the pinned upstream tarball -- it is created
+# wholesale by the libcompat patches -- so it cannot come through
+# `filterSource`, which copies from the pristine tarball. It is reconstructed
+# from the patches instead; see `libcompatPatches` below for why doing that is
+# this package's own job and not stdenv's.
 let
   commonHeaders = [
     "elf.h"
@@ -87,6 +103,14 @@ let
     # <sys/queue.h> pulls these two in for __containerof.
     "containerof.h"
     "stddef.h"
+    # auxv_t, which liblddbg's interfaces take by pointer; native_compat.h
+    # includes <sys/auxv.h> for it. The trio moves together -- <sys/auxv.h>
+    # does not compile without the two ISA headers beside it, nothing in the
+    # list says so, and staging auxv.h alone is a known way to break
+    # elfextract. tools/libcompat/Makefile carries the same warning.
+    "auxv.h"
+    "auxv_386.h"
+    "auxv_SPARC.h"
   ];
 
   # <sys/machtypes.h> is per-ISA; the rest of the list is machine-independent.
@@ -97,6 +121,20 @@ let
     path = "usr/src/uts/common/sys";
     extraPaths = [ "usr/src/uts/intel/sys" ];
   };
+
+  # `filterSource` copies out of the *pristine* pinned tarball -- patches are
+  # applied afterwards, by `mkDerivation`. This package is not an
+  # `mkDerivation`: it has no compiler and no platform, so it drives its own
+  # `buildCommand` and stdenv's `patchPhase` never runs. That was invisible
+  # while everything it installed was vendored here, and became a hard error
+  # the moment it started reading a directory that only the patches create --
+  # rsync's `--ignore-missing-args` silently copied nothing, and the `cp` below
+  # failed on a path that was never going to be there.
+  #
+  # So apply them here. Only the `tools/libcompat` hunks are picked, which is
+  # both the minimum needed and what keeps an unrelated patch from rebuilding
+  # this package and, through the CTF tools, every kernel module.
+  libcompatPatches = filterPatches { } patchesRoot [ "usr/src/tools/libcompat" ];
 
   # `stdenvNoCC.mkDerivation` with an explicit `buildCommand`, which is exactly
   # what `runCommand` expands to -- but written out so the fixed point is
@@ -138,9 +176,13 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     # to link.
     overlayCflags = "-I${finalAttrs.finalPackage}/include-overlay -D_REENTRANT";
 
-    # The host half of libcompat, to be compiled by the consumer. The gate half
-    # is `mkfs-ufs`' own file -- see the comment at the top.
+    # The two halves of libcompat, to be compiled by the consumer rather than
+    # built here: each needs the consumer's own -I flags and feature-test
+    # macros, and they are different flags for the two halves, which is the
+    # whole reason they are separate translation units. `hostSource` sees the
+    # host's headers, `gateSource` the gate's with `overlayCflags` prepended.
     hostSource = "${finalAttrs.finalPackage}/src/compat_host.c";
+    gateSource = "${finalAttrs.finalPackage}/src/compat_gate.c";
 
     # The libc entry points a foreign libc does not have -- assfail()/assfail3()
     # behind ASSERT(), panic(), getexecname(), strtonum(), and link_ver_string.
@@ -167,6 +209,12 @@ stdenvNoCC.mkDerivation (finalAttrs: {
 
   buildCommand =
   ''
+    mkdir -p gate
+    for p in ${lib.escapeShellArgs (map toString libcompatPatches)}; do
+      patch -p1 -d gate -i "$p"
+    done
+    libcompat=$PWD/gate/usr/src/tools/libcompat
+
     mkdir -p "$out/include/sys"
     for h in $commonHeaders; do
       cp "${src}/usr/src/uts/common/sys/$h" "$out/include/sys/$h"
@@ -181,7 +229,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     # instead; the typedefs themselves are unchanged.
     sed -i 's|<sys/int_types\.h>|<stdint.h>|' "$out/include/sys/types32.h"
 
-    cp ${./native_compat.h} "$out/include/native_compat.h"
+    cp "$libcompat"/common/native_compat.h "$out/include/native_compat.h"
 
     # illumos' <synch.h> and <thread.h> over pthreads. The real ones reach
     # <sys/machlock.h>, <sys/time_impl.h> and <sys/int_types.h> -- the whole
@@ -189,10 +237,11 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     # gate code here that uses the Solaris threads API (lib/mergeq, reached by
     # libctf) maps onto pthreads directly.
     #
-    # Copied from usr/src/tools/ctf/native, the tree the CTF packages are being
-    # moved off; this is where those shims live now.
-    cp ${./staged/synch.h} "$out/include/synch.h"
-    cp ${./staged/thread.h} "$out/include/thread.h"
+    # Named one by one rather than copying all of common/: that directory also
+    # holds sys/cmn_err.h and friends, which are shims for a different profile
+    # and would shadow the gathered headers above.
+    cp "$libcompat"/common/synch.h "$out/include/synch.h"
+    cp "$libcompat"/common/thread.h "$out/include/thread.h"
 
     # <sys/inttypes.h> is illumos' spelling of <inttypes.h>. The real one drags
     # in <sys/int_types.h>, which redefines the whole intN_t family and would
@@ -208,16 +257,17 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     # compiled against the *consumer's* view of the headers -- the same -I
     # flags and the same feature-test macros -- and there is no one such view
     # to pick here. Its consumers already have all of that set up.
-    cp -r ${./host-elf} "$out/include-host-elf"
+    cp -r "$libcompat"/host-elf "$out/include-host-elf"
     chmod -R u+w "$out/include-host-elf"
 
-    cp -r ${./overlay} "$out/include-overlay"
+    cp -r "$libcompat"/overlay "$out/include-overlay"
     chmod -R u+w "$out/include-overlay"
 
     mkdir -p "$out/src"
-    cp ${./compat_host.c} "$out/src/compat_host.c"
-    cp ${./staged/ctf_support.c} "$out/src/ctf_support.c"
-    cp ${./compat_priv.h} "$out/src/compat_priv.h"
+    cp "$libcompat"/common/compat_host.c "$out/src/compat_host.c"
+    cp "$libcompat"/common/compat_gate.c "$out/src/compat_gate.c"
+    cp "$libcompat"/common/native_support.c "$out/src/ctf_support.c"
+    cp "$libcompat"/common/compat_priv.h "$out/src/compat_priv.h"
   ''
   ;
 })

@@ -97,16 +97,17 @@ mkDerivation {
       $CC -c -o "$(basename "$f" .c).o" -I${compat.srcDir} $gateFlags "$f"
     done
 
-    # compat_gate.c lives here rather than in `compat` because this is its only
-    # consumer -- it is the gate-side half of the shims mkfs_ufs needs, and
-    # nothing else compiles it. (compat_host.c, the half it calls into, does
-    # stay in `compat`: ctfconvert and ctfmerge build that one too.)
+    # compat_gate.c is the gate-side half of the shims mkfs_ufs needs, and
+    # mkfs_ufs is still its only consumer -- but it lives in the gate tree
+    # beside compat_host.c, the half it calls into, and `compat` hands both
+    # out. Splitting the two halves of one interface across two repositories
+    # only made compat_priv.h harder to keep honest.
     #
     # Compiled on its own rather than in the loop above because the loop names
     # its object after `basename`, and a store path basename carries the hash
     # prefix -- `-o` here is explicit for that reason.
-    echo "compiling (gate headers) compat_gate.c"
-    $CC -c -o compat_gate.o -I${compat.srcDir} $gateFlags ${./compat_gate.c}
+    echo "compiling (gate headers) ${compat.gateSource}"
+    $CC -c -o compat_gate.o -I${compat.srcDir} $gateFlags "${compat.gateSource}"
 
     # The host half sees the *host's* headers only -- that is the whole reason
     # it is a separate translation unit -- so it gets none of the flags above.

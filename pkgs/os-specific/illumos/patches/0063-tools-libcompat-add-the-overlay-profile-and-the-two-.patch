@@ -1,0 +1,1057 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Tue, 18 Aug 2026 10:47:23 -0400
+Subject: [PATCH] tools/libcompat: add the "overlay" profile and the two-sided
+ libc shim
+
+`libcompat` so far answers one shape of the "gate source, foreign libc"
+problem: stage a hand-picked subset of illumos headers *in place of* the
+host's, for the small onbld ELF tools.  That is `include/` plus `common/`.
+
+There is a second shape it does not answer, and it is the opposite one.  A
+program that wants illumos' *real* headers -- a filesystem's on-disk format,
+say -- puts the whole gate header tree on its include path and needs the host
+only for the implementation underneath.  The staged subset is nowhere near
+enough for it, and layering the staged profile underneath actively breaks it:
+the gate's own `<sys/types.h>` is then in play and `native_compat.h`'s
+typedefs collide with it head-on.
+
+What that program needs instead is small and specific.  Three things do not
+survive the meeting:
+
+  * `<iso/stdio_iso.h>`  illumos spells the standard streams as slots in a
+    libc-owned `__iob[]` array; a foreign libc owns its own `FILE` objects and
+    exports pointers, so `__iob` is simply absent at link time.
+
+  * `<sys/stat.h>`, `<sys/statvfs.h>`  `struct stat` is an ABI and not the
+    same one: the gate's is 128 bytes where glibc's is 144.  Letting the
+    gate's declaration meet the host's implementation does not merely give
+    wrong field values, it overruns the caller's buffer by 16 bytes and
+    smashes the return address of whoever declared the struct on its stack.
+
+  * `<dirent.h>`  glibc's `struct dirent` carries a `d_type` byte illumos'
+    does not, so `d_name` sits one byte further along and every name a
+    gate-built caller reads back is shifted by one.
+
+So `overlay/` is a third profile, kept apart from the other two for the same
+reason those two are kept apart from each other: a consumer picks exactly one,
+by which directory it `-I`s first.  Each file here `#include_next`s the gate's
+own header, leaving it to declare everything as usual, and then repoints just
+the one declaration that cannot stand -- the three stream names, or the
+*calls* whose struct layouts differ.  The gate's `struct stat` stays the one
+every caller sees, which is what keeps `S_ISREG()` and friends working.
+
+The redirections are function-like macros on purpose.  An object-like
+`#define stat ...` would rewrite every mention of `struct stat` too, including
+the ones in these very declarations.
+
+`common/compat_host.c` and `common/compat_gate.c` are the functions behind
+those macros, plus the entry points a foreign libc has no counterpart for at
+all: `___errno()`, `_sysconf()`.  They are two halves of one shim and they are
+split because they must be compiled against *different* headers -- which is
+also why `common/compat_priv.h`, the interface between them, may name no libc
+type at all and is plain fixed-width integers throughout.
+
+Both halves install as source rather than into `$(LIBRARY)`, since each has to
+be compiled with the consumer's own `-I` flags and feature-test macros and
+there is no one such view to pick here.
+
+Assisted-By: Claude Opus 5 (claude-opus-5)
+---
+ usr/src/tools/libcompat/Makefile              |  37 +-
+ usr/src/tools/libcompat/common/compat_gate.c  | 340 ++++++++++++++++++
+ usr/src/tools/libcompat/common/compat_host.c  | 275 ++++++++++++++
+ usr/src/tools/libcompat/common/compat_priv.h  |  89 +++++
+ usr/src/tools/libcompat/overlay/dirent.h      |  44 +++
+ .../tools/libcompat/overlay/iso/stdio_iso.h   |  36 ++
+ usr/src/tools/libcompat/overlay/sys/stat.h    |  62 ++++
+ usr/src/tools/libcompat/overlay/sys/statvfs.h |  36 ++
+ 8 files changed, 918 insertions(+), 1 deletion(-)
+ create mode 100644 usr/src/tools/libcompat/common/compat_gate.c
+ create mode 100644 usr/src/tools/libcompat/common/compat_host.c
+ create mode 100644 usr/src/tools/libcompat/common/compat_priv.h
+ create mode 100644 usr/src/tools/libcompat/overlay/dirent.h
+ create mode 100644 usr/src/tools/libcompat/overlay/iso/stdio_iso.h
+ create mode 100644 usr/src/tools/libcompat/overlay/sys/stat.h
+ create mode 100644 usr/src/tools/libcompat/overlay/sys/statvfs.h
+
+diff --git a/usr/src/tools/libcompat/Makefile b/usr/src/tools/libcompat/Makefile
+index 0b2dba25f9..162fdff314 100644
+--- a/usr/src/tools/libcompat/Makefile
++++ b/usr/src/tools/libcompat/Makefile
+@@ -186,8 +186,10 @@ $(LIBRARY): $(OBJS)
+ ROOTONBLDINC=		$(ROOTONBLD)/include
+ ROOTONBLDINCNATIVE=	$(ROOTONBLD)/include-native
+ ROOTONBLDINCHOSTELF=	$(ROOTONBLD)/include-host-elf
++ROOTONBLDINCOVERLAY=	$(ROOTONBLD)/include-overlay
++ROOTONBLDCOMPATSRC=	$(ROOTONBLD)/src/libcompat
+ 
+-install: all $(ROOTONBLDLIBMACH)/$(LIBRARY) install_hdrs
++install: all $(ROOTONBLDLIBMACH)/$(LIBRARY) install_hdrs install_compat_src
+ 
+ install_hdrs: $(HDRS)
+ 	$(MKDIR) -p $(ROOTONBLDINC)/sys $(ROOTONBLDINCNATIVE)/sys
+@@ -198,6 +200,39 @@ install_hdrs: $(HDRS)
+ 	$(MKDIR) -p $(ROOTONBLDINCHOSTELF)/sys
+ 	$(CP) host-elf/sys/*.h $(ROOTONBLDINCHOSTELF)/sys/
+ 
++#
++# The "overlay" profile, and the third of the three that must stay apart.
++# include/ is the gathered illumos headers, include-native/ the shims that
++# stand in for illumos libc headers the host has no counterpart for, and
++# include-host-elf/ the single header that forwards to the host's ELF types.
++# This one is the opposite of include/: it does not stand in for a gate header
++# but sits *in front of* one, with each file #include_next'ing the gate's own
++# and then repointing the one declaration that cannot survive meeting a
++# foreign libc -- the stdio stream names, and the calls whose struct layouts
++# differ.  It is therefore only meaningful for a consumer that has the gate's
++# whole header tree on its include path, which is exactly the consumer that
++# must NOT have include/ or include-native/ on it.
++#
++	$(MKDIR) -p $(ROOTONBLDINCOVERLAY)/sys $(ROOTONBLDINCOVERLAY)/iso
++	$(CP) overlay/*.h $(ROOTONBLDINCOVERLAY)/
++	$(CP) overlay/sys/*.h $(ROOTONBLDINCOVERLAY)/sys/
++	$(CP) overlay/iso/*.h $(ROOTONBLDINCOVERLAY)/iso/
++
++#
++# compat_host.c and compat_gate.c are installed as source rather than compiled
++# into $(LIBRARY), and that is deliberate.  They are the two halves of one
++# shim -- see common/compat_priv.h for the interface between them -- and each
++# half only means anything compiled against a different set of headers:
++# compat_host.c against the host libc's, compat_gate.c against the gate's own
++# with the overlay above prepended.  Those are the consumer's -I flags and its
++# feature-test macros, and there is no single such view to pick here.  So a
++# consumer compiles them alongside its own translation units.
++#
++install_compat_src:
++	$(MKDIR) -p $(ROOTONBLDCOMPATSRC)
++	$(CP) common/compat_host.c common/compat_gate.c common/compat_priv.h \
++	    $(ROOTONBLDCOMPATSRC)/
++
+ $(ROOTONBLDLIBMACH):
+ 	$(MKDIR) -p $@
+ 
+diff --git a/usr/src/tools/libcompat/common/compat_gate.c b/usr/src/tools/libcompat/common/compat_gate.c
+new file mode 100644
+index 0000000000..87df214e4d
+--- /dev/null
++++ b/usr/src/tools/libcompat/common/compat_gate.c
+@@ -0,0 +1,340 @@
++/*
++ * This file and its contents are supplied under the terms of the
++ * Common Development and Distribution License ("CDDL"), version 1.0.
++ * You may only use this file in accordance with the terms of version
++ * 1.0 of the CDDL.
++ *
++ * A full copy of the text of the CDDL should have accompanied this
++ * source.  A copy of the CDDL is also available via the Internet at
++ * http://www.illumos.org/license/CDDL.
++ */
++
++/*
++ * Copyright 2026 Oxide Computer Company
++ */
++
++/*
++ * libcompat, gate half: illumos entry points a foreign libc does not have,
++ * implemented against the gate's own headers so that the types in the
++ * signatures (aio_result_t, struct extvtoc, ...) are the real ones.
++ *
++ * The host's libc still supplies the implementation underneath -- pwrite(2),
++ * lseek64(2) and friends are spelled the same on both sides, so calling them
++ * from here needs nothing special.
++ */
++#include <sys/types.h>
++#include <sys/asynch.h>
++#include <sys/time.h>
++#include <sys/vtoc.h>
++#include <sys/efi_partition.h>
++#include <unistd.h>
++#include <errno.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++
++/*
++ * llseek(2).  glibc calls the same system call lseek64(2).
++ */
++offset_t
++llseek(int fd, offset_t off, int whence)
++{
++	return (lseek64(fd, off, whence));
++}
++
++/*
++ * getfullblkname(3ADM) maps a raw-device path to its block-device peer,
++ * /dev/rdsk/c0t0d0s0 -> /dev/dsk/c0t0d0s0.  A foreign host has no such
++ * namespace at all, and its callers here are pointed at a regular file, for
++ * which illumos itself returns NULL.  So NULL is the honest answer rather
++ * than a degraded one -- callers already handle it, since a plain file has no
++ * block-device peer on illumos either.
++ */
++char *
++getfullblkname(char *cp)
++{
++	(void) cp;
++	return (NULL);
++}
++
++/*
++ * fsgetmaxphys(3) asks the kernel for its maximum single-transfer size.  That
++ * is a property of the running illumos kernel, which by construction is not
++ * the one we are on.  Report failure so the caller falls back to its own
++ * default; mkfs treats that as an ordinary, non-fatal outcome.
++ */
++int
++fsgetmaxphys(int *maxphys, int *error)
++{
++	(void) maxphys;
++	*error = ENOTSUP;
++	return (0);
++}
++
++/*
++ * Partition-table readers.  Both only ever describe a real disk; when the
++ * target is a regular file there is no label to read, which is exactly the
++ * case these stubs report.  Returning failure is faithful rather than
++ * degraded -- illumos returns the same for a file.
++ */
++int
++efi_alloc_and_read(int fd, struct dk_gpt **vtoc)
++{
++	(void) fd;
++	*vtoc = NULL;
++	return (VT_ERROR);
++}
++
++void
++efi_free(struct dk_gpt *ptr)
++{
++	(void) ptr;
++}
++
++int
++read_extvtoc(int fd, struct extvtoc *vtoc)
++{
++	(void) fd;
++	(void) vtoc;
++	return (VT_ERROR);
++}
++
++/*
++ * aiowrite(3AIO)/aiowait(3AIO), done synchronously.
++ *
++ * The contract the callers rely on is narrow: aiowrite() queues a write and
++ * reports completion through `resultp`, and aiowait() hands back the
++ * `aio_result_t *` of some completed request, or (aio_result_t *)-1 with
++ * EINVAL when nothing is outstanding.  Callers identify the transaction by
++ * casting the returned pointer back to their own struct, so aiowait() must
++ * return the identical pointer it was given.
++ *
++ * Performing the write immediately and queueing the already-complete result
++ * satisfies all of that.  It gives up the overlap that makes aio worthwhile
++ * on a real system, which costs image-build throughput and nothing else: the
++ * bytes written, their order as observed through the fd, and the values
++ * reported in aio_return/aio_errno are identical either way.
++ */
++#define	COMPAT_AIO_MAX	1024
++
++static aio_result_t	*aio_queue[COMPAT_AIO_MAX];
++static int		aio_head, aio_count;
++
++int
++aiowrite(int fd, caddr_t buf, int bufsz, off_t offset, int whence,
++    aio_result_t *resultp)
++{
++	off_t	off;
++	ssize_t	n;
++
++	if (aio_count == COMPAT_AIO_MAX) {
++		errno = EAGAIN;
++		return (-1);
++	}
++
++	/*
++	 * pwrite(2) is always absolute, so a SEEK_CUR/SEEK_END request has to
++	 * be resolved against the descriptor first.  mkfs only ever uses
++	 * SEEK_SET, but resolving the others keeps this honest for the next
++	 * caller.
++	 */
++	if (whence == SEEK_SET) {
++		off = offset;
++	} else {
++		off = lseek(fd, offset, whence);
++		if (off == (off_t)-1) {
++			resultp->aio_return = -1;
++			resultp->aio_errno = errno;
++			goto queued;
++		}
++	}
++
++	n = pwrite(fd, buf, (size_t)bufsz, off);
++	resultp->aio_return = (int)n;
++	resultp->aio_errno = (n == -1) ? errno : 0;
++
++queued:
++	aio_queue[(aio_head + aio_count) % COMPAT_AIO_MAX] = resultp;
++	aio_count++;
++	return (0);
++}
++
++aio_result_t *
++aiowait(struct timeval *timeout)
++{
++	aio_result_t	*resultp;
++
++	(void) timeout;		/* every queued request is already complete */
++
++	if (aio_count == 0) {
++		errno = EINVAL;
++		return ((aio_result_t *)-1);
++	}
++
++	resultp = aio_queue[aio_head];
++	aio_head = (aio_head + 1) % COMPAT_AIO_MAX;
++	aio_count--;
++	return (resultp);
++}
++
++/*
++ * stat(2) and statvfs(2), gate side.
++ *
++ * <sys/stat.h> and <sys/statvfs.h> in compat's overlay redirect the gate's
++ * calls here.  Each of these fills the *gate's* struct, so every caller keeps
++ * seeing the layout its own headers describe -- including the S_IS*() macros,
++ * which work because the S_IFMT encoding is common to both systems.
++ */
++#include <sys/stat.h>
++#include <sys/statvfs.h>
++#include "compat_priv.h"
++
++static void
++to_gate_stat(const struct compat_stat *cs, struct stat64 *sb)
++{
++	(void) memset(sb, 0, sizeof (*sb));
++	sb->st_dev = cs->cs_dev;
++	sb->st_ino = cs->cs_ino;
++	sb->st_rdev = cs->cs_rdev;
++	sb->st_mode = cs->cs_mode;
++	sb->st_nlink = cs->cs_nlink;
++	sb->st_uid = cs->cs_uid;
++	sb->st_gid = cs->cs_gid;
++	sb->st_size = cs->cs_size;
++	sb->st_blksize = cs->cs_blksize;
++	sb->st_blocks = cs->cs_blocks;
++	sb->st_atim.tv_sec = cs->cs_atime;
++	sb->st_mtim.tv_sec = cs->cs_mtime;
++	sb->st_ctim.tv_sec = cs->cs_ctime;
++}
++
++int
++__compat_stat64(const char *path, struct stat64 *sb)
++{
++	struct compat_stat cs;
++
++	if (__compat_host_stat(path, &cs) == -1)
++		return (-1);
++	to_gate_stat(&cs, sb);
++	return (0);
++}
++
++int
++__compat_lstat64(const char *path, struct stat64 *sb)
++{
++	struct compat_stat cs;
++
++	if (__compat_host_lstat(path, &cs) == -1)
++		return (-1);
++	to_gate_stat(&cs, sb);
++	return (0);
++}
++
++int
++__compat_fstat64(int fd, struct stat64 *sb)
++{
++	struct compat_stat cs;
++
++	if (__compat_host_fstat(fd, &cs) == -1)
++		return (-1);
++	to_gate_stat(&cs, sb);
++	return (0);
++}
++
++/*
++ * f_basetype and f_fstr have no host counterpart -- they name an illumos
++ * filesystem type, which the host cannot supply an illumos-meaningful answer
++ * for.  They are left empty rather than guessed at: a caller comparing
++ * f_basetype against MNTTYPE_UFS should see "no match" rather than a
++ * fabricated one.
++ */
++static void
++to_gate_statvfs(const struct compat_statvfs *cv, struct statvfs64 *sv)
++{
++	(void) memset(sv, 0, sizeof (*sv));
++	sv->f_bsize = cv->cv_bsize;
++	sv->f_frsize = cv->cv_frsize;
++	sv->f_blocks = cv->cv_blocks;
++	sv->f_bfree = cv->cv_bfree;
++	sv->f_bavail = cv->cv_bavail;
++	sv->f_files = cv->cv_files;
++	sv->f_ffree = cv->cv_ffree;
++	sv->f_favail = cv->cv_favail;
++	sv->f_fsid = cv->cv_fsid;
++	sv->f_flag = cv->cv_flag;
++	sv->f_namemax = cv->cv_namemax;
++	sv->f_basetype[0] = '\0';
++	sv->f_fstr[0] = '\0';
++}
++
++int
++__compat_statvfs64(const char *path, struct statvfs64 *sv)
++{
++	struct compat_statvfs cv;
++
++	if (__compat_host_statvfs(path, &cv) == -1)
++		return (-1);
++	to_gate_statvfs(&cv, sv);
++	return (0);
++}
++
++int
++__compat_fstatvfs64(int fd, struct statvfs64 *sv)
++{
++	struct compat_statvfs cv;
++
++	if (__compat_host_fstatvfs(fd, &cv) == -1)
++		return (-1);
++	to_gate_statvfs(&cv, sv);
++	return (0);
++}
++
++/*
++ * Directory reading, gate side.
++ *
++ * <dirent.h> in compat's overlay redirects opendir/readdir/closedir here.
++ * `DIR` stays opaque -- it is the host's, passed straight through -- while the
++ * `struct dirent` handed back is the gate's, so callers see the layout their
++ * own headers describe.
++ */
++#include <dirent.h>
++
++DIR *
++__compat_opendir(const char *path)
++{
++	return ((DIR *)__compat_host_opendir(path));
++}
++
++struct dirent *
++__compat_readdir(DIR *dirp)
++{
++	/*
++	 * readdir(3C) returns a pointer to storage it owns and which the next
++	 * call may reuse, so one static buffer per process matches the
++	 * contract. The gate's `struct dirent` ends in a one-byte d_name, so
++	 * the trailing space is what actually holds the name.
++	 */
++	static union {
++		struct dirent	de;
++		char		space[sizeof (struct dirent) + 1024];
++	} buf;
++	struct compat_dirent cd;
++
++	if (__compat_host_readdir((void *)dirp, &cd) != 1)
++		return (NULL);
++
++	buf.de.d_ino = (ino_t)cd.cd_ino;
++	buf.de.d_off = 0;
++	(void) strlcpy(buf.de.d_name, cd.cd_name,
++	    sizeof (buf.space) - offsetof(struct dirent, d_name));
++	buf.de.d_reclen = (ushort_t)(offsetof(struct dirent, d_name) +
++	    strlen(buf.de.d_name) + 1);
++
++	return (&buf.de);
++}
++
++int
++__compat_closedir(DIR *dirp)
++{
++	return (__compat_host_closedir((void *)dirp));
++}
+diff --git a/usr/src/tools/libcompat/common/compat_host.c b/usr/src/tools/libcompat/common/compat_host.c
+new file mode 100644
+index 0000000000..c83ce0ef48
+--- /dev/null
++++ b/usr/src/tools/libcompat/common/compat_host.c
+@@ -0,0 +1,275 @@
++/*
++ * This file and its contents are supplied under the terms of the
++ * Common Development and Distribution License ("CDDL"), version 1.0.
++ * You may only use this file in accordance with the terms of version
++ * 1.0 of the CDDL.
++ *
++ * A full copy of the text of the CDDL should have accompanied this
++ * source.  A copy of the CDDL is also available via the Internet at
++ * http://www.illumos.org/license/CDDL.
++ */
++
++/*
++ * Copyright 2026 Oxide Computer Company
++ */
++
++/*
++ * libcompat, host half: the pieces that must see the *host's* <unistd.h> and
++ * <errno.h> in order to forward to them.  Nothing in this file may include a
++ * gate header -- the whole point is that it sits on the other side of the
++ * boundary from compat_gate.c.
++ */
++#include <errno.h>
++#include <unistd.h>
++#include <stdio.h>
++#include <stdlib.h>
++
++/*
++ * Under _REENTRANT the gate's <errno.h> resolves `errno` to `*___errno()`.
++ * glibc spells the same thing __errno_location().  Both return a pointer to
++ * the calling thread's errno, so this is an exact correspondence, not an
++ * approximation.
++ */
++int *
++___errno(void)
++{
++	return (__errno_location());
++}
++
++/*
++ * The gate's <sys/param.h> reaches sysconf(3C) through the private `_sysconf`
++ * entry point -- PAGESIZE is `(_sysconf(_SC_PAGESIZE))`.
++ *
++ * The _SC_* numbers are part of the illumos ABI and do not match the host's,
++ * so this cannot simply be an alias for sysconf(3): the numbers have to be
++ * translated.  Only the ones actually reachable are handled, and anything
++ * else aborts rather than returning a plausible-looking wrong answer -- a
++ * silently mistranslated PAGESIZE would corrupt a filesystem image in a way
++ * that would be very hard to trace back here.
++ */
++#define	ILLUMOS_SC_CLK_TCK	3	/* <sys/unistd.h> */
++#define	ILLUMOS_SC_PAGESIZE	11
++
++long
++_sysconf(int name)
++{
++	switch (name) {
++	case ILLUMOS_SC_CLK_TCK:
++		return (sysconf(_SC_CLK_TCK));
++	case ILLUMOS_SC_PAGESIZE:
++		return (sysconf(_SC_PAGESIZE));
++	default:
++		(void) fprintf(stderr,
++		    "illumos libcompat: _sysconf(%d) is not translated; "
++		    "add it to compat_host.c\n", name);
++		abort();
++	}
++}
++
++/*
++ * stat(2) and statvfs(2), host side.
++ *
++ * These read the host's structs and copy the fields out into the neutral
++ * layout in compat_priv.h.  The gate half then writes them into the gate's
++ * structs.  Going through a third representation is what keeps the two
++ * incompatible definitions of `struct stat64` out of the same translation
++ * unit.
++ */
++#include <sys/stat.h>
++#include <sys/statvfs.h>
++#include "compat_priv.h"
++
++static void
++fill_stat(const struct stat64 *st, struct compat_stat *cs)
++{
++	cs->cs_dev = st->st_dev;
++	cs->cs_ino = st->st_ino;
++	cs->cs_rdev = st->st_rdev;
++	cs->cs_mode = st->st_mode;
++	cs->cs_nlink = st->st_nlink;
++	cs->cs_uid = st->st_uid;
++	cs->cs_gid = st->st_gid;
++	cs->cs_size = st->st_size;
++	cs->cs_blksize = st->st_blksize;
++	cs->cs_blocks = st->st_blocks;
++	cs->cs_atime = st->st_atime;
++	cs->cs_mtime = st->st_mtime;
++	cs->cs_ctime = st->st_ctime;
++}
++
++int
++__compat_host_stat(const char *path, struct compat_stat *cs)
++{
++	struct stat64 st;
++
++	if (stat64(path, &st) == -1)
++		return (-1);
++	fill_stat(&st, cs);
++	return (0);
++}
++
++int
++__compat_host_lstat(const char *path, struct compat_stat *cs)
++{
++	struct stat64 st;
++
++	if (lstat64(path, &st) == -1)
++		return (-1);
++	fill_stat(&st, cs);
++	return (0);
++}
++
++int
++__compat_host_fstat(int fd, struct compat_stat *cs)
++{
++	struct stat64 st;
++
++	if (fstat64(fd, &st) == -1)
++		return (-1);
++	fill_stat(&st, cs);
++	return (0);
++}
++
++static void
++fill_statvfs(const struct statvfs64 *sv, struct compat_statvfs *cv)
++{
++	cv->cv_bsize = sv->f_bsize;
++	cv->cv_frsize = sv->f_frsize;
++	cv->cv_blocks = sv->f_blocks;
++	cv->cv_bfree = sv->f_bfree;
++	cv->cv_bavail = sv->f_bavail;
++	cv->cv_files = sv->f_files;
++	cv->cv_ffree = sv->f_ffree;
++	cv->cv_favail = sv->f_favail;
++	cv->cv_fsid = sv->f_fsid;
++	cv->cv_flag = sv->f_flag;
++	cv->cv_namemax = sv->f_namemax;
++}
++
++int
++__compat_host_statvfs(const char *path, struct compat_statvfs *cv)
++{
++	struct statvfs64 sv;
++
++	if (statvfs64(path, &sv) == -1)
++		return (-1);
++	fill_statvfs(&sv, cv);
++	return (0);
++}
++
++int
++__compat_host_fstatvfs(int fd, struct compat_statvfs *cv)
++{
++	struct statvfs64 sv;
++
++	if (fstatvfs64(fd, &sv) == -1)
++		return (-1);
++	fill_statvfs(&sv, cv);
++	return (0);
++}
++
++/*
++ * Directory reading, host side. The host's DIR is handed back as an opaque
++ * void *; only this file ever dereferences it.
++ */
++#include <dirent.h>
++
++void *
++__compat_host_opendir(const char *path)
++{
++	return ((void *)opendir(path));
++}
++
++int
++__compat_host_readdir(void *dirp, struct compat_dirent *out)
++{
++	struct dirent *de;
++
++	errno = 0;
++	de = readdir((DIR *)dirp);
++	if (de == NULL)
++		return (errno == 0 ? 0 : -1);
++
++	out->cd_ino = (uint64_t)de->d_ino;
++	(void) snprintf(out->cd_name, sizeof (out->cd_name), "%s", de->d_name);
++	return (1);
++}
++
++int
++__compat_host_closedir(void *dirp)
++{
++	return (closedir((DIR *)dirp));
++}
++
++/*
++ * strtonum(3C) / strtonumx(3C).
++ *
++ * Originally OpenBSD's, and part of illumos' libc
++ * (lib/libc/port/gen/strtonum.c); glibc has no equivalent.  ctfconvert(1)
++ * parses its -j and -m arguments with it, and that one missing symbol is all
++ * that stands between the gate's own cmd/ctfconvert/ctfconvert.c and a
++ * build-host binary -- which is why it is filled in here rather than by
++ * patching the gate.
++ *
++ * The error strings and the errno left behind on each failure are part of the
++ * documented interface, so they are reproduced exactly rather than
++ * approximated.
++ */
++#include <limits.h>
++
++#define	COMPAT_STRTONUM_INVALID		1
++#define	COMPAT_STRTONUM_TOOSMALL	2
++#define	COMPAT_STRTONUM_TOOLARGE	3
++#define	COMPAT_STRTONUM_BADBASE		4
++
++/* The largest base strtoll(3C) accepts: digits plus the 26 letters. */
++#define	COMPAT_STRTONUM_MBASE		('z' - 'a' + 1 + 10)
++
++long long
++strtonumx(const char *numstr, long long minval, long long maxval,
++    const char **errstrp, int base)
++{
++	long long ll = 0;
++	int error = 0;
++	char *ep;
++	struct errval {
++		const char *errstr;
++		int err;
++	} ev[5] = {
++		{ NULL,		0 },
++		{ "invalid",	EINVAL },
++		{ "too small",	ERANGE },
++		{ "too large",	ERANGE },
++		{ "unparsable; invalid base specified", EINVAL },
++	};
++
++	ev[0].err = errno;
++	errno = 0;
++	if (minval > maxval) {
++		error = COMPAT_STRTONUM_INVALID;
++	} else if (base < 0 || base > COMPAT_STRTONUM_MBASE || base == 1) {
++		error = COMPAT_STRTONUM_BADBASE;
++	} else {
++		ll = strtoll(numstr, &ep, base);
++		if (numstr == ep || *ep != '\0')
++			error = COMPAT_STRTONUM_INVALID;
++		else if ((ll == LLONG_MIN && errno == ERANGE) || ll < minval)
++			error = COMPAT_STRTONUM_TOOSMALL;
++		else if ((ll == LLONG_MAX && errno == ERANGE) || ll > maxval)
++			error = COMPAT_STRTONUM_TOOLARGE;
++	}
++	if (errstrp != NULL)
++		*errstrp = ev[error].errstr;
++	errno = ev[error].err;
++	if (error != 0)
++		ll = 0;
++
++	return (ll);
++}
++
++long long
++strtonum(const char *numstr, long long minval, long long maxval,
++    const char **errstrp)
++{
++	return (strtonumx(numstr, minval, maxval, errstrp, 10));
++}
+diff --git a/usr/src/tools/libcompat/common/compat_priv.h b/usr/src/tools/libcompat/common/compat_priv.h
+new file mode 100644
+index 0000000000..312422414e
+--- /dev/null
++++ b/usr/src/tools/libcompat/common/compat_priv.h
+@@ -0,0 +1,89 @@
++/*
++ * This file and its contents are supplied under the terms of the
++ * Common Development and Distribution License ("CDDL"), version 1.0.
++ * You may only use this file in accordance with the terms of version
++ * 1.0 of the CDDL.
++ *
++ * A full copy of the text of the CDDL should have accompanied this
++ * source.  A copy of the CDDL is also available via the Internet at
++ * http://www.illumos.org/license/CDDL.
++ */
++
++/*
++ * Copyright 2026 Oxide Computer Company
++ */
++
++/*
++ * The interface between libcompat's two halves.
++ *
++ * compat_host.c is compiled against the host's headers and compat_gate.c
++ * against the gate's, precisely because the two disagree about layouts.  That
++ * means nothing declared here may mention a type either libc defines: this
++ * header is plain fixed-width integers only, so that both halves agree on it
++ * by construction.
++ */
++#ifndef	_ILLUMOS_COMPAT_PRIV_H
++#define	_ILLUMOS_COMPAT_PRIV_H
++
++#include <stdint.h>
++
++struct compat_stat {
++	uint64_t	cs_dev;
++	uint64_t	cs_ino;
++	uint64_t	cs_rdev;
++	uint32_t	cs_mode;
++	uint32_t	cs_nlink;
++	uint32_t	cs_uid;
++	uint32_t	cs_gid;
++	int64_t		cs_size;
++	int64_t		cs_blksize;
++	int64_t		cs_blocks;
++	int64_t		cs_atime;
++	int64_t		cs_mtime;
++	int64_t		cs_ctime;
++};
++
++struct compat_statvfs {
++	uint64_t	cv_bsize;
++	uint64_t	cv_frsize;
++	uint64_t	cv_blocks;
++	uint64_t	cv_bfree;
++	uint64_t	cv_bavail;
++	uint64_t	cv_files;
++	uint64_t	cv_ffree;
++	uint64_t	cv_favail;
++	uint64_t	cv_fsid;
++	uint64_t	cv_flag;
++	uint64_t	cv_namemax;
++};
++
++/*
++ * The file-type bits of st_mode (S_IFMT and its values) are identical on both
++ * systems, so cs_mode is passed through unmodified and S_ISREG() and friends
++ * work on either side.
++ */
++extern int __compat_host_stat(const char *, struct compat_stat *);
++extern int __compat_host_lstat(const char *, struct compat_stat *);
++extern int __compat_host_fstat(int, struct compat_stat *);
++extern int __compat_host_statvfs(const char *, struct compat_statvfs *);
++extern int __compat_host_fstatvfs(int, struct compat_statvfs *);
++
++/*
++ * Directory reading. `struct dirent` is another layout the two systems do not
++ * share: glibc carries a d_type byte that illumos does not, so d_name sits one
++ * byte further along and every name comes back shifted.
++ *
++ * The host DIR is passed around as an opaque void * -- neither side may look
++ * inside the other's.
++ */
++struct compat_dirent {
++	uint64_t	cd_ino;
++	char		cd_name[1024];
++};
++
++extern void *__compat_host_opendir(const char *);
++/* 1 = an entry, 0 = end of directory, -1 = error. */
++extern int __compat_host_readdir(void *, struct compat_dirent *);
++extern int __compat_host_closedir(void *);
++
++#endif	/* _ILLUMOS_COMPAT_PRIV_H */
+diff --git a/usr/src/tools/libcompat/overlay/dirent.h b/usr/src/tools/libcompat/overlay/dirent.h
+new file mode 100644
+index 0000000000..0e130cf490
+--- /dev/null
++++ b/usr/src/tools/libcompat/overlay/dirent.h
+@@ -0,0 +1,44 @@
++/*
++ * This file and its contents are supplied under the terms of the
++ * Common Development and Distribution License ("CDDL"), version 1.0.
++ * You may only use this file in accordance with the terms of version
++ * 1.0 of the CDDL.
++ *
++ * A full copy of the text of the CDDL should have accompanied this
++ * source.  A copy of the CDDL is also available via the Internet at
++ * http://www.illumos.org/license/CDDL.
++ */
++
++/*
++ * Copyright 2026 Oxide Computer Company
++ */
++
++/*
++ * `struct dirent` is not the same on both sides: glibc's carries a d_type byte
++ * that illumos' does not, so d_name sits one byte further along. A gate-built
++ * caller reading a host readdir(3C) result therefore sees every name shifted
++ * by one -- the first entry of a directory comes back as "." with the leading
++ * character eaten, and nothing matches.
++ *
++ * Same treatment as <sys/stat.h>: let the gate's header declare everything,
++ * then redirect the calls to compat, which reads with the host's layout and
++ * returns the gate's. `DIR` is passed straight through as the host's, which is
++ * safe because it is opaque by contract -- nothing outside libc may look
++ * inside one.
++ *
++ * Function-like macros, so that `struct dirent` and `DIR` are left alone.
++ */
++#include_next <dirent.h>
++
++#ifndef	_ILLUMOS_COMPAT_DIRENT_H
++#define	_ILLUMOS_COMPAT_DIRENT_H
++
++extern DIR *__compat_opendir(const char *);
++extern struct dirent *__compat_readdir(DIR *);
++extern int __compat_closedir(DIR *);
++
++#define	opendir(p)	__compat_opendir(p)
++#define	readdir(d)	__compat_readdir(d)
++#define	closedir(d)	__compat_closedir(d)
++
++#endif	/* _ILLUMOS_COMPAT_DIRENT_H */
+diff --git a/usr/src/tools/libcompat/overlay/iso/stdio_iso.h b/usr/src/tools/libcompat/overlay/iso/stdio_iso.h
+new file mode 100644
+index 0000000000..468f80af2a
+--- /dev/null
++++ b/usr/src/tools/libcompat/overlay/iso/stdio_iso.h
+@@ -0,0 +1,36 @@
++/*
++ * This file and its contents are supplied under the terms of the
++ * Common Development and Distribution License ("CDDL"), version 1.0.
++ * You may only use this file in accordance with the terms of version
++ * 1.0 of the CDDL.
++ *
++ * A full copy of the text of the CDDL should have accompanied this
++ * source.  A copy of the CDDL is also available via the Internet at
++ * http://www.illumos.org/license/CDDL.
++ */
++
++/*
++ * Copyright 2026 Oxide Computer Company
++ */
++
++/*
++ * illumos spells the three standard streams as slots in a libc-owned array:
++ *
++ *	extern __FILE __iob[_NFILE];
++ *	#define stdin (&__iob[0])
++ *
++ * A foreign libc owns its own FILE objects and exports them as pointers, so
++ * `__iob` is simply absent at link time.  Let the gate's header declare
++ * everything as usual, then repoint the three names at the host's variables.
++ *
++ * This is safe because nothing outside libc may look inside a FILE: it is
++ * opaque by contract, so a `__FILE *` that actually addresses the host's FILE
++ * is indistinguishable to every caller.  Only the spelling of the three
++ * streams differs, and that is what this fixes.
++ */
++#include_next <iso/stdio_iso.h>
++
++#undef stdin
++#undef stdout
++#undef stderr
++extern __FILE *stdin, *stdout, *stderr;
+diff --git a/usr/src/tools/libcompat/overlay/sys/stat.h b/usr/src/tools/libcompat/overlay/sys/stat.h
+new file mode 100644
+index 0000000000..20e80749da
+--- /dev/null
++++ b/usr/src/tools/libcompat/overlay/sys/stat.h
+@@ -0,0 +1,62 @@
++/*
++ * This file and its contents are supplied under the terms of the
++ * Common Development and Distribution License ("CDDL"), version 1.0.
++ * You may only use this file in accordance with the terms of version
++ * 1.0 of the CDDL.
++ *
++ * A full copy of the text of the CDDL should have accompanied this
++ * source.  A copy of the CDDL is also available via the Internet at
++ * http://www.illumos.org/license/CDDL.
++ */
++
++/*
++ * Copyright 2026 Oxide Computer Company
++ */
++
++/*
++ * `struct stat` is an ABI, and it is not the same ABI on two systems: the
++ * gate's is 128 bytes where glibc's is 144.  Letting the gate's declaration
++ * meet the host's implementation therefore does not merely give wrong field
++ * values, it overruns the caller's buffer by 16 bytes -- which in practice
++ * smashes the return address of whatever function declared the struct on its
++ * stack.
++ *
++ * So these cannot be forwarded the way the stdio streams are.  Let the gate's
++ * header declare the struct and the functions as usual, then redirect the
++ * *calls* to compat entry points that fill the gate's layout field by field
++ * from the host's.  The gate's `struct stat` stays the one every caller sees,
++ * which is what keeps S_ISREG() and friends working.
++ *
++ * Note which names are redirected.  Under _LP64 the gate's <sys/stat.h> maps
++ * the transitional large-file spellings onto the plain ones --
++ *
++ *	#define stat64 stat
++ *	#define fstat64 fstat
++ *
++ * -- so by the time a call reaches here it is spelled `stat`, whatever the
++ * caller wrote.  Redirecting `stat64` instead would be worse than useless: it
++ * would override the gate's mapping and leave `struct stat64` an undefined
++ * type.  (An ILP32 build keeps the two families distinct and would need both
++ * sets; nothing here builds ILP32.)
++ *
++ * The redirection has to be a macro rather than a definition of `stat`
++ * itself, because compat's host half has to call the host's `stat`: if compat
++ * defined that name the call would resolve back into compat and recurse.
++ * And it has to be *function-like*, since an object-like `#define stat ...`
++ * would rewrite every mention of `struct stat` too, including the ones in
++ * these very declarations.
++ */
++#include_next <sys/stat.h>
++
++#ifndef	_ILLUMOS_COMPAT_STAT_H
++#define	_ILLUMOS_COMPAT_STAT_H
++
++extern int __compat_stat64(const char *, struct stat64 *);
++extern int __compat_lstat64(const char *, struct stat64 *);
++extern int __compat_fstat64(int, struct stat64 *);
++
++#define	stat64(p, b)	__compat_stat64((p), (b))
++#define	lstat64(p, b)	__compat_lstat64((p), (b))
++#define	fstat64(f, b)	__compat_fstat64((f), (b))
++
++#endif	/* _ILLUMOS_COMPAT_STAT_H */
+diff --git a/usr/src/tools/libcompat/overlay/sys/statvfs.h b/usr/src/tools/libcompat/overlay/sys/statvfs.h
+new file mode 100644
+index 0000000000..dd3bd66e88
+--- /dev/null
++++ b/usr/src/tools/libcompat/overlay/sys/statvfs.h
+@@ -0,0 +1,36 @@
++/*
++ * This file and its contents are supplied under the terms of the
++ * Common Development and Distribution License ("CDDL"), version 1.0.
++ * You may only use this file in accordance with the terms of version
++ * 1.0 of the CDDL.
++ *
++ * A full copy of the text of the CDDL should have accompanied this
++ * source.  A copy of the CDDL is also available via the Internet at
++ * http://www.illumos.org/license/CDDL.
++ */
++
++/*
++ * Copyright 2026 Oxide Computer Company
++ */
++
++/*
++ * Same story as <sys/stat.h>: the gate's `struct statvfs` is 136 bytes and
++ * glibc's is 112, and the field lists differ outright -- `f_basetype` and
++ * `f_fstr` have no glibc counterpart at all.  Redirect the calls so compat can
++ * translate what does correspond and be explicit about what does not.
++ *
++ * As there, it is the unsuffixed names that survive under _LP64, and the
++ * macros are function-like so that `struct statvfs` is left alone.
++ */
++#include_next <sys/statvfs.h>
++
++#ifndef	_ILLUMOS_COMPAT_STATVFS_H
++#define	_ILLUMOS_COMPAT_STATVFS_H
++
++extern int __compat_statvfs64(const char *, struct statvfs64 *);
++extern int __compat_fstatvfs64(int, struct statvfs64 *);
++
++#define	statvfs64(p, b)	__compat_statvfs64((p), (b))
++#define	fstatvfs64(f, b)	__compat_fstatvfs64((f), (b))
++
++#endif	/* _ILLUMOS_COMPAT_STATVFS_H */
