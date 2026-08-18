@@ -1,4 +1,6 @@
 {
+  lib,
+  stdenv,
   buildPackages,
   mkDerivation,
 
@@ -34,6 +36,12 @@
 mkDerivation {
   libcMinimal = true;
   path = "usr/src/cmd/sgs/librtld_db/amd64";
+
+  # Its makefiles index source, object or install directories by $(MACH) /
+  # $(MACH64), so it needs the illumos spelling of the CPU. Not the default:
+  # setting MACH for a package whose install rules do not expect it relocates
+  # that package's output. See `machMakeFlags` in mkDerivation.nix.
+  illumosMach = true;
   pname = "sgs-librtld_db";
 
   extraPaths = [
@@ -74,7 +82,7 @@ mkDerivation {
     (buildPackages.writeShellScriptBin "mach" "echo i386")
   ];
 
-  buildInputs = [
+  buildInputs = lib.optionals stdenv.hostPlatform.isIllumos [
     headers
     crt
     libcMinimal
@@ -105,9 +113,12 @@ mkDerivation {
     "POST_PROCESS_SO=:"
     "LDFLAGS.native="
     "CPPFLAGS.first=-I${headers}/include"
-    # $(SGSMSG) is $(ONBLD_TOOLS)/bin/$(MACH)/sgsmsg; ld already builds and
-    # installs that, so point at it rather than building sgsmsg again.
-    "ONBLD_TOOLS=${buildPackages.illumos.ld}"
+    # $(SGSMSG) is $(ONBLD_TOOLS)/bin/$(MACH)/sgsmsg. `ld` used to build and
+    # install sgsmsg as a by-product of the `tools/sgs` aggregate, but it is
+    # built from `cmd/sgs/ld` now and no longer ships it, so name the `sgsmsg`
+    # package directly. `buildPackages.illumos.` because sgsmsg runs during
+    # this build; the target instance would need libc and recurse.
+    "SGSMSG=${buildPackages.illumos.sgsmsg}/bin/sgsmsg"
     "LD=${ld-wrapper}"
   ];
 
@@ -124,4 +135,8 @@ mkDerivation {
 
     runHook postInstall
   '';
+
+  meta = {
+    platforms = lib.platforms.unix;
+  };
 }
