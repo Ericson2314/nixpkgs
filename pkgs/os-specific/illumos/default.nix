@@ -18,6 +18,12 @@
 #   cw        illumos' compiler wrapper. No `cmd/cw`; it is a build tool by
 #             nature and has no target-side existence.
 #   ctfstabs  only `tools/ctf/stabs`; no `cmd/` counterpart.
+#   sgsmsg    only `tools/sgs/sgsmsg/sgsmsg.c`. `cmd/sgs/include/sgsmsg.h` is
+#             the header alone -- the program exists nowhere else. It generates
+#             the sgs message catalogues, so libconv and the rest of cmd/sgs
+#             need it to build at all. Splitting it out of the `tools/sgs`
+#             aggregate is the first step to freeing `ld.nix` from that
+#             aggregate.
 #
 # and it is NOT true of `ctfconvert`, `ctfmerge` or `ld`, all of which exist
 # under `cmd/` and should come from there for both platforms.

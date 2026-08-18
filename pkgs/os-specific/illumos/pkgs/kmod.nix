@@ -50,56 +50,54 @@ mkDerivation (
     autoPickPatches = false;
     patches = [ ];
 
-    buildPhase =
-      ''
-        runHook preBuild
+    buildPhase = ''
+      runHook preBuild
 
-        local flagsArray=()
-        concatTo flagsArray makeFlags makeFlagsArray
+      local flagsArray=()
+      concatTo flagsArray makeFlags makeFlagsArray
 
-      ''
-      # Same BUILD_TYPE / `.targ` reasoning as uts-base.nix: keep everything at
-      # one make level so that the command-line macros survive.
-      + ''
-        export BUILD_TYPE=DBG64
+    ''
+    # Same BUILD_TYPE / `.targ` reasoning as uts-base.nix: keep everything at
+    # one make level so that the command-line macros survive.
+    + ''
+      export BUILD_TYPE=DBG64
 
-      ''
-      # IPCTF_TARGET= for the same reason as in uts-base.nix -- it is only ever
-      # non-empty for genunix, but intel/ip's own Makefile also mentions it.
-      + ''
-        ( cd ${module} && make "''${flagsArray[@]}" IPCTF_TARGET= def.targ )
+    ''
+    # IPCTF_TARGET= for the same reason as in uts-base.nix -- it is only ever
+    # non-empty for genunix, but intel/ip's own Makefile also mentions it.
+    + ''
+      ( cd ${module} && make "''${flagsArray[@]}" IPCTF_TARGET= def.targ )
 
-        runHook postBuild
-      '';
+      runHook postBuild
+    '';
 
-    installPhase =
-      ''
-        runHook preInstall
+    installPhase = ''
+      runHook preInstall
 
-        local flagsArray=()
-        concatTo flagsArray makeFlags makeFlagsArray
-        export BUILD_TYPE=DBG64
+      local flagsArray=()
+      concatTo flagsArray makeFlags makeFlagsArray
+      export BUILD_TYPE=DBG64
 
-      ''
-      # $(INS) is `install`, which resolves to $(ONBLD)/install.bin -- and the
-      # `install` derivation is *cross*-built, so on the build machine the shell
-      # falls through to coreutils' install, which has neither -f nor a
-      # -s-with-a-directory. Nothing here needs install(1)'s semantics: these are
-      # plain file copies into $out. Note the escaped `$`: make, not the shell,
-      # has to expand $@/$</$(@D).
-      #
-      # ROOT is prepended as empty by illumosSetupHook's addIllumosMakeFlags, so
-      # it has to be re-set here, after flagsArray, to win.
-      + ''
-        flagsArray+=(
-          "INS.dir=mkdir -p \$@"
-          "INS.file=mkdir -p \$(@D); rm -f \$@; cp \$< \$@"
-          "INS.conffile=mkdir -p \$(@D); rm -f \$@; cp \$(SRC_CONFFILE) \$@"
-        )
+    ''
+    # $(INS) is `install`, which resolves to $(ONBLD)/install.bin -- and the
+    # `install` derivation is *cross*-built, so on the build machine the shell
+    # falls through to coreutils' install, which has neither -f nor a
+    # -s-with-a-directory. Nothing here needs install(1)'s semantics: these are
+    # plain file copies into $out. Note the escaped `$`: make, not the shell,
+    # has to expand $@/$</$(@D).
+    #
+    # ROOT is prepended as empty by illumosSetupHook's addIllumosMakeFlags, so
+    # it has to be re-set here, after flagsArray, to win.
+    + ''
+      flagsArray+=(
+        "INS.dir=mkdir -p \$@"
+        "INS.file=mkdir -p \$(@D); rm -f \$@; cp \$< \$@"
+        "INS.conffile=mkdir -p \$(@D); rm -f \$@; cp \$(SRC_CONFFILE) \$@"
+      )
 
-        ( cd ${module} && make "''${flagsArray[@]}" IPCTF_TARGET= "ROOT=$out" install.targ )
+      ( cd ${module} && make "''${flagsArray[@]}" IPCTF_TARGET= "ROOT=$out" install.targ )
 
-        runHook postInstall
-      '';
+      runHook postInstall
+    '';
   }
 )

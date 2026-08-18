@@ -67,8 +67,6 @@ mkDerivation {
   # and on x86 illumos' MACH is "i386" -- not uname's "x86_64", which would
   # leave those lists empty and silently omit headers.
   makeFlags = [
-    "MACH=i386"
-    "MACH64=amd64"
   ];
 
   # NetBSD's rpcgen shells out to a C preprocessor, defaulting to a /usr/bin
@@ -85,24 +83,23 @@ mkDerivation {
 
   # uts/common itself has no Makefile driving the subdirectories, so run
   # install_h in each of them.
-  installPhase =
-    ''
-      runHook preInstall
+  installPhase = ''
+    runHook preInstall
 
-    ''
-    # `concatTo` rather than a bare `$makeFlags`: under `__structuredAttrs`
-    # (set in mkDerivation.nix) makeFlags is a real bash array, so word-
-    # splitting a scalar would pass only its first element -- INCLUDEDIR
-    # arrived empty and install(1) tried to create /bsm.
-    + ''
-      local flagsArray=()
-      concatTo flagsArray makeFlags makeFlagsArray
+  ''
+  # `concatTo` rather than a bare `$makeFlags`: under `__structuredAttrs`
+  # (set in mkDerivation.nix) makeFlags is a real bash array, so word-
+  # splitting a scalar would pass only its first element -- INCLUDEDIR
+  # arrived empty and install(1) tried to create /bsm.
+  + ''
+    local flagsArray=()
+    concatTo flagsArray makeFlags makeFlagsArray
 
-      for d in ${lib.concatStringsSep " " dirs}; do
-        echo "installing headers from $d"
-        ( cd "$d" && make "''${flagsArray[@]}" install_h )
-      done
+    for d in ${lib.concatStringsSep " " dirs}; do
+      echo "installing headers from $d"
+      ( cd "$d" && make "''${flagsArray[@]}" install_h )
+    done
 
-      runHook postInstall
-    '';
+    runHook postInstall
+  '';
 }

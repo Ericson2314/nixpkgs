@@ -47,8 +47,6 @@ mkDerivation {
 
   makeFlags = [
     "ROOTONBLD=${builtins.placeholder "out"}"
-    "MACH=i386"
-    "MACH64=amd64"
   ];
 
   buildFlags = [ "install" ];

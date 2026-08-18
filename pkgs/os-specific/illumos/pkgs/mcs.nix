@@ -82,11 +82,6 @@ mkDerivation {
   extraNativeBuildInputs = [ cw ];
 
   makeFlags = [
-    # illumos' MACH/MACH64 are not uname strings; on x86 they are i386/amd64,
-    # and the makefiles index directories with them.
-    "MACH=i386"
-    "MACH64=amd64"
-
     # Where `-lconv` and `-lelf` live. Upstream points these at the sibling
     # build directories of a full sgs build; here libconv comes from
     # `sgs-support` and illumos' libelf from the native link-editor, which
@@ -121,20 +116,19 @@ mkDerivation {
 
   buildFlags = [ "all" ];
 
-  installPhase =
-    ''
-      runHook preInstall
+  installPhase = ''
+    runHook preInstall
 
-      mkdir -p $out/bin
-      cp mcs $out/bin/mcs
-    ''
-    # mcs decides what to do from argv[0]; `strip` is a link to it, not a
-    # separate program (cmd/sgs/mcs/Makefile.com's $(ROOTLINKS)).
-    + ''
-      ln -s mcs $out/bin/strip
+    mkdir -p $out/bin
+    cp mcs $out/bin/mcs
+  ''
+  # mcs decides what to do from argv[0]; `strip` is a link to it, not a
+  # separate program (cmd/sgs/mcs/Makefile.com's $(ROOTLINKS)).
+  + ''
+    ln -s mcs $out/bin/strip
 
-      runHook postInstall
-    '';
+    runHook postInstall
+  '';
 
   meta = {
     platforms = lib.platforms.unix;

@@ -54,7 +54,10 @@ let
     libidmap
   ];
   linkPaths = builtins.toString (
-    [ "-L${libcMinimal}/lib" "-L${libssp_ns}/lib" ]
+    [
+      "-L${libcMinimal}/lib"
+      "-L${libssp_ns}/lib"
+    ]
     ++ map (p: "-L${p}/lib -R${p}/lib") runtimeLibs
   );
 in

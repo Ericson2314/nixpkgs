@@ -92,21 +92,6 @@ let
     "usr/src/lib/libdemangle/common"
   ];
 
-  # tools/sgs builds the support libraries itself rather than linking the
-  # illumos-hosted ones, so it needs their sources too.
-  nativeOnlyPaths = [
-    "usr/src/tools/Makefile.tools"
-    "usr/src/tools/Makefile.targ"
-
-    # Only the pieces of cmd/sgs that the native link-editor needs; naming the
-    # whole directory would drag in (and rebuild on) lorder, ar, elfdump, ...
-    "usr/src/cmd/sgs/libconv"
-    "usr/src/cmd/sgs/libelf"
-    "usr/src/cmd/sgs/liblddbg"
-    "usr/src/cmd/sgs/libld"
-    "usr/src/cmd/sgs/tools/libconv_mk_report_bufsize.pl"
-  ];
-
 in
 mkDerivation (
   {
@@ -130,7 +115,23 @@ mkDerivation (
     # illumos-hosted ones, so it needs their sources too.
     extraPaths =
       commonPaths
-      ++ (if forIllumos then [ "usr/src/common/mapfiles" ] else nativeOnlyPaths);
+      ++ (
+        if forIllumos then
+          [ "usr/src/common/mapfiles" ]
+        else
+          [
+            "usr/src/tools/Makefile.tools"
+            "usr/src/tools/Makefile.targ"
+
+            # Only the pieces of cmd/sgs that the native link-editor needs; naming the
+            # whole directory would drag in (and rebuild on) lorder, ar, elfdump, ...
+            "usr/src/cmd/sgs/libconv"
+            "usr/src/cmd/sgs/libelf"
+            "usr/src/cmd/sgs/liblddbg"
+            "usr/src/cmd/sgs/libld"
+            "usr/src/cmd/sgs/tools/libconv_mk_report_bufsize.pl"
+          ]
+      );
   }
   // lib.optionalAttrs forIllumos {
     libcMinimal = true;
@@ -239,11 +240,6 @@ mkDerivation (
           # forwards both to the sub-makes.
           "ROOTONBLD=${builtins.placeholder "out"}"
           "ONBLD_TOOLS=${builtins.placeholder "out"}"
-
-          # illumos' MACH/MACH64 are not uname strings: on x86 they are
-          # i386/amd64, and the makefiles index directories with them.
-          "MACH=i386"
-          "MACH64=amd64"
         ];
 
     meta = {

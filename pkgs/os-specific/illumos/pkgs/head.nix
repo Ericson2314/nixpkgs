@@ -36,13 +36,5 @@ mkDerivation {
     exec ${buildPackages.stdenv.cc}/bin/cpp -traditional-cpp -U__STDC__ "$@"
   '';
 
-  # head/Makefile installs arch-specific headers from $(MACH)_HDRS, and on x86
-  # illumos' MACH is "i386" -- not uname's "x86_64", which would leave the list
-  # empty and silently omit e.g. <stack_unwind.h>.
-  makeFlags = [
-    "MACH=i386"
-    "MACH64=amd64"
-  ];
-
   headersOnly = true;
 }

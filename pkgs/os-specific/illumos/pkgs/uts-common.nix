@@ -99,12 +99,6 @@
   depsBuildBuild = [ buildPackages.stdenv.cc ];
 
   makeFlags = [
-    # illumos' MACH/MACH64 are not uname processor strings: on x86 they are
-    # "i386" and "amd64". Getting this wrong silently empties file lists and
-    # sends source lookups into directories that do not exist.
-    "MACH=i386"
-    "MACH64=amd64"
-
     # The one shared wrapper; see ld-wrapper.nix. It clears SGS_SUPPORT, which
     # dmake sets for .KEEP_STATE and which makes ld dlopen() a support library
     # with illumos-only mode flags. Its `-Wl,` splitting is a no-op here: the
@@ -247,53 +241,52 @@
   # all of that plus the multiboot header and .SUNW_ctf before it replaces the
   # file. That is what makes it safe on `unix`, which objcopy is not -- see the
   # STRIP_STABS note above for that history.
-  postFixup =
-    ''
-      objcopy=${stdenv.cc.bintools.bintools}/bin/${stdenv.cc.targetPrefix}objcopy
-      stripDwarf="${buildPackages.python3Minimal}/bin/python3 ${./strip-dwarf.py}"
+  postFixup = ''
+    objcopy=${stdenv.cc.bintools.bintools}/bin/${stdenv.cc.targetPrefix}objcopy
+    stripDwarf="${buildPackages.python3Minimal}/bin/python3 ${./strip-dwarf.py}"
 
-      mkdir -p "$debug"
+    mkdir -p "$debug"
 
-    ''
-    # A module installed under two names is one file with two links, not two
-    # files: uts/intel/ip/Makefile:119 is `ln $(ROOTMODULE) $@`, so the 25M ip
-    # is both kernel/drv/amd64/ip and kernel/strmod/amd64/ip, and nfs does the
-    # same across kernel/fs and kernel/sys. strip-dwarf.py writes a temp file
-    # and renames over the original, which breaks the link, so remember each
-    # inode and re-link the second name onto the first result rather than
-    # stripping the same bytes twice into two independent copies.
-    + ''
-      declare -A splitDebugSeen=()
+  ''
+  # A module installed under two names is one file with two links, not two
+  # files: uts/intel/ip/Makefile:119 is `ln $(ROOTMODULE) $@`, so the 25M ip
+  # is both kernel/drv/amd64/ip and kernel/strmod/amd64/ip, and nfs does the
+  # same across kernel/fs and kernel/sys. strip-dwarf.py writes a temp file
+  # and renames over the original, which breaks the link, so remember each
+  # inode and re-link the second name onto the first result rather than
+  # stripping the same bytes twice into two independent copies.
+  + ''
+    declare -A splitDebugSeen=()
 
-      while IFS= read -r -d "" f; do
-        [ "$(head -c 4 "$f" | tr -d '\0')" = $'\177ELF' ] || continue
+    while IFS= read -r -d "" f; do
+      [ "$(head -c 4 "$f" | tr -d '\0')" = $'\177ELF' ] || continue
 
-    ''
-    # `ls -di` rather than `stat`, to keep a literal percent sign out of
-    # this script entirely. nix-shell renders the derivation environment
-    # through boost::format, which reads a percent-i as a format specifier
-    # and dies with
-    #
-    #     boost::bad_format_string: format-string is ill-formed
-    #
-    # BEFORE running anything -- so `nix-shell -A ...unix.kmods.<mod>`, the
-    # documented fast loop for kernel-module work, breaks outright, even
-    # though that loop drives `make` by hand and never reaches a fixup
-    # phase. Respelling the flag does not help: the percent is the problem.
-    + ''
-        ino=$(ls -di "$f" | awk '{print $1}')
-        if [ -n "''${splitDebugSeen[$ino]:-}" ]; then
-          ln -f "''${splitDebugSeen[$ino]}" "$f"
-          continue
-        fi
+  ''
+  # `ls -di` rather than `stat`, to keep a literal percent sign out of
+  # this script entirely. nix-shell renders the derivation environment
+  # through boost::format, which reads a percent-i as a format specifier
+  # and dies with
+  #
+  #     boost::bad_format_string: format-string is ill-formed
+  #
+  # BEFORE running anything -- so `nix-shell -A ...unix.kmods.<mod>`, the
+  # documented fast loop for kernel-module work, breaks outright, even
+  # though that loop drives `make` by hand and never reaches a fixup
+  # phase. Respelling the flag does not help: the percent is the problem.
+  + ''
+      ino=$(ls -di "$f" | awk '{print $1}')
+      if [ -n "''${splitDebugSeen[$ino]:-}" ]; then
+        ln -f "''${splitDebugSeen[$ino]}" "$f"
+        continue
+      fi
 
-        # --only-keep-debug reads the file as it stands, so it has to come first.
-        dbg="$debug/lib/debug/''${f#$out/}.debug"
-        mkdir -p "$(dirname "$dbg")"
-        "$objcopy" --only-keep-debug "$f" "$dbg"
+      # --only-keep-debug reads the file as it stands, so it has to come first.
+      dbg="$debug/lib/debug/''${f#$out/}.debug"
+      mkdir -p "$(dirname "$dbg")"
+      "$objcopy" --only-keep-debug "$f" "$dbg"
 
-        $stripDwarf "$f"
-        splitDebugSeen[$ino]="$f"
-      done < <(find "$out" -type f -print0)
-    '';
+      $stripDwarf "$f"
+      splitDebugSeen[$ino]="$f"
+    done < <(find "$out" -type f -print0)
+  '';
 }

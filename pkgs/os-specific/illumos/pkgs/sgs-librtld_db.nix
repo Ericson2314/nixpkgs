@@ -105,8 +105,6 @@ mkDerivation {
     "POST_PROCESS_SO=:"
     "LDFLAGS.native="
     "CPPFLAGS.first=-I${headers}/include"
-    "MACH=i386"
-    "MACH64=amd64"
     # $(SGSMSG) is $(ONBLD_TOOLS)/bin/$(MACH)/sgsmsg; ld already builds and
     # installs that, so point at it rather than building sgsmsg again.
     "ONBLD_TOOLS=${buildPackages.illumos.ld}"

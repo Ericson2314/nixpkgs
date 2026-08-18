@@ -33,9 +33,7 @@ stdenv.mkDerivation {
     $CC -O2 -static -nostdlib -nostartfiles -ffreestanding \
         -fno-stack-protector -fno-pie -no-pie -e _start \
         -DPROG='"${illumos.init}/sbin/init"' \
-        -DLD_DEBUG_ENV='"${
-          if ldDebug == "" then "_NO_LD_DEBUG=1" else "LD_DEBUG=${ldDebug}"
-        }"' \
+        -DLD_DEBUG_ENV='"${if ldDebug == "" then "_NO_LD_DEBUG=1" else "LD_DEBUG=${ldDebug}"}"' \
         -o init ${./init-console.c}
     runHook postBuild
   '';

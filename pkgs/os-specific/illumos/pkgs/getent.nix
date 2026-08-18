@@ -97,11 +97,6 @@ mkDerivation {
   '';
 
   makeFlags = [
-    # illumos' MACH/MACH64 are not uname processor strings; on x86 they are
-    # "i386" and "amd64".
-    "MACH=i386"
-    "MACH64=amd64"
-
     # The contents of usr/src/Makefile.master.64, restricted to the macros a
     # command build actually reads. `LDLIBS.cmd` rather than `LDLIBS`, because
     # the package Makefile appends its own libraries to `LDLIBS` and a

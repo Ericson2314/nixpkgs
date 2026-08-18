@@ -50,9 +50,7 @@ let
     libavl
     libidmap
   ];
-  linkPaths = builtins.toString (
-    map (p: "-L${p}/lib -R${p}/lib") runtimeLibs
-  );
+  linkPaths = builtins.toString (map (p: "-L${p}/lib -R${p}/lib") runtimeLibs);
 in
 
 # svc.configd -- the SMF repository server.
@@ -125,9 +123,6 @@ mkDerivation {
   '';
 
   makeFlags = [
-    "MACH=i386"
-    "MACH64=amd64"
-
     # cmd/svc/configd has no amd64 subdirectory -- upstream still builds it
     # 32-bit -- so the macros `Makefile.cmd.64` would have set are passed on
     # the command line instead, exactly as svccfg.nix and getent.nix do.

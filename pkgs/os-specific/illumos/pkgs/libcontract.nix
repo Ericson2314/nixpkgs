@@ -66,22 +66,21 @@ mkDerivation {
     makeFlagsArray+=("BUILD.SO=\$(LD) -o \$@ \$(GSHARED) \$(DYNFLAGS) ${crt}/lib/crti.o \$(PICS) \$(EXTPICS) ${crt}/lib/crtn.o -L${libcMinimal}/lib -L${libssp_ns}/lib -L${libnvpair}/lib -R${libnvpair}/lib \$(LDLIBS)")
   '';
 
-  installPhase =
-    ''
-      runHook preInstall
+  installPhase = ''
+    runHook preInstall
 
-      mkdir -p "$out/lib"
-      cp libcontract.so.1 "$out/lib/"
-      ln -s libcontract.so.1 "$out/lib/libcontract.so"
+    mkdir -p "$out/lib"
+    cp libcontract.so.1 "$out/lib/"
+    ln -s libcontract.so.1 "$out/lib/libcontract.so"
 
-    ''
-    # <libcontract.h> is the public header; <libcontract_priv.h> goes with it
-    # because svc.startd and init are both "private" consumers in illumos'
-    # sense and include it directly.
-    + ''
-      mkdir -p "$dev/include"
-      cp ../common/libcontract.h ../common/libcontract_priv.h "$dev/include/"
+  ''
+  # <libcontract.h> is the public header; <libcontract_priv.h> goes with it
+  # because svc.startd and init are both "private" consumers in illumos'
+  # sense and include it directly.
+  + ''
+    mkdir -p "$dev/include"
+    cp ../common/libcontract.h ../common/libcontract_priv.h "$dev/include/"
 
-      runHook postInstall
-    '';
+    runHook postInstall
+  '';
 }

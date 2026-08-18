@@ -71,10 +71,6 @@ mkDerivation {
   '';
 
   makeFlags = [
-    # illumos' MACH/MACH64 are not uname strings; on x86 they are i386/amd64.
-    "MACH=i386"
-    "MACH64=amd64"
-
     # cmd/ctfconvert has no amd64 subdirectory, so Makefile.cmd would build it
     # 32-bit. These are the contents of Makefile.master.64 restricted to what a
     # command build reads -- the same list getent.nix passes, and for the same

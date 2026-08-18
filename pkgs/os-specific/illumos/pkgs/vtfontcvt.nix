@@ -36,12 +36,9 @@ mkDerivation {
 
   makeFlags = [
     "ROOTONBLD=${builtins.placeholder "out"}"
-    "MACH=i386"
-    "MACH64=amd64"
 
-    # See elfextract.nix. LDCHECKS and STRIP_STABS used to be restated here too;
-    # both now come from mkDerivation's build-host overlay.
-    "NATIVE_MACH=amd64"
+    # LDCHECKS and STRIP_STABS used to be restated here too; both now come
+    # from mkDerivation's build-host overlay.
 
     # Makefile.master:150 spells the installer `install`, which on a Linux
     # build host is coreutils' and does not take -f. illumos' own is
@@ -58,7 +55,6 @@ mkDerivation {
   dontInstall = true;
 
   extraNativeBuildInputs = [ cw ];
-
 
   preBuild = ''
     mkdir -p $out/bin/i386

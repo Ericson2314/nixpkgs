@@ -66,13 +66,13 @@ mkDerivation {
   # See the header comment. `--replace-fail` on both, so that this stops
   # working loudly rather than silently if upstream rewrites the flags.
   postPatch = ''
-    substituteInPlace usr/src/lib/libtecla/Makefile.com \
-      --replace-fail '-DHAVE_STDINT_H=1 -DHAVE_UNISTD_H=1 -DUSE_TERMINFO=1 -DHAVE_CURSES_H=1 \
-	-DHAVE_TERM_H=1 -DHAVE_SYS_SELECT_H=1 -DHAVE_SELECT=1 \' \
-                     '-DHAVE_STDINT_H=1 -DHAVE_UNISTD_H=1 \
-	-DHAVE_SYS_SELECT_H=1 -DHAVE_SELECT=1 \' \
-      --replace-fail '$(DYNLIB) :=	LDLIBS += -lcurses' \
-                     ""
+        substituteInPlace usr/src/lib/libtecla/Makefile.com \
+          --replace-fail '-DHAVE_STDINT_H=1 -DHAVE_UNISTD_H=1 -DUSE_TERMINFO=1 -DHAVE_CURSES_H=1 \
+    	-DHAVE_TERM_H=1 -DHAVE_SYS_SELECT_H=1 -DHAVE_SELECT=1 \' \
+                         '-DHAVE_STDINT_H=1 -DHAVE_UNISTD_H=1 \
+    	-DHAVE_SYS_SELECT_H=1 -DHAVE_SELECT=1 \' \
+          --replace-fail '$(DYNLIB) :=	LDLIBS += -lcurses' \
+                         ""
   '';
 
   # See libm.nix for why `BUILD.SO` has to be redefined to call `$(LD)`

@@ -134,9 +134,6 @@ mkDerivation {
   );
 
   makeFlags = [
-    "MACH=i386"
-    "MACH64=amd64"
-
     # cmd/svc/svcs has no amd64 subdirectory -- upstream builds it 32-bit --
     # so the macros `Makefile.cmd.64` would have set are passed on the command
     # line instead, exactly as svccfg.nix, svcadm.nix and getent.nix do.

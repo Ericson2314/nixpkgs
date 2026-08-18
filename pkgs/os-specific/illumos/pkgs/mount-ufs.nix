@@ -56,11 +56,6 @@ mkDerivation {
   buildInputs = [ headers ];
 
   makeFlags = [
-    # illumos' MACH/MACH64 are not uname processor strings; on x86 they are
-    # "i386" and "amd64".
-    "MACH=i386"
-    "MACH64=amd64"
-
     # cmd/fs.d/ufs/mount has no amd64 subdirectory, so upstream builds it
     # 32-bit. This port is 64-bit only -- there is no 32-bit libc packaged --
     # so the macros Makefile.cmd.64 would have set are passed here instead.
@@ -113,23 +108,22 @@ mkDerivation {
   buildFlags = [ "all" ];
   dontInstall = false;
 
-  installPhase =
-    ''
-      runHook preInstall
+  installPhase = ''
+    runHook preInstall
 
-    ''
-    # Upstream's path for the fstype-specific program, so that a generic
-    # mount(8) would find it if one is packaged later.
-    #
-    # `mkdir`/`cp` rather than `install -D`: the `install` on PATH here is
-    # illumos' own (mkDerivation puts it there), and it does not take -D.
-    + ''
-      mkdir -p $out/lib/fs/ufs
-      cp mount $out/lib/fs/ufs/mount
-      chmod 755 $out/lib/fs/ufs/mount
+  ''
+  # Upstream's path for the fstype-specific program, so that a generic
+  # mount(8) would find it if one is packaged later.
+  #
+  # `mkdir`/`cp` rather than `install -D`: the `install` on PATH here is
+  # illumos' own (mkDerivation puts it there), and it does not take -D.
+  + ''
+    mkdir -p $out/lib/fs/ufs
+    cp mount $out/lib/fs/ufs/mount
+    chmod 755 $out/lib/fs/ufs/mount
 
-      runHook postInstall
-    '';
+    runHook postInstall
+  '';
 
   meta = {
     description = "illumos UFS mount(8), for /usr/lib/fs/ufs/mount";

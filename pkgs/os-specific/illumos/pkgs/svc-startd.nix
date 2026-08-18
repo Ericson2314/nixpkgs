@@ -72,9 +72,7 @@ let
     libmp
     zlib
   ];
-  linkPaths = builtins.toString (
-    map (p: "-L${p}/lib -R${p}/lib") runtimeLibs
-  );
+  linkPaths = builtins.toString (map (p: "-L${p}/lib -R${p}/lib") runtimeLibs);
 in
 
 # svc.startd -- the SMF master restarter, and the thing that actually starts a
@@ -146,9 +144,6 @@ mkDerivation {
   '';
 
   makeFlags = [
-    "MACH=i386"
-    "MACH64=amd64"
-
     "CFLAGS=$(CFLAGS64)"
     "ASFLAGS=$(ASFLAGS64)"
     "COMPILE.c=$(COMPILE64.c)"

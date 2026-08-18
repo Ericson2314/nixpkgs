@@ -32,11 +32,6 @@ mkDerivation {
     make
   ];
 
-  makeFlags = [
-    "MACH=i386"
-    "MACH64=amd64"
-  ];
-
   headersOnly = true;
 
   # install(1) will not create the destination directory itself.

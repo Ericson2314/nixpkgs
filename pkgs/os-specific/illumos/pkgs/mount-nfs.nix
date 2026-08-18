@@ -95,31 +95,28 @@ mkDerivation {
   # one macro and nothing else, which means any *other* use of libshare would
   # fail to compile here rather than silently pick up a stub.
   preBuild = ''
-    mkdir -p shim
-    cat > shim/libshare.h <<'SHIM'
-    /*
-     * Minimal stand-in for <libshare.h>; see mount-nfs.nix.
-     *
-     * cmd/fs.d/nfs/mount uses exactly one thing from the real header, the
-     * SA_OK return code, and does not link -lshare. The real header pulls in
-     * libzfs.h -> libzfs_core.h -> ..., i.e. the entire ZFS header tree, for
-     * a macro that expands to zero.
-     */
-    #ifndef _LIBSHARE_H_SHIM
-    #define _LIBSHARE_H_SHIM
-    #define SA_OK 0
-    #define SA_BAD_VALUE 15
-    #endif
-SHIM
-    sed -i 's/^    //' shim/libshare.h
+        mkdir -p shim
+        cat > shim/libshare.h <<'SHIM'
+        /*
+         * Minimal stand-in for <libshare.h>; see mount-nfs.nix.
+         *
+         * cmd/fs.d/nfs/mount uses exactly one thing from the real header, the
+         * SA_OK return code, and does not link -lshare. The real header pulls in
+         * libzfs.h -> libzfs_core.h -> ..., i.e. the entire ZFS header tree, for
+         * a macro that expands to zero.
+         */
+        #ifndef _LIBSHARE_H_SHIM
+        #define _LIBSHARE_H_SHIM
+        #define SA_OK 0
+        #define SA_BAD_VALUE 15
+        #endif
+    SHIM
+        sed -i 's/^    //' shim/libshare.h
 
-    makeFlagsArray+=("CPPFLAGS.first=-I${headers}/include -I$PWD/shim")
+        makeFlagsArray+=("CPPFLAGS.first=-I${headers}/include -I$PWD/shim")
   '';
 
   makeFlags = [
-    "MACH=i386"
-    "MACH64=amd64"
-
     # 64-bit, as everything here is. This directory has no amd64 subdirectory,
     # so upstream builds it 32-bit and the macros Makefile.cmd.64 would have
     # set are passed here instead; see mount-ufs.nix for the full account.
@@ -162,20 +159,19 @@ SHIM
 
   buildFlags = [ "all" ];
 
-  installPhase =
-    ''
-      runHook preInstall
+  installPhase = ''
+    runHook preInstall
 
-    ''
-    # Upstream's path for the fstype-specific program, so a generic mount(8)
-    # finds it if one is packaged later.
-    + ''
-      mkdir -p $out/lib/fs/nfs
-      cp mount $out/lib/fs/nfs/mount
-      chmod 755 $out/lib/fs/nfs/mount
+  ''
+  # Upstream's path for the fstype-specific program, so a generic mount(8)
+  # finds it if one is packaged later.
+  + ''
+    mkdir -p $out/lib/fs/nfs
+    cp mount $out/lib/fs/nfs/mount
+    chmod 755 $out/lib/fs/nfs/mount
 
-      runHook postInstall
-    '';
+    runHook postInstall
+  '';
 
   meta = {
     description = "illumos NFS mount(8), for /usr/lib/fs/nfs/mount";

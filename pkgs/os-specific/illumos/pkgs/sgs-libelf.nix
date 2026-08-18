@@ -80,8 +80,6 @@ mkDerivation {
     "POST_PROCESS_SO=:"
     "LDFLAGS.native="
     "CPPFLAGS.first=-I${headers}/include"
-    "MACH=i386"
-    "MACH64=amd64"
     "M4=m4"
     "ONBLD_TOOLS=${buildPackages.illumos.ld}"
     "CONVLIBDIR=-L${sgs-libconv}/lib"

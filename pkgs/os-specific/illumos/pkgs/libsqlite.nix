@@ -87,19 +87,19 @@ mkDerivation {
   # two-expression sed over src/sqlite.h.in; the values are `SQLITE_VERSION`
   # and `ENCODING` from that Makefile.
   postPatch = ''
-    cat > usr/src/lib/libsqlite/i386/Makefile <<'MAKEFILE'
-include ../Makefile.com
-include ../../Makefile.lib.64
+        cat > usr/src/lib/libsqlite/i386/Makefile <<'MAKEFILE'
+    include ../Makefile.com
+    include ../../Makefile.lib.64
 
-install: all $(ROOTLIBS64) $(ROOTLINKS64)
+    install: all $(ROOTLIBS64) $(ROOTLINKS64)
 
-include ../Makefile.targ
-MAKEFILE
+    include ../Makefile.targ
+    MAKEFILE
 
-    sed -e 's"--VERS--"2.8.15-repcached"' \
-        -e s/--ENCODING--/ISO8859/ \
-        usr/src/lib/libsqlite/src/sqlite.h.in \
-        > usr/src/lib/libsqlite/sqlite.h
+        sed -e 's"--VERS--"2.8.15-repcached"' \
+            -e s/--ENCODING--/ISO8859/ \
+            usr/src/lib/libsqlite/src/sqlite.h.in \
+            > usr/src/lib/libsqlite/sqlite.h
   '';
 
   buildFlags = [ "all" ];
@@ -119,23 +119,22 @@ MAKEFILE
     makeFlagsArray+=("BUILD.SO=\$(LD) -o \$@ \$(GSHARED) \$(DYNFLAGS) ${crt}/lib/crti.o \$(PICS) \$(EXTPICS) ${crt}/lib/crtn.o -L${libcMinimal}/lib -L${libssp_ns}/lib \$(LDLIBS)")
   '';
 
-  installPhase =
-    ''
-      runHook preInstall
+  installPhase = ''
+    runHook preInstall
 
-      mkdir -p "$out/lib"
-      cp libsqlite-sys.so.2.8.15 "$out/lib/"
-      ln -s libsqlite-sys.so.2.8.15 "$out/lib/libsqlite-sys.so.1"
-      ln -s libsqlite-sys.so.2.8.15 "$out/lib/libsqlite-sys.so"
+    mkdir -p "$out/lib"
+    cp libsqlite-sys.so.2.8.15 "$out/lib/"
+    ln -s libsqlite-sys.so.2.8.15 "$out/lib/libsqlite-sys.so.1"
+    ln -s libsqlite-sys.so.2.8.15 "$out/lib/libsqlite-sys.so"
 
-    ''
-    # Under `sqlite-sys/`, because that is the directory svc.configd's
-    # Makefile puts on its include path and how the gate keeps this apart
-    # from any other sqlite.
-    + ''
-      mkdir -p "$dev/include/sqlite-sys"
-      cp ../sqlite.h ../sqlite-misc.h "$dev/include/sqlite-sys/"
+  ''
+  # Under `sqlite-sys/`, because that is the directory svc.configd's
+  # Makefile puts on its include path and how the gate keeps this apart
+  # from any other sqlite.
+  + ''
+    mkdir -p "$dev/include/sqlite-sys"
+    cp ../sqlite.h ../sqlite-misc.h "$dev/include/sqlite-sys/"
 
-      runHook postInstall
-    '';
+    runHook postInstall
+  '';
 }

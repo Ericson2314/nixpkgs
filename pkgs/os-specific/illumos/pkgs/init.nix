@@ -48,9 +48,7 @@ let
     libmd
     libmp
   ];
-  linkPaths = builtins.toString (
-    map (p: "-L${p}/lib -R${p}/lib") runtimeLibs
-  );
+  linkPaths = builtins.toString (map (p: "-L${p}/lib -R${p}/lib") runtimeLibs);
 in
 
 # init(8) -- the real one, out of usr/src/cmd/init, as opposed to the
@@ -111,9 +109,6 @@ mkDerivation {
   '';
 
   makeFlags = [
-    "MACH=i386"
-    "MACH64=amd64"
-
     # cmd/init has no amd64 subdirectory -- upstream builds it 32-bit -- so
     # the macros `Makefile.cmd.64` would have set are passed on the command
     # line instead, as svccfg.nix, svc-configd.nix and svc-startd.nix do.
@@ -166,30 +161,29 @@ mkDerivation {
   # Install by hand instead.
   # `install` on $PATH here is illumos' own (cmd/install), not GNU coreutils,
   # so no -D and no -m in the combined form -- hence plain mkdir/cp/chmod.
-  installPhase =
-    ''
-      runHook preInstall
+  installPhase = ''
+    runHook preInstall
 
-      mkdir -p "$out/sbin" "$out/bin" "$out/share/illumos"
-      cp init "$out/sbin/init"
-      chmod 755 "$out/sbin/init"
+    mkdir -p "$out/sbin" "$out/bin" "$out/share/illumos"
+    cp init "$out/sbin/init"
+    chmod 755 "$out/sbin/init"
 
-    ''
-    # nixbsd's top-level.nix links "${getBin system.init}/bin/init", so give it
-    # something real to point at rather than a dangling symlink.
-    + ''
-      ln -s ../sbin/init "$out/bin/init"
+  ''
+  # nixbsd's top-level.nix links "${getBin system.init}/bin/init", so give it
+  # something real to point at rather than a dangling symlink.
+  + ''
+    ln -s ../sbin/init "$out/bin/init"
 
-    ''
-    # /etc/default/init, which init reads through definit(3) for the initial
-    # environment. Shipped rather than installed: upstream's `install` target
-    # also deletes /etc/init and /usr/sbin/init compat links against a live
-    # ROOT, which is not something to run here.
-    + ''
-      cp init.dfl "$out/share/illumos/init.dfl"
+  ''
+  # /etc/default/init, which init reads through definit(3) for the initial
+  # environment. Shipped rather than installed: upstream's `install` target
+  # also deletes /etc/init and /usr/sbin/init compat links against a live
+  # ROOT, which is not something to run here.
+  + ''
+    cp init.dfl "$out/share/illumos/init.dfl"
 
-      runHook postInstall
-    '';
+    runHook postInstall
+  '';
 
   meta.mainProgram = "init";
 }

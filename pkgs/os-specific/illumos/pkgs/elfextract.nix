@@ -32,14 +32,6 @@ mkDerivation {
 
   makeFlags = [
     "ROOTONBLD=${builtins.placeholder "out"}"
-    "MACH=i386"
-    "MACH64=amd64"
-
-    # NATIVE_MACH is $(MACH:amd64=i386) (Makefile.master:736), so NATIVE_CFLAGS
-    # would carry -m32 and the build host would need a 32-bit glibc. This is an
-    # ordinary 64-bit host program; tools/ctf/Makefile.ctf.native does the same
-    # for the CTF tools.
-    "NATIVE_MACH=amd64"
 
     # LDCHECKS and STRIP_STABS used to be restated here. Both now come from
     # mkDerivation's build-host overlay, along with the rest of the Solaris
@@ -55,7 +47,6 @@ mkDerivation {
   dontInstall = true;
 
   extraNativeBuildInputs = [ cw ];
-
 
   # The build installs as it goes, so the target directory has to exist before
   # it starts rather than in preInstall.

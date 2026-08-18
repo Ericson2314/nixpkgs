@@ -152,9 +152,9 @@ mkDerivation {
   # is in the base system; here it would mean cross-building cyrus_sasl to
   # satisfy a line that contributes nothing. Drop it.
   postPatch = ''
-    substituteInPlace usr/src/cmd/svc/svccfg/svccfg_xml.c \
-      --replace-fail '#include <sasl/saslutil.h>
-' ""
+        substituteInPlace usr/src/cmd/svc/svccfg/svccfg_xml.c \
+          --replace-fail '#include <sasl/saslutil.h>
+    ' ""
   '';
 
   # See lex.nix and yacc.nix for why both tools need their skeleton
@@ -175,9 +175,6 @@ mkDerivation {
   '';
 
   makeFlags = [
-    "MACH=i386"
-    "MACH64=amd64"
-
     # cmd/svc/svccfg has no amd64 subdirectory -- upstream still builds it
     # 32-bit -- so the macros `Makefile.cmd.64` would have set are passed on
     # the command line instead. See getent.nix, which does the same and

@@ -91,6 +91,14 @@ let
   # the hand-written buildPhases in mcs.nix and friends came about in the first
   # place.
   nativeBuildMakeFlags = [
+    # The build machine's spelling of the same thing MACH64 spells for the
+    # host, from the same table. Makefile.master:736 derives NATIVE_MACH as
+    # $(MACH:amd64=i386) -- i.e. i386 -- so NATIVE_CFLAGS would carry -m32 and
+    # a Linux build host would need a 32-bit glibc for what is an ordinary
+    # 64-bit host program. tools/ctf/Makefile.ctf.native does the same thing by
+    # hand for the CTF tools.
+    "NATIVE_MACH=${nativeMach.mach64}"
+
     # -msave-args is illumos-gcc only; host gcc fails outright with
     #     gcc: error: unrecognized command-line option '-msave-args'
     # This single macro is what stops a cmd/ makefile building on the host.
@@ -194,16 +202,63 @@ let
     # the shared-library links run under illumos ld with -zguidance
     # -zfatal-warnings, which turns a missing -Bdirect into a hard error.
     "LDFLAGS.native="
-    # illumos' MACH/MACH64 are not uname processor strings: on x86 they are
-    # "i386" and "amd64". Source lookups depend on this -- Makefile.targ finds
-    # the complex-arithmetic sources via $(LIBCBASE)/../$(MACH)/fp/%.c, which
-    # is lib/libc/i386/fp. Passing MACH=x86_64 sends it to a directory that
-    # does not exist.
-    #
-    # TARGET_ARCH is deliberately not overridden: the amd64 makefiles set it
-    # themselves, and a command-line macro would clobber that.
-    "MACH=i386"
-    "MACH64=amd64"
+  ];
+
+  # illumos' MACH/MACH64 are not uname processor strings, and they are not
+  # cosmetic: the gate's makefiles index *directories* and file lists with
+  # them. Makefile.targ finds libc's complex-arithmetic sources via
+  # $(LIBCBASE)/../$(MACH)/fp/%.c -- lib/libc/i386/fp -- and lists like
+  # $(LINK_OBJS_$(MACH)) and $($(MACH)_HDRS) simply expand to nothing when
+  # MACH is spelled the uname way. So a wrong MACH does not fail loudly; it
+  # quietly builds the wrong thing.
+  #
+  # These reach make as command-line macros (`makeFlags`), never as
+  # environment variables. Command-line macros outrank makefile assignments;
+  # environment variables do not, so a makefile that assigns MACH itself would
+  # win over the environment and lose to these. That difference is the whole
+  # point of passing them here rather than in `env`.
+  #
+  # TARGET_ARCH is deliberately not overridden: the amd64 makefiles set it
+  # themselves, and a command-line macro would clobber that.
+  #
+  # There is no default case. A CPU with no known illumos spelling throws
+  # rather than falling back to i386, because the failure mode of guessing is
+  # a build that quietly succeeds against the wrong source directories.
+  # A function of a platform rather than of nothing, because the gate names the
+  # same concept twice: MACH/MACH64 describe what is being built (the host
+  # platform) and the NATIVE_* family describes the machine doing the building
+  # (the build platform). Same table, different platform plugged in.
+  machFor =
+    platform:
+    let
+      cpu = platform.parsed.cpu.name;
+      x86 = {
+        mach = "i386";
+        mach64 = "amd64";
+      };
+      sparc = {
+        mach = "sparc";
+        mach64 = "sparcv9";
+      };
+      table = {
+        i386 = x86;
+        i486 = x86;
+        i586 = x86;
+        i686 = x86;
+        x86_64 = x86;
+        sparc = sparc;
+        sparc64 = sparc;
+      };
+    in
+    table.${cpu}
+      or (throw "illumos mkDerivation: no illumos MACH/MACH64 spelling is known for CPU '${cpu}'");
+
+  mach = machFor stdenv.hostPlatform;
+  nativeMach = machFor stdenv.buildPlatform;
+
+  machMakeFlags = [
+    "MACH=${mach.mach}"
+    "MACH64=${mach.mach64}"
   ];
 in
 
@@ -380,8 +435,7 @@ lib.makeOverridable (
     # `stdenv..` below now depends on THIS, because `libcMinimal` is one of the
     # illumos-only knobs a build-host instance must not honour. Every variant
     # shares the same platforms, so the answer is the same either way.
-    isNativeBuild =
-      stdenv.hostPlatform == stdenv.buildPlatform && !stdenv.hostPlatform.isIllumos;
+    isNativeBuild = stdenv.hostPlatform == stdenv.buildPlatform && !stdenv.hostPlatform.isIllumos;
 
     # Link through illumos' own link-editor. On by default for `illumosLib`;
     # a static-only library (libssp_ns) never links anything and turns it off.
@@ -497,15 +551,14 @@ lib.makeOverridable (
       "illumosOwnDebugOutput"
     ])
     # Last, so that these are *prepended* to whatever the package asked for
-    # rather than replaced by it. Only set when opted in: unconditionally
-    # defining `makeFlags` would add the (empty) variable to every illumos
-    # derivation and change all their hashes.
+    # rather than replaced by it.
     #
-    # `nativeBuildMakeFlags` comes first so a package can still override any
-    # single macro by restating it in its own `makeFlags`.
-    // lib.optionalAttrs (isLib || isNativeBuild) {
+    # `machMakeFlags` and `nativeBuildMakeFlags` come first so a package can
+    # still override any single macro by restating it in its own `makeFlags`.
+    // {
       makeFlags =
-        lib.optionals isNativeBuild nativeBuildMakeFlags
+        machMakeFlags
+        ++ lib.optionals isNativeBuild nativeBuildMakeFlags
         ++ lib.optionals isLib (
           libMakeFlags
           ++ lib.optionals (!isNativeBuild) illumosLibMakeFlags
