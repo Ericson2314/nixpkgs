@@ -1,24 +1,21 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: John Ericson <subscribe@johnericson.me>
-Date: Sun, 17 Aug 2026 00:00:00 +0000
-Subject: [PATCH] libfakekernel: provide `lowbit64()` alongside `highbit64()`
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Mon, 17 Aug 2026 23:00:11 -0400
+Subject: [PATCH] libfakekernel: add `lowbit64()` to match `highbit64()`
 
-`kmisc.c` implements `highbit64()` and the mapfile exports it, but its
-counterpart is missing -- `lowbit64()` is declared in <sys/bitmap.h> like any
-other kernel function, and a userland consumer of libfakekernel that calls it
-gets an undefined symbol.
+`libfakekernel` defines `highbit64()` but not `lowbit64()`, although the kernel
+provides both and callers reasonably expect the pair. Add it, and export it from
+the mapfile.
 
-libzpool defines both in its own `kernel.c`, which is where anything linking
-`-lzpool` picks them up, so the gap is invisible from there. It shows up as
-soon as something links libfakekernel on its own:
+Found packaging `zpool` for a cross build: `libzpool` cannot be built here
+because its Makefile wants `dtrace -h`, so `zpool` links `-lfakekernel`
+instead -- and the only things it wanted from `libzpool` were `highbit64()` and
+`lowbit64()`. The link runs under `-zdefs`, so if that ever stops being true it
+fails at build time rather than at run time.
 
-    zpool_main.c:3508: undefined reference to `lowbit64'
-
--- `zpool iostat -w` reaches `HISTO()` in <sys/fs/zfs.h>, which uses both.
-
-The implementation is libzpool's, unchanged.
+Assisted-By: Claude Opus 5 (claude-opus-5)
 ---
- usr/src/lib/libfakekernel/common/kmisc.c      | 43 +++++++++++++++++++++
+ usr/src/lib/libfakekernel/common/kmisc.c      | 43 +++++++++++++++++++
  usr/src/lib/libfakekernel/common/mapfile-vers |  2 +
  2 files changed, 45 insertions(+)
 
@@ -89,6 +86,3 @@ index 5082db903e..327db57de0 100644
  	msec_per_tick;
  
  	mutex_owned;
--- 
-2.51.0
-
