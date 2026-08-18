@@ -1,0 +1,82 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Tue, 18 Aug 2026 11:49:07 -0400
+Subject: [PATCH] cmd/make: include the headers these files actually use
+
+`isdigit()`, `ctime()`, `getpid()` and `gettext()` are all used without the
+header that declares them; illumos gets away with it because something else
+in the include chain happens to drag each one in.
+
+Going the other way, `bin/doname.cc` includes `<stropts.h>` and does not use
+STREAMS at all.
+
+Assisted-By: Claude Opus 5 (claude-opus-5)
+---
+ usr/src/cmd/make/bin/ar.cc        | 1 +
+ usr/src/cmd/make/bin/doname.cc    | 1 -
+ usr/src/cmd/make/bin/misc.cc      | 2 ++
+ usr/src/cmd/make/bin/state.cc     | 1 +
+ usr/src/cmd/make/lib/mksh/misc.cc | 1 +
+ 5 files changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/usr/src/cmd/make/bin/ar.cc b/usr/src/cmd/make/bin/ar.cc
+index 50c8c2c309..a488fc00b3 100644
+--- a/usr/src/cmd/make/bin/ar.cc
++++ b/usr/src/cmd/make/bin/ar.cc
+@@ -41,6 +41,7 @@
+  */
+ #include <alloca.h>		/* alloca() */
+ #include <ar.h>
++#include <ctype.h>		/* isdigit() */
+ #include <errno.h>		/* errno */
+ #include <fcntl.h>		/* open() */
+ #include <libintl.h>
+diff --git a/usr/src/cmd/make/bin/doname.cc b/usr/src/cmd/make/bin/doname.cc
+index 5de1a99096..fa6bf593cc 100644
+--- a/usr/src/cmd/make/bin/doname.cc
++++ b/usr/src/cmd/make/bin/doname.cc
+@@ -44,7 +44,6 @@
+ #include <poll.h>
+ #include <libintl.h>
+ #include <signal.h>
+-#include <stropts.h>
+ #include <sys/errno.h>
+ #include <sys/stat.h>
+ #include <sys/types.h>
+diff --git a/usr/src/cmd/make/bin/misc.cc b/usr/src/cmd/make/bin/misc.cc
+index d6e2d0b87f..bf56f0787e 100644
+--- a/usr/src/cmd/make/bin/misc.cc
++++ b/usr/src/cmd/make/bin/misc.cc
+@@ -46,6 +46,8 @@
+ #include <mksh/macro.h>		/* SETVAR() */
+ #include <mksh/misc.h>		/* enable_interrupt() */
+ #include <stdarg.h>		/* va_list, va_start(), va_end() */
++#include <time.h>		/* ctime() */
++#include <unistd.h>		/* getpid() */
+ #include <vroot/report.h>	/* SUNPRO_DEPENDENCIES */
+ #include <libintl.h>
+ 
+diff --git a/usr/src/cmd/make/bin/state.cc b/usr/src/cmd/make/bin/state.cc
+index 91719d7ffa..55b4fac4ec 100644
+--- a/usr/src/cmd/make/bin/state.cc
++++ b/usr/src/cmd/make/bin/state.cc
+@@ -38,6 +38,7 @@
+ #include <unistd.h>		/* getpid() */
+ #include <errno.h>		/* errno    */
+ #include <locale.h>		/* MB_CUR_MAX    */
++#include <libintl.h>		/* gettext() */
+ 
+ /*
+  * Defined macros
+diff --git a/usr/src/cmd/make/lib/mksh/misc.cc b/usr/src/cmd/make/lib/mksh/misc.cc
+index b46a7a1fd4..0f59e3576d 100644
+--- a/usr/src/cmd/make/lib/mksh/misc.cc
++++ b/usr/src/cmd/make/lib/mksh/misc.cc
+@@ -49,6 +49,7 @@
+ #include <sys/wait.h>		/* wait() */
+ 
+ #include <string.h>		/* strerror() */
++#include <unistd.h>		/* getpid() */
+ #include <libintl.h>
+ 
+ 

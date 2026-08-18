@@ -1,0 +1,114 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Tue, 18 Aug 2026 11:49:16 -0400
+Subject: [PATCH] cmd/make: tidy up four declarations
+
+None of these change what the compiler emits on illumos; each of them is
+something a compiler that is not looking at illumos headers objects to.
+
+- `SIG_PF` was only typedef'd for C, on the grounds that illumos `<signal.h>`
+  already supplies it to C++.  Repeating an identical typedef is legal in
+  both languages, so define it unconditionally.
+
+- `bsd_signal()` assigned its handler to `sa_handler` through a
+  `(void (*)())` cast.  The types already match; the cast is to a function
+  type with an unspecified parameter list, which C++ has since removed.
+
+- `file_lock_error()` is only ever passed string literals for `arg1` and
+  `arg2`, so declare them `const char *`.
+
+- `MAX()` is also defined by some `<sys/param.h>`, which `<mksh/defs.h>`
+  includes.  Guard it.
+
+- `sys_siglist[]` is declared and never used.  Drop it.
+
+Assisted-By: Claude Opus 5 (claude-opus-5)
+---
+ usr/src/cmd/make/include/bsd/bsd.h | 6 ++++--
+ usr/src/cmd/make/include/mk/defs.h | 9 +++------
+ usr/src/cmd/make/lib/bsd/bsd.cc    | 2 +-
+ usr/src/cmd/make/lib/vroot/lock.cc | 5 +++--
+ 4 files changed, 11 insertions(+), 11 deletions(-)
+
+diff --git a/usr/src/cmd/make/include/bsd/bsd.h b/usr/src/cmd/make/include/bsd/bsd.h
+index 2893d6261a..ac3004ced4 100644
+--- a/usr/src/cmd/make/include/bsd/bsd.h
++++ b/usr/src/cmd/make/include/bsd/bsd.h
+@@ -33,9 +33,11 @@
+ #include <signal.h>
+ 
+ 
+-#ifndef __cplusplus
++/*
++ * illumos <signal.h> supplies this, but a foreign libc does not.  Repeating
++ * the typedef verbatim is harmless where it is already visible.
++ */
+ typedef void (*SIG_PF) (int);
+-#endif
+ 
+ #ifdef __cplusplus
+ extern "C" SIG_PF bsd_signal(int a, SIG_PF b);
+diff --git a/usr/src/cmd/make/include/mk/defs.h b/usr/src/cmd/make/include/mk/defs.h
+index a3e5c3bc0c..26072c581a 100644
+--- a/usr/src/cmd/make/include/mk/defs.h
++++ b/usr/src/cmd/make/include/mk/defs.h
+@@ -74,7 +74,10 @@
+ #define	SETVAR(name, value, append) \
+ 				setvar_daemon(name, value, append, no_daemon, \
+ 				true, debug_level)
++/* <sys/param.h> already defines this on some hosts. */
++#ifndef	MAX
+ #define	MAX(a, b)		(((a) > (b))?(a):(b))
++#endif
+ /*
+  * New feature added to SUN5_0 make,  invoke the vanilla svr4 make when
+  * the USE_SVR4_MAKE environment variable is set.
+@@ -299,12 +302,6 @@ extern	long int	hostid;
+ extern	Boolean		path_reset;
+ extern	Boolean		rebuild_arg0;
+ 
+-/*
+- * Declarations of system defined variables
+- */
+-/* On linux this variable is defined in 'signal.h' */
+-extern	char		*sys_siglist[];
+-
+ /*
+  * Declarations of system supplied functions
+  */
+diff --git a/usr/src/cmd/make/lib/bsd/bsd.cc b/usr/src/cmd/make/lib/bsd/bsd.cc
+index 23ff9197df..f1ef8a1d67 100644
+--- a/usr/src/cmd/make/lib/bsd/bsd.cc
++++ b/usr/src/cmd/make/lib/bsd/bsd.cc
+@@ -48,7 +48,7 @@ bsd_signal (int Signal, SIG_PF Handler)
+   struct sigaction         old_action;
+ 
+   new_action.sa_flags = SA_SIGINFO;
+-  new_action.sa_handler = (void (*) ()) Handler;
++  new_action.sa_handler = Handler;
+   (void) sigemptyset (&new_action.sa_mask);
+   (void) sigaddset (&new_action.sa_mask, Signal);
+ 
+diff --git a/usr/src/cmd/make/lib/vroot/lock.cc b/usr/src/cmd/make/lib/vroot/lock.cc
+index c142e3669e..b9b702e8eb 100644
+--- a/usr/src/cmd/make/lib/vroot/lock.cc
++++ b/usr/src/cmd/make/lib/vroot/lock.cc
+@@ -37,7 +37,7 @@
+ #include <libintl.h>
+ 
+ static	void		file_lock_error(char *msg, char *file, const char *str,
+-    char *arg1, char * arg2);
++    const char *arg1, const char *arg2);
+ 
+ #define BLOCK_INTERUPTS sigfillset(&newset) ; \
+ 	sigprocmask(SIG_SETMASK, &newset, &oldset)
+@@ -155,7 +155,8 @@ file_lock(char *name, char *lockname, int *file_locked, int timeout)
+  * Format a message telling why the lock could not be created.
+  */
+ static	void
+-file_lock_error(char *msg, char *file, const char *str, char *arg1, char *arg2)
++file_lock_error(char *msg, char *file, const char *str, const char *arg1,
++    const char *arg2)
+ {
+ 	int		len, err;
+ 	char		*ptr;

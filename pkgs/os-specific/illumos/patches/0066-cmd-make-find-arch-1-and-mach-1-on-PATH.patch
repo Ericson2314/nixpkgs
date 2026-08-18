@@ -1,0 +1,38 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Tue, 18 Aug 2026 11:49:23 -0400
+Subject: [PATCH] cmd/make: find arch(1) and mach(1) on `$PATH`
+
+`init_arch_macros()` and `init_mach_macros()` popen(3C) `/bin/mach` and
+`/bin/arch` by absolute path to fill in `$(HOST_ARCH)` and `$(HOST_MACH)`.
+Both are ordinary commands; naming them without a directory lets a build
+that is not rooted at `/` -- a foreign build host, or a build against a
+staged proto area -- supply its own.
+
+Assisted-By: Claude Opus 5 (claude-opus-5)
+---
+ usr/src/cmd/make/lib/mksh/macro.cc | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/usr/src/cmd/make/lib/mksh/macro.cc b/usr/src/cmd/make/lib/mksh/macro.cc
+index 24e3a453ba..f385b6ad95 100644
+--- a/usr/src/cmd/make/lib/mksh/macro.cc
++++ b/usr/src/cmd/make/lib/mksh/macro.cc
+@@ -904,7 +904,7 @@ init_arch_macros(void)
+ 	FILE		*pipe;
+ 	Name		value;
+ 	int		set_host, set_target;
+-	const char	*mach_command = "/bin/mach";
++	const char	*mach_command = "mach";
+ 
+ 	set_host = (get_prop(host_arch->prop, macro_prop) == NULL);
+ 	set_target = (get_prop(target_arch->prop, macro_prop) == NULL);
+@@ -959,7 +959,7 @@ init_mach_macros(void)
+ 	FILE		*pipe;
+ 	Name		value;
+ 	int		set_host, set_target;
+-	const char	*arch_command = "/bin/arch";
++	const char	*arch_command = "arch";
+ 
+ 	set_host = (get_prop(host_mach->prop, macro_prop) == NULL);
+ 	set_target = (get_prop(target_mach->prop, macro_prop) == NULL);

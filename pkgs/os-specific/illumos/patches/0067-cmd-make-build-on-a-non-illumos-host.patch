@@ -1,0 +1,411 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Tue, 18 Aug 2026 11:49:40 -0400
+Subject: [PATCH] cmd/make: build on a non-illumos host
+
+make(1) is the one program in the gate that cannot be built by the gate's
+own makefiles on a machine that does not already have it: every other
+makefile here is written in dmake's dialect, and dmake is this program.  On
+an illumos build machine that is a non-problem, because dmake is installed.
+Anywhere else it is the whole difficulty of getting a first build started.
+
+So add `usr/src/cmd/make/Makefile.bootstrap`, written in the common subset
+of make dialects, which builds and installs make(1) against the *host's*
+libc using whatever make the host ships.  It is deliberately not reachable
+from `usr/src/cmd/make/Makefile`; the normal build keeps using
+`Makefile.com`, which knows about CTF, the proto area and message
+catalogues, none of which exist yet at bootstrap time.
+
+`lib/vroot/mount.cc` and `lib/vroot/utimes.cc` are left out of that build.
+Neither `mount_vroot()` nor `utimes_vroot()` is called from anywhere, and
+both files re-declare the libc entry point they wrap using the illumos
+signature, which a foreign libc does not share.
+
+The source changes are what a foreign libc needs:
+
+- `<mksh/hostcompat.h>` (new) supplies `timestruc_t`, `__NORETURN`,
+  `MAXNAMELEN`, `LOADAVG_1MIN` and `getprogname()`.  It is empty on illumos.
+
+- `<sys/systeminfo.h>` was included for a `sysinfo()` call that is not
+  there.
+
+- `__x86` is an illumos-gcc spelling; `__i386__`/`__x86_64__` are every
+  gcc's.
+
+- `<sys/loadavg.h>` is illumos-only; getloadavg(3C) itself is declared by
+  `<stdlib.h>` everywhere, and `LOADAVG_1MIN` moves to the compat header.
+
+- `/proc/self/path/a.out` is how a process finds its own executable on
+  illumos; elsewhere it is `/proc/self/exe`.
+
+- `environ` needs to be declared `extern "C"`, which is also what illumos
+  `<unistd.h>` does.
+
+- The leading `-` on the getopt(3C) option strings asks Solaris for nothing
+  in particular -- getopt() stops at the first operand, which is what the
+  option loop is written against, since it skips operands itself and blanks
+  spent options out of argv[].  GNU getopt() gives a leading `-` a meaning,
+  "return operands as option 1", whereupon the loop blanks out every target
+  named on the command line and make exits with "No arguments to build".
+  `+` is the GNU spelling of what illumos does by default.
+
+Assisted-By: Claude Opus 5 (claude-opus-5)
+---
+ usr/src/cmd/make/Makefile.bootstrap        | 142 +++++++++++++++++++++
+ usr/src/cmd/make/bin/main.cc               |  38 +++++-
+ usr/src/cmd/make/bin/parallel.cc           |   5 +-
+ usr/src/cmd/make/include/mksh/defs.h       |   5 +-
+ usr/src/cmd/make/include/mksh/hostcompat.h |  82 ++++++++++++
+ 5 files changed, 263 insertions(+), 9 deletions(-)
+ create mode 100644 usr/src/cmd/make/Makefile.bootstrap
+ create mode 100644 usr/src/cmd/make/include/mksh/hostcompat.h
+
+diff --git a/usr/src/cmd/make/Makefile.bootstrap b/usr/src/cmd/make/Makefile.bootstrap
+new file mode 100644
+index 0000000000..e23927c252
+--- /dev/null
++++ b/usr/src/cmd/make/Makefile.bootstrap
+@@ -0,0 +1,142 @@
++#
++# This file and its contents are supplied under the terms of the
++# Common Development and Distribution License ("CDDL"), version 1.0.
++# You may only use this file in accordance with the terms of version
++# 1.0 of the CDDL.
++#
++# A full copy of the text of the CDDL should have accompanied this
++# source.  A copy of the CDDL is also available via the Internet at
++# http://www.illumos.org/license/CDDL.
++#
++
++# Copyright 2026 John Ericson
++
++#
++# A build of make(1) for the machine doing the building, in a dialect that
++# make(1) itself does not have to understand.
++#
++# Every other makefile in the gate is read by dmake, which is this program.
++# That is fine on an illumos build machine, where dmake is already installed,
++# and impossible on any other, which is the whole difficulty of getting a
++# first build off the ground on a foreign host.  So this one makefile -- and
++# only this one -- is written in the common subset of make dialects, so that
++# whatever make the host happens to ship can bootstrap the real one.
++#
++# It is deliberately not wired into usr/src/cmd/make/Makefile: the normal
++# illumos build must keep using Makefile.com, which knows about CTF, the
++# proto area, message catalogues and the rest.  This is the bootstrap path
++# only, and it links against the host's own libc rather than the gate's.
++#
++# Usage:
++#
++#	make -f Makefile.bootstrap
++#	make -f Makefile.bootstrap install PREFIX=/somewhere
++#
++
++PREFIX =	/usr/local
++DESTDIR =
++
++CXX =		c++
++CXXFLAGS =	-O2
++CPPFLAGS =
++LDFLAGS =
++
++# host2netname()/netname2host(), used by bin/pmake.cc, live in libtirpc on a
++# host whose libc has no Secure RPC.
++RPCLIBS =	-ltirpc
++LIBS =		-lpthread $(RPCLIBS)
++
++INCLUDES =	-I./include
++
++# -D_FILE_OFFSET_BITS=64 as in Makefile.com.  The warning suppressions match
++# the CCERRWARN list there; this code predates a good deal of what a modern
++# compiler complains about, and none of it is worth churning for a bootstrap.
++DEFS =		-D_FILE_OFFSET_BITS=64
++WARN =		-Wno-unused-variable -Wno-switch -Wno-parentheses \
++		-Wno-unused-function -Wno-clobbered -Wno-uninitialized \
++		-Wno-write-strings -Wno-deprecated
++
++MKSH_OBJS = \
++	lib/mksh/dosys.o \
++	lib/mksh/globals.o \
++	lib/mksh/i18n.o \
++	lib/mksh/macro.o \
++	lib/mksh/misc.o \
++	lib/mksh/mksh.o \
++	lib/mksh/read.o
++
++# mount_vroot() and utimes_vroot() are not called by make, and both files
++# re-declare the libc entry point they wrap with the illumos signature, which
++# a foreign libc does not share.  Leave them out rather than paper over that.
++VROOT_OBJS = \
++	lib/vroot/access.o \
++	lib/vroot/args.o \
++	lib/vroot/chdir.o \
++	lib/vroot/chmod.o \
++	lib/vroot/chown.o \
++	lib/vroot/chroot.o \
++	lib/vroot/creat.o \
++	lib/vroot/execve.o \
++	lib/vroot/lock.o \
++	lib/vroot/lstat.o \
++	lib/vroot/mkdir.o \
++	lib/vroot/open.o \
++	lib/vroot/readlink.o \
++	lib/vroot/report.o \
++	lib/vroot/rmdir.o \
++	lib/vroot/setenv.o \
++	lib/vroot/stat.o \
++	lib/vroot/truncate.o \
++	lib/vroot/unlink.o \
++	lib/vroot/vroot.o
++
++BSD_OBJS = \
++	lib/bsd/bsd.o
++
++# The same list as $(OBJS) in bin/Makefile.
++BIN_OBJS = \
++	bin/ar.o \
++	bin/depvar.o \
++	bin/doname.o \
++	bin/dosys.o \
++	bin/files.o \
++	bin/globals.o \
++	bin/implicit.o \
++	bin/macro.o \
++	bin/main.o \
++	bin/misc.o \
++	bin/nse_printdep.o \
++	bin/parallel.o \
++	bin/pmake.o \
++	bin/read.o \
++	bin/read2.o \
++	bin/rep.o \
++	bin/state.o
++
++OBJS =		$(BIN_OBJS) $(MKSH_OBJS) $(VROOT_OBJS) $(BSD_OBJS)
++
++RULES =		bin/make.rules.file bin/svr4.make.rules.file
++
++all: make
++
++make: $(OBJS)
++	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(OBJS) $(LIBS)
++
++.SUFFIXES: .cc .o
++
++.cc.o:
++	$(CXX) $(CXXFLAGS) $(WARN) $(CPPFLAGS) $(DEFS) $(INCLUDES) -c -o $@ $<
++
++install: all
++	mkdir -p $(DESTDIR)$(PREFIX)/bin
++	mkdir -p $(DESTDIR)$(PREFIX)/share/lib/make
++	cp make $(DESTDIR)$(PREFIX)/bin/make
++	ln -sf make $(DESTDIR)$(PREFIX)/bin/dmake
++	cp bin/make.rules.file $(DESTDIR)$(PREFIX)/share/lib/make/make.rules
++	cp bin/svr4.make.rules.file \
++	    $(DESTDIR)$(PREFIX)/share/lib/make/svr4.make.rules
++
++clean:
++	rm -f $(OBJS) make
++
++.PHONY: all install clean
+diff --git a/usr/src/cmd/make/bin/main.cc b/usr/src/cmd/make/bin/main.cc
+index fbb54963c3..38b3a14fa6 100644
+--- a/usr/src/cmd/make/bin/main.cc
++++ b/usr/src/cmd/make/bin/main.cc
+@@ -51,9 +51,9 @@
+ #include <stdlib.h>
+ #include <sys/errno.h>		/* ENOENT */
+ #include <sys/stat.h>		/* fstat() */
++#include <ctype.h>		/* isalpha() */
+ #include <fcntl.h>		/* open() */
+-
+-#	include <sys/systeminfo.h>	/* sysinfo() */
++#include <libintl.h>		/* gettext() */
+ 
+ #include <sys/types.h>		/* stat() */
+ #include <sys/wait.h>		/* wait() */
+@@ -73,7 +73,17 @@ extern void job_adjust_fini();
+ #define	LD_SUPPORT_ENV_VAR_32	"SGS_SUPPORT_32"
+ #define	LD_SUPPORT_ENV_VAR_64	"SGS_SUPPORT_64"
+ #define	LD_SUPPORT_MAKE_LIB	"libmakestate.so.1"
+-#ifdef __x86
++
++/*
++ * The /proc entry that resolves to the running executable.
++ */
++#ifdef	__sun
++#define	SELF_EXE	"/proc/self/path/a.out"
++#else
++#define	SELF_EXE	"/proc/self/exe"
++#endif
++
++#if defined(__i386__) || defined(__x86_64__)
+ #define	LD_SUPPORT_MAKE_ARCH	"i386"
+ #elif __sparc
+ #define	LD_SUPPORT_MAKE_ARCH	"sparc"
+@@ -930,9 +940,24 @@ read_command_options(int argc, char **argv)
+ 	extern char		*optarg;
+ 	extern int		optind, opterr, optopt;
+ 
+-#define SUNPRO_CMD_OPTS	"-~Bbc:C:Ddef:g:ij:K:kM:m:NnO:o:PpqRrSsTtuVvwx:"
++/*
++ * A leading `-' asks Solaris getopt(3C) for nothing in particular: it stops
++ * at the first operand, which is what the loop below is written against --
++ * it skips operands itself, and relies on getopt() not having consumed
++ * them.  GNU getopt() does give the leading `-' a meaning, namely "return
++ * operands as option 1", and then the loop blanks each one out of argv[] as
++ * a spent option, losing every target named on the command line.  `+' is
++ * the GNU spelling of "stop at the first operand".
++ */
++#ifdef	__sun
++#define	CMD_OPTS_LEAD	"-"
++#else
++#define	CMD_OPTS_LEAD	"+"
++#endif
++
++#define SUNPRO_CMD_OPTS	CMD_OPTS_LEAD "~Bbc:C:Ddef:g:ij:K:kM:m:NnO:o:PpqRrSsTtuVvwx:"
+ 
+-#	define SVR4_CMD_OPTS   "-c:C:ef:g:ij:km:nO:o:pqrsTtVv"
++#	define SVR4_CMD_OPTS   CMD_OPTS_LEAD "c:C:ef:g:ij:km:nO:o:pqrsTtVv"
+ 
+ 	/*
+ 	 * Added V in SVR4_CMD_OPTS also, which is going to be a hidden
+@@ -1633,8 +1658,7 @@ make_install_prefix(void)
+ 	char origin[PATH_MAX];
+ 	char *dir;
+ 
+-	if ((ret = readlink("/proc/self/path/a.out", origin,
+-	    PATH_MAX - 1)) < 0)
++	if ((ret = readlink(SELF_EXE, origin, PATH_MAX - 1)) < 0)
+ 		fatal("failed to read origin from /proc\n");
+ 
+ 
+diff --git a/usr/src/cmd/make/bin/parallel.cc b/usr/src/cmd/make/bin/parallel.cc
+index 7606fe9677..f93456630c 100644
+--- a/usr/src/cmd/make/bin/parallel.cc
++++ b/usr/src/cmd/make/bin/parallel.cc
+@@ -252,7 +252,10 @@ execute_parallel(Property line, Boolean waitflg, Boolean local)
+ #include <sys/ipc.h>		/* ftok() */
+ #include <sys/shm.h>		/* shmget(), shmat(), shmdt(), shmctl() */
+ #include <semaphore.h>		/* sem_init(), sem_trywait(), sem_post(), sem_destroy() */
+-#include <sys/loadavg.h>	/* getloadavg() */
++#include <stdlib.h>		/* getloadavg() */
++#ifdef __sun
++#include <sys/loadavg.h>	/* LOADAVG_1MIN */
++#endif
+ 
+ /*
+  *	adjust_pmake_max_jobs (int pmake_max_jobs)
+diff --git a/usr/src/cmd/make/include/mksh/defs.h b/usr/src/cmd/make/include/mksh/defs.h
+index 0cf3d837c8..22e8031c56 100644
+--- a/usr/src/cmd/make/include/mksh/defs.h
++++ b/usr/src/cmd/make/include/mksh/defs.h
+@@ -35,8 +35,11 @@
+ #include <sys/time.h>		/* timestruc_t */
+ #include <errno.h>		/* errno */
+ 
++#include <wchar.h>		/* wcslen() */
+ #include <wctype.h>
+ 
++#include <mksh/hostcompat.h>	/* what a non-illumos libc lacks */
++
+ /*
+  * A type and some utilities for boolean values
+  */
+@@ -862,7 +865,7 @@ extern Boolean		do_not_exec_rule;		/* `-n' */
+ extern Boolean		dollarget_seen;
+ extern Boolean		dollarless_flag;
+ extern Name		dollarless_value;
+-extern char		**environ;
++extern "C" char		**environ;
+ extern Envvar		envvar;
+ extern int		exit_status;
+ extern wchar_t		*file_being_read;
+diff --git a/usr/src/cmd/make/include/mksh/hostcompat.h b/usr/src/cmd/make/include/mksh/hostcompat.h
+new file mode 100644
+index 0000000000..eba3003775
+--- /dev/null
++++ b/usr/src/cmd/make/include/mksh/hostcompat.h
+@@ -0,0 +1,82 @@
++/*
++ * This file and its contents are supplied under the terms of the
++ * Common Development and Distribution License ("CDDL"), version 1.0.
++ * You may only use this file in accordance with the terms of version
++ * 1.0 of the CDDL.
++ *
++ * A full copy of the text of the CDDL should have accompanied this
++ * source.  A copy of the CDDL is also available via the Internet at
++ * http://www.illumos.org/license/CDDL.
++ */
++
++/*
++ * Copyright 2026 John Ericson
++ */
++
++#ifndef	_MKSH_HOSTCOMPAT_H
++#define	_MKSH_HOSTCOMPAT_H
++
++/*
++ * make(1) is the first thing a build of the gate needs, so on a foreign
++ * build host it has to be compiled before anything else in usr/src exists
++ * -- including the headers in uts/ and head/.  It is therefore built
++ * straight against the host's own libc (see Makefile.bootstrap), and this
++ * header supplies the handful of illumos spellings that a non-illumos libc
++ * does not have.
++ *
++ * On illumos this header is empty; the real definitions come from the
++ * system headers, as they always have.
++ */
++
++#ifndef	__sun
++
++#include <sys/time.h>
++#include <sys/param.h>
++
++/*
++ * <sys/time.h> gives us `struct timespec'; illumos additionally spells it
++ * `timestruc_t', which is the name the file-time code throughout make uses.
++ */
++typedef struct timespec timestruc_t;
++
++/*
++ * <sys/ccompile.h> on illumos.
++ */
++#ifndef	__NORETURN
++#define	__NORETURN	__attribute__((__noreturn__))
++#endif
++
++/*
++ * <sys/param.h> on illumos.  Used only to size the host and user name
++ * buffers, so the exact value does not matter as long as it is generous.
++ */
++#ifndef	MAXNAMELEN
++#define	MAXNAMELEN	256
++#endif
++
++/*
++ * <sys/loadavg.h> on illumos.  getloadavg(3C) fills the same three slots
++ * everywhere; only the index macros are missing.
++ */
++#ifndef	LOADAVG_1MIN
++#define	LOADAVG_1MIN	0
++#endif
++
++/*
++ * <stdlib.h> on illumos and on the BSDs.  glibc has the same information
++ * under a different name.
++ */
++#ifdef	__GLIBC__
++#include <errno.h>
++#include <stdlib.h>
++
++static inline const char *
++getprogname(void)
++{
++	return (program_invocation_short_name);
++}
++#endif
++
++#endif	/* !__sun */
++
++#endif	/* _MKSH_HOSTCOMPAT_H */
