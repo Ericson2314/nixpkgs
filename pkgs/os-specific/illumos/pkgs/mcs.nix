@@ -1,17 +1,17 @@
 {
   lib,
   stdenv,
-  buildPackages,
   mkDerivation,
 
-  compat,
+  cw,
   ld,
+  sgs-support,
 }:
 
-# mcs(1) -- illumos' own object-file editor, and the program that `strip(1)`
-# is a hard link to. `strip -x` is `mcs -d` with the symbol table kept, which
-# is exactly what usr/src/Makefile.master's $(STRIP_STABS) runs over every
-# kernel module.
+# mcs(1) -- illumos' own object-file editor, and the program that `strip(1)` is
+# a hard link to. `strip -x` is `mcs -d` with the symbol table kept, which is
+# exactly what usr/src/Makefile.master's $(STRIP_STABS) runs over every kernel
+# module.
 #
 # Why this matters: GNU objcopy cannot strip an illumos kernel module. It
 # rebuilds `.strtab` and drops the DT_NEEDED module-dependency names with it
@@ -21,36 +21,51 @@
 # leaves the first 8K and nothing will boot the result. mcs rewrites the file
 # the way illumos' own libelf lays it out, and none of that happens.
 #
-# There is *one* attribute, and which platform it is built for comes from the
-# package set, not from the name -- the same arrangement as ld.nix.
-# `buildPackages.illumos.mcs` is the build-host binary the cross build wants;
-# `illumos.mcs` in a cross set is the mcs(1) that ships.
+# Built from `usr/src/cmd/sgs/mcs/amd64` through the gate's own makefiles under
+# dmake, like every other package here, and for ITS OWN host platform with
+# plain `stdenv`. `buildPackages.illumos.mcs` -- the instance whose `stdenv`
+# targets the build machine -- is what the cross build consumes, and splicing
+# picks it out of `nativeBuildInputs` without this file having to arrange
+# anything.
 #
-#  o For an illumos host: usr/src/cmd/sgs/mcs/amd64, through the gate's own
-#    makefiles, linked against the packaged sgs-libconv/sgs-libelf.
+# This file previously did the opposite of all of that, and the two halves went
+# together: reaching for `$CC_FOR_BUILD` because a build-platform instance
+# looked unavailable makes the gate makefile unusable, and once it is unusable
+# everything it would have done has to be restated by hand. What that cost was
+# a hand-copied list of headers to stage (which is `tools/sgs/include`'s
+# ROOTHDRS/SYSHDRS, transcribed), a hand-listed set of translation units (which
+# is Makefile.com's $(OBJS)), and a C file written at build time to stub
+# `conv_check_native()` so that libconv need not be built. None of it was
+# necessary.
 #
-#  o For the build host: the same six sources, compiled directly. This is the
-#    one place where the gate makefiles are *not* used, and deliberately so.
-#    illumos' answer to "run an sgs program on the build machine" is
-#    usr/src/tools/sgs -- a second copy of the makefiles built -DNATIVE_BUILD
-#    -- and it has no `mcs` subdirectory. Rather than add one (a third source
-#    of truth for a program that is six .c files, one library and no generated
-#    message catalogue), the recipe is stated here. What it needs from the
-#    NATIVE_BUILD arrangement is only two things, both already packaged:
-#    `compat`'s staged-header profile, and illumos' libelf -- which
-#    `buildPackages.illumos.ld` already builds and installs, because the
-#    native link-editor needs it too.
-let
-  forIllumos = stdenv.hostPlatform.isSunOS;
+# What the makefile needs that a foreign host cannot supply, `sgs-support`
+# provides -- the staged ELF headers, the NATIVE_BUILD shims and a real
+# libconv. `CONVLIBDIR64` and `ELFLIBDIR64` are upstream's own knobs for saying
+# where those live.
+mkDerivation {
+  pname = "mcs";
+  path = "usr/src/cmd/sgs/mcs/amd64";
 
-  commonPaths = [
+  extraPaths = [
     "usr/src/Makefile.master"
     "usr/src/Makefile.master.64"
     "usr/src/Makefile.native"
     "usr/src/Makefile.smatch"
 
+    "usr/src/lib/Makefile.lib"
+    "usr/src/lib/Makefile.lib.64"
+    "usr/src/lib/Makefile.targ"
+
+    "usr/src/cmd/Makefile.cmd"
+    "usr/src/cmd/Makefile.ctf"
+    "usr/src/cmd/Makefile.targ"
+
+    "usr/src/cmd/sgs/mcs"
+    "usr/src/cmd/sgs/Makefile.com"
+    "usr/src/cmd/sgs/Makefile.sub"
     "usr/src/cmd/sgs/common"
     "usr/src/cmd/sgs/include"
+    "usr/src/cmd/sgs/messages"
 
     "usr/src/common/elfcap"
 
@@ -58,126 +73,75 @@ let
     "usr/src/uts/common/sys"
   ];
 
-  # The build-host recipe.
-  #
-  # `noCC`, with the host compiler arriving through depsBuildBuild, is the
-  # shape every other build-host tool here has (see pkgs/elfextract.nix).
-  native = {
-    noCC = true;
+  # The shared build-host overlay -- SAVEARGS (without which host gcc dies on
+  # `-msave-args`), the Solaris-ld flags GNU ld rejects, the mapfile macros,
+  # STACKPROTECT and the post-processing no-ops. Stated once in
+  # mkDerivation.nix; restating it per package is exactly how the hand-written
+  # buildPhase this replaces came about.
+  illumosNativeBuild = true;
 
-    path = "usr/src/cmd/sgs/mcs";
-    extraPaths = commonPaths;
+  extraNativeBuildInputs = [ cw ];
 
-    depsBuildBuild = [ buildPackages.stdenv.cc ];
+  makeFlags = [
+    # illumos' MACH/MACH64 are not uname strings; on x86 they are i386/amd64,
+    # and the makefiles index directories with them.
+    "MACH=i386"
+    "MACH64=amd64"
 
-    # ELF headers that `compat` does not stage. Deliberately staged here rather
-    # than added to `compat`: `compat` is an input of elfextract, which is an
-    # input of `unix`, so growing its list rebuilds the kernel.
+    # Where `-lconv` and `-lelf` live. Upstream points these at the sibling
+    # build directories of a full sgs build; here libconv comes from
+    # `sgs-support` and illumos' libelf from the native link-editor, which
+    # builds and installs one because it needs it too. It has to be illumos'
+    # libelf and not elfutils: the layout behaviour that makes this tool safe
+    # on a kernel module is libelf's, not mcs'.
+    "CONVLIBDIR64=${sgs-support.ldflags}"
+    "ELFLIBDIR64=-L${ld}/lib/i386/64"
+
+    # The compile profile an sgs program needs against a foreign libc.
     #
-    # <sys/secflags.h> and <sys/procset.h> are not ELF headers; they are pulled
-    # in by cmd/sgs/include/conv.h's chain and glibc has no counterpart.
-    headHeaders = [
-      "gelf.h"
-      "libelf.h"
-      "nlist.h"
-      "elf.h"
-    ];
-    sysHeaders = [
-      "machelf.h"
-      "link.h"
-      "avl.h"
-      "avl_impl.h"
-      "debug.h"
-      "secflags.h"
-      "sysmacros.h"
-      "procset.h"
-    ];
+    # This restates cmd/sgs/Makefile.com's own CPPFLAGS line, which is normally
+    # exactly the kind of duplication to avoid. It is forced: the shared overlay
+    # passes `CPPFLAGS=-D_TS_ERRNO` as a *command-line* macro, and those outrank
+    # every makefile assignment -- including Makefile.com line 62, which
+    # reassigns CPPFLAGS specifically to put `-I.` and `-I../common` ahead of
+    # the parent's. So the sgs include paths vanish and <conv.h> is not found.
+    #
+    # (Upstream sets this in tools/Makefile.tools as an ordinary assignment, and
+    # Makefile.master keeps it in `CPPFLAGS.master`. Emitting it as
+    # `CPPFLAGS.master=` instead of `CPPFLAGS=` would make this override
+    # unnecessary and fix every cmd/sgs consumer of the overlay at once.)
+    "CPPFLAGS=-D_TS_ERRNO -I. -I../common -I$(SGSHOME)/include -I$(SGSHOME)/include/$(MACH) -I$(ELFCAP) ${sgs-support.cflags}"
 
-    buildPhase = ''
-      runHook preBuild
+    # `$(LLDFLAGS64)` is `-R$$ORIGIN/...`, illumos ld's spelling of -rpath, and
+    # points into a proto area that does not exist here. The runpath this
+    # binary actually needs is set through NIX_LDFLAGS below.
+    "LLDFLAGS64="
+  ];
 
-      mkdir -p staged/sys obj
-      for h in "''${headHeaders[@]}"; do cp "$SRC/head/$h" staged/; done
-      for h in "''${sysHeaders[@]}"; do cp "$SRC/uts/common/sys/$h" staged/sys/; done
+  # illumos' libelf is a shared object, so the runpath has to name it.
+  env.NIX_LDFLAGS = "-rpath ${ld}/lib/i386/64";
 
-      # conv_check_native() is the only thing mcs takes from libconv, and on
-      # LP64 upstream's definition (cmd/sgs/libconv/common/arch.c) is exactly
-      # this: the 32-bit build re-execs its 64-bit counterpart, the 64-bit one
-      # does nothing. Restating it is cheaper than building libconv here, which
-      # would need sgsmsg and a generated message catalogue for one stub.
-      printf '%s\n' \
-        '#include <libelf.h>' \
-        'unsigned char' \
-        'conv_check_native(char **argv, char **envp)' \
-        '{' \
-        '	return (ELFCLASS64);' \
-        '}' > obj/conv_check_native.c
+  buildFlags = [ "all" ];
 
-      # -include libintl.h: the sources call gettext() without including it,
-      # relying on illumos' <string.h> chain to have pulled it in.
-      cflags="-DNATIVE_BUILD -O2 -w
-        -Istaged ${compat.stagedCflags}
-        -include libintl.h
-        -I$SRC/cmd/sgs/mcs/common
-        -I$SRC/cmd/sgs/include -I$SRC/cmd/sgs/include/i386
-        -I$SRC/cmd/sgs/common
-        -I$SRC/common/elfcap"
+  installPhase = ''
+    runHook preInstall
 
-      for f in main file utils global message; do
-        $CC_FOR_BUILD -c -o "obj/$f.o" $cflags "$SRC/cmd/sgs/mcs/common/$f.c"
-      done
-      $CC_FOR_BUILD -c -o obj/alist.o $cflags "$SRC/cmd/sgs/common/alist.c"
-      $CC_FOR_BUILD -c -o obj/conv_check_native.o $cflags obj/conv_check_native.c
+    mkdir -p $out/bin
+    cp mcs $out/bin/mcs
+    # mcs decides what to do from argv[0]; `strip` is a link to it, not a
+    # separate program (cmd/sgs/mcs/Makefile.com's $(ROOTLINKS)).
+    ln -s mcs $out/bin/strip
 
-      # illumos' libelf, not the host's: the layout behaviour that makes this
-      # tool safe on a kernel module is libelf's, not mcs'.
-      $CC_FOR_BUILD -o obj/mcs obj/*.o \
-        -L${ld}/lib/i386/64 -lelf -Wl,-rpath,${ld}/lib/i386/64
+    runHook postInstall
+  '';
 
-      runHook postBuild
-    '';
+  meta = {
+    platforms = lib.platforms.unix;
+    mainProgram = "mcs";
 
-    installPhase = ''
-      runHook preInstall
-
-      mkdir -p $out/bin
-      cp obj/mcs $out/bin/mcs
-      # mcs decides what to do from argv[0]; `strip` is a link to it, not a
-      # separate program (cmd/sgs/mcs/Makefile.com's $(ROOTLINKS)).
-      ln -s mcs $out/bin/strip
-
-      runHook postInstall
-    '';
+    # Only the foreign-libc build is exercised; on an illumos host the headers
+    # and libconv come from the system and the packaged sgs-libconv instead,
+    # and nothing here consumes an mcs that runs on illumos.
+    broken = stdenv.hostPlatform.isSunOS;
   };
-
-  # The shipping mcs(1). Not exercised by anything yet -- everything here wants
-  # `buildPackages.illumos.mcs` -- so this exists to give the attribute the
-  # right shape on an illumos host.
-  hosted = {
-    path = "usr/src/cmd/sgs/mcs/amd64";
-    extraPaths = commonPaths ++ [
-      "usr/src/lib/Makefile.lib"
-      "usr/src/lib/Makefile.lib.64"
-      "usr/src/lib/Makefile.targ"
-      "usr/src/cmd/Makefile.cmd"
-      "usr/src/cmd/Makefile.ctf"
-      "usr/src/cmd/Makefile.targ"
-      "usr/src/cmd/sgs/Makefile.com"
-      "usr/src/cmd/sgs/Makefile.sub"
-      "usr/src/cmd/sgs/messages"
-    ];
-  };
-in
-mkDerivation (
-  {
-    pname = "mcs";
-  }
-  // (if forIllumos then hosted else native)
-  // {
-    meta = {
-      platforms = lib.platforms.unix;
-      # See the comment on `hosted` above: unfinished, and nothing consumes it.
-      broken = forIllumos;
-    };
-  }
-)
+}
