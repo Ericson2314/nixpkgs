@@ -32,6 +32,12 @@ mkDerivation {
   pname = "mount-nfs";
   path = "usr/src/cmd/fs.d/nfs/mount";
 
+  # Its makefiles index source, object or install directories by $(MACH) /
+  # $(MACH64), so it needs the illumos spelling of the CPU. Not the default:
+  # setting MACH for a package whose install rules do not expect it relocates
+  # that package's output. See `machMakeFlags` in mkDerivation.nix.
+  illumosMach = true;
+
   extraPaths = [
     "usr/src/Makefile.master"
     "usr/src/Makefile.master.64"

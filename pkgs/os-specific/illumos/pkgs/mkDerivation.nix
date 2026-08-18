@@ -225,13 +225,18 @@ let
   # rather than falling back to i386, because the failure mode of guessing is
   # a build that quietly succeeds against the wrong source directories.
   #
-  # Passed to every illumos-hosted build, but NOT to a build-host tool unless
-  # it asks (`illumosOnbldMach`). MACH is also what the onbld proto layout
-  # indexes its install directories with -- $(ROOTONBLD)/bin/$(MACH) -- and the
-  # build-host tools here install into $out/bin instead, which only works
-  # because MACH is empty for them. Setting it moves `cw` to $out/bin/i386 and
-  # nothing finds it. The tools that DO want the onbld layout (they patch or
-  # follow its install rules) opt in and get the build platform's spelling.
+  # Passed to a package only when it asks: an `illumosLib` library (whose
+  # makefiles index $(MACH)/$(MACH64) source and object directories throughout),
+  # or one that opts in with `illumosMach`. MACH is not free to set everywhere,
+  # because it also indexes *install* paths: a makefile that installs to
+  # $(ROOTLIBDIR64) or $(ROOTONBLD)/bin/$(MACH) moves its output the moment
+  # MACH is non-empty. `crt` is the cautionary case -- it installs to $out/lib
+  # only because MACH64 is empty for it, and setting MACH64=amd64 relocates
+  # values-Xa.o to $out/lib/amd64 while every consumer still names $out/lib.
+  #
+  # `illumosOnbldMach` is the separate, narrower opt-in for build-host tools
+  # that follow the onbld proto layout ($(ROOTONBLD)/bin/$(MACH)); see its own
+  # note below. The two are not interchangeable.
   #
   # A function of a platform rather than of nothing, because the gate names the
   # same concept twice: MACH/MACH64 describe what is being built (the host
@@ -265,6 +270,12 @@ let
   mach = machFor stdenv.hostPlatform;
   nativeMach = machFor stdenv.buildPlatform;
 
+  # The `illumosOnbldMach` note. Most build-host tools here install into
+  # $out/bin, and that works only because MACH is empty for them: the onbld
+  # rules install to $(ROOTONBLD)/bin/$(MACH), so setting MACH moves `cw` to
+  # $out/bin/i386 where nothing looks for it. The tools that genuinely follow
+  # the onbld layout (the CTF tools, `elfextract`, `mbh_patch`, `vtfontcvt`,
+  # `mcs`, `sgs-support`, native `ld`) say so and get MACH; the rest must not.
   machMakeFlags = [
     "MACH=${mach.mach}"
     "MACH64=${mach.mach64}"
@@ -559,6 +570,7 @@ lib.makeOverridable (
       "illumosLd"
       "illumosCtf"
       "illumosOwnDebugOutput"
+      "illumosMach"
       "illumosOnbldMach"
     ])
     # Last, so that these are *prepended* to whatever the package asked for
@@ -568,7 +580,9 @@ lib.makeOverridable (
     # still override any single macro by restating it in its own `makeFlags`.
     // {
       makeFlags =
-        lib.optionals (!isNativeBuild || isLib || (attrs.illumosOnbldMach or false)) machMakeFlags
+        lib.optionals (
+          isLib || (attrs.illumosMach or false) || (attrs.illumosOnbldMach or false)
+        ) machMakeFlags
         ++ lib.optionals isNativeBuild nativeBuildMakeFlags
         ++ lib.optionals isLib (
           libMakeFlags

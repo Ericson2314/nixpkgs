@@ -36,6 +36,12 @@ mkDerivation {
   # the archive to what ld(1) calls (no corenote, no lddstub, no vernote.o) and
   # adds back link_ver_string, assfail() and panic() from $(COMPAT_SUPPORT_SRC).
   path = if forIllumos then "usr/src/cmd/sgs/libconv/amd64" else "usr/src/tools/sgs/libconv";
+
+  # Its makefiles index source, object or install directories by $(MACH) /
+  # $(MACH64), so it needs the illumos spelling of the CPU. Not the default:
+  # setting MACH for a package whose install rules do not expect it relocates
+  # that package's output. See `machMakeFlags` in mkDerivation.nix.
+  illumosMach = true;
   pname = "sgs-libconv";
 
   extraPaths = [

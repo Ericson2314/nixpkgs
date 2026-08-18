@@ -35,6 +35,12 @@
 mkDerivation {
   libcMinimal = true;
   path = "usr/src/cmd/sgs/rtld/amd64";
+
+  # Its makefiles index source, object or install directories by $(MACH) /
+  # $(MACH64), so it needs the illumos spelling of the CPU. Not the default:
+  # setting MACH for a package whose install rules do not expect it relocates
+  # that package's output. See `machMakeFlags` in mkDerivation.nix.
+  illumosMach = true;
   pname = "rtld";
 
   extraPaths = [
@@ -116,7 +122,15 @@ mkDerivation {
     "POST_PROCESS_SO=:"
     "LDFLAGS.native="
     "CPPFLAGS.first=-I${headers}/include"
-    "ONBLD_TOOLS=${buildPackages.illumos.ld}"
+    # The specific tool, not `ONBLD_TOOLS=<the ld package>`. `ONBLD_TOOLS`
+    # names the whole onbld proto area, so pointing it at `ld` quietly asserts
+    # "ld is also where sgsmsg lives" -- true only while `ld` was the entire
+    # `tools/sgs` aggregate, and false now that it is built from `cmd/sgs/ld`.
+    # That assumption is what broke here. Name the tool we actually use.
+    #
+    # `buildPackages.illumos.` because sgsmsg runs during this build; the
+    # target instance would need libc and recurse.
+    "SGSMSG=${buildPackages.illumos.sgsmsg}/bin/sgsmsg"
 
     # Makefile.com resolves each of these to a sibling build directory in the
     # source tree ($(SGSHOME)/libconv/$(MACH64), ../../libld/$(MACH64), ...).
