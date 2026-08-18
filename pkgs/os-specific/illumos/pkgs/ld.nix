@@ -10,7 +10,9 @@
   cw,
   perl,
   gnum4,
+  sgsmsg,
 
+  compat,
   headers,
   crt,
   libcMinimal,
@@ -109,7 +111,7 @@ mkDerivation (
     # libld/libconv/liblddbg/libelf built alongside, so that it depends on
     # nothing illumos-hosted. It is what an illumos-on-illumos cross-build
     # uses, and the only form that can exist before we have a libc.
-    path = if forIllumos then "usr/src/cmd/sgs/ld/amd64" else "usr/src/tools/sgs";
+    path = "usr/src/cmd/sgs/ld/amd64";
 
     # tools/sgs builds the support libraries itself rather than linking the
     # illumos-hosted ones, so it needs their sources too.
@@ -122,6 +124,16 @@ mkDerivation (
           [
             "usr/src/tools/Makefile.tools"
             "usr/src/tools/Makefile.targ"
+
+            # $(COMPAT_DIR), which Makefile.tools points at
+            # $(SRC)/tools/libcompat/common. It used to live inside
+            # usr/src/tools/sgs (as native/) and so came in with `path`; the
+            # merge of the two `native/` trees moved it out, and it has to be
+            # named explicitly now. A makeFlag override cannot stand in for
+            # this: tools/sgs/Makefile forwards only ROOTONBLD and ONBLD_TOOLS
+            # to its sub-makes, so COMPAT_DIR set on this make's command line
+            # never reaches sgsmsg or libconv.
+            "usr/src/tools/libcompat"
 
             # Only the pieces of cmd/sgs that the native link-editor needs; naming the
             # whole directory would drag in (and rebuild on) lorder, ar, elfdump, ...
@@ -180,6 +192,7 @@ mkDerivation (
       cw
       perl
       gnum4
+      sgsmsg
     ];
 
     # The build installs as it goes, so the target directories have to exist
@@ -205,7 +218,7 @@ mkDerivation (
     # behave the way the Solaris one does.
     #
     # Shared-library-only links never trip over this, which is why libc and
-    # libm built fine for a long time before it surfaced in the ld.so.1 link.
+    # libm uilt fine for a long time before it surfaced in the ld.so.1 link.
     postFixup = ''
       cat > $out/bin/ld <<EOF
       #!${buildPackages.runtimeShell}
