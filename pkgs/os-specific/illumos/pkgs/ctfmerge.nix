@@ -101,15 +101,10 @@ mkDerivation {
     # The headers illumos does not ship, plus the compat profiles that let gate
     # source compile against a foreign libc.
     #
-    # `CPPFLAGS`, not `CPPFLAGS.first`: the shared overlay sets `CPPFLAGS` as a
-    # command-line macro, and those outrank the makefile assignment that would
-    # otherwise expand `$(CPPFLAGS.first)`. So `-D_TS_ERRNO` is carried through
-    # here rather than lost.
-    #
     # Ordering is load-bearing: `compat.hostElfCflags` must beat the staged
     # <sys/elf.h>, and `-idirafter` must lose to the host's own directories.
     # See compat/host-elf/sys/elf.h.
-    "CPPFLAGS=-D_TS_ERRNO -D_LARGEFILE64_SOURCE ${compat.hostElfCflags} ${compat.stagedCflags} -I$(SRC)/lib/libctf/common -idirafter $(SRC)/uts/common -idirafter $(SRC)/head"
+    "CPPFLAGS.first=-D_LARGEFILE64_SOURCE ${compat.hostElfCflags} ${compat.stagedCflags} -I$(SRC)/lib/libctf/common -idirafter $(SRC)/uts/common -idirafter $(SRC)/head"
 
     # ...and libcompat, built in preBuild above.
     "LDLIBS.cmd=-L. -lcompat -lpthread"

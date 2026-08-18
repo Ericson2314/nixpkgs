@@ -98,18 +98,17 @@ mkDerivation {
 
     # The compile profile an sgs program needs against a foreign libc.
     #
-    # This restates cmd/sgs/Makefile.com's own CPPFLAGS line, which is normally
-    # exactly the kind of duplication to avoid. It is forced: the shared overlay
-    # passes `CPPFLAGS=-D_TS_ERRNO` as a *command-line* macro, and those outrank
-    # every makefile assignment -- including Makefile.com line 62, which
-    # reassigns CPPFLAGS specifically to put `-I.` and `-I../common` ahead of
-    # the parent's. So the sgs include paths vanish and <conv.h> is not found.
-    #
-    # (Upstream sets this in tools/Makefile.tools as an ordinary assignment, and
-    # Makefile.master keeps it in `CPPFLAGS.master`. Emitting it as
-    # `CPPFLAGS.master=` instead of `CPPFLAGS=` would make this override
-    # unnecessary and fix every cmd/sgs consumer of the overlay at once.)
-    "CPPFLAGS=-D_TS_ERRNO -I. -I../common -I$(SGSHOME)/include -I$(SGSHOME)/include/$(MACH) -I$(ELFCAP) ${sgs-support.cflags}"
+    # `CPPFLAGS.master`, not `CPPFLAGS.first`: cmd/sgs/Makefile.com line 62
+    # *reassigns* CPPFLAGS to put its own `-I.` and `-I../common` ahead of the
+    # parent's, and in doing so drops `$(CPPFLAGS.first)` -- so that knob, which
+    # every other package here uses, reaches nothing under cmd/sgs. It keeps
+    # `$(CPPFLAGS.master)`, which is therefore the one hook an sgs package has.
+    # The value is literal: a `$(MACRO)` reference here is shell-escaped on its
+    # way into the make command line and then word-split, so only its first
+    # fragment survives as the assignment. `-D_TS_ERRNO` is the half of the
+    # default that matters; the other, `$(DTEXTDOM)`, only names a gettext
+    # message-catalogue domain that a build tool never loads.
+    "CPPFLAGS.master=-D_TS_ERRNO ${sgs-support.cflags}"
 
     # `$(LLDFLAGS64)` is `-R$$ORIGIN/...`, illumos ld's spelling of -rpath, and
     # points into a proto area that does not exist here. The runpath this
