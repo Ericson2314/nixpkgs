@@ -1,0 +1,91 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Tue, 18 Aug 2026 12:10:26 -0400
+Subject: [PATCH] configd: TX_SIZE() sign-extends on a 64-bit build, crashing
+ multi-value updates
+
+`svc.configd` dies of SIGSEGV importing any manifest whose `<dependency>`
+holds more than one `<service_fmri>`. One FMRI is fine; two are fatal.
+
+`object_tx_commit()` walks the values of a transaction command with
+
+	v = (uint32_t *)((caddr_t)str + TX_SIZE(*v));
+
+`TX_SIZE(x)` is `P2ROUNDUP((x), sizeof (uint32_t))`
+(common/svc/repcache_protocol.h), and `P2ROUNDUP(x, align)` is
+`(-(-(x) & -(align)))` (sys/sysmacros.h). `*v` is a `uint32_t`, so `-(x)` is
+evaluated in 32 bits and then ZERO-extended to 64 before being masked against
+a 64-bit `-(align)`; the closing negation therefore lands in the upper word:
+
+	TX_SIZE((uint32_t)27) = 0xffffffff0000001c
+	TX_SIZE((size_t)27)   = 0x000000000000001c
+
+Here the result feeds straight into pointer arithmetic, so `v` ends up exactly
+2^32 below where it belongs. The fault surfaces further along, in
+`backend_tx_run_update()` -> sqlite's `vxprintf()`, reading the mangled string
+pointer:
+
+	client_switcher -> tx_commit -> rc_tx_commit -> object_tx_commit
+	  -> tx_process_cmds -> backend_tx_run_update
+	  -> sqlite_exec_vprintf -> sqlite_vmprintf -> base_vprintf -> vxprintf
+
+with a fault address exactly 2^32 low. The line is only reached from the
+SECOND iteration of the value loop, which is why the number of FMRIs decides
+it.
+
+The other `TX_SIZE()` call sites -- object.c and rc_node.c -- all assign the
+result back into a 32-bit variable, which truncates the damage away. This one
+does not.
+
+Not reachable as illumos ships today, because `cmd/svc/configd` is still built
+32-bit, where `size_t` is 32 bits and both halves agree. It bites immediately
+on a 64-bit configd.
+
+Fixed at the call site rather than in `P2ROUNDUP()`. The macro is arguably
+hazardous for any caller whose operand is narrower than `align`, but changing
+it reaches the whole tree, including the kernel; that is a separate and much
+larger conversation.
+
+Assisted-By: Claude Opus 5 (claude-opus-5)
+---
+ usr/src/cmd/svc/configd/object.c | 26 +++++++++++++++++++++++++-
+ 1 file changed, 25 insertions(+), 1 deletion(-)
+
+diff --git a/usr/src/cmd/svc/configd/object.c b/usr/src/cmd/svc/configd/object.c
+index 6f76cd20b3..c7f1dfe601 100644
+--- a/usr/src/cmd/svc/configd/object.c
++++ b/usr/src/cmd/svc/configd/object.c
+@@ -320,8 +320,32 @@ tx_process_cmds(tx_commit_data_t *data)
+ 				if (r != REP_PROTOCOL_SUCCESS)
+ 					break;
+ 
++				/*
++				 * The (size_t) cast is load-bearing on a
++				 * 64-bit configd.  TX_SIZE() is
++				 * P2ROUNDUP(x, sizeof (uint32_t)), and
++				 * P2ROUNDUP() is (-(-(x) & -(align))): with
++				 * a uint32_t x, -(x) is evaluated in 32 bits
++				 * and then ZERO-extended before being masked
++				 * against a 64-bit -(align), so the closing
++				 * negation lands in the upper word --
++				 * TX_SIZE((uint32_t)27) is 0xffffffff0000001c
++				 * rather than 0x1c.  Here that feeds straight
++				 * into pointer arithmetic, putting `v' exactly
++				 * 2^32 below where it belongs and killing
++				 * configd with SIGSEGV.
++				 *
++				 * The other TX_SIZE() call sites assign the
++				 * result back into a 32-bit variable, which
++				 * truncates the damage away; this one does
++				 * not.  It is reached only from the second
++				 * iteration of this loop, so a dependency
++				 * with one service_fmri is fine and one with
++				 * two is fatal.
++				 */
+ 				/*LINTED alignment*/
+-				v = (uint32_t *)((caddr_t)str + TX_SIZE(*v));
++				v = (uint32_t *)((caddr_t)str +
++				    TX_SIZE((size_t)*v));
+ 			}
+ 		}
+ 		if (r != REP_PROTOCOL_SUCCESS)
