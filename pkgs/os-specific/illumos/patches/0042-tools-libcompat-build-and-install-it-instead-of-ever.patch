@@ -1,0 +1,238 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Tue, 18 Aug 2026 01:25:17 -0400
+Subject: [PATCH] tools/libcompat: build and install it, instead of every
+ consumer rebuilding it
+
+`tools/libcompat` was created as a directory of headers and one C file with no
+Makefile, referenced only through `$(COMPAT_CPPFLAGS)` and
+`$(COMPAT_SUPPORT_SRC)` in `Makefile.tools`.  That leaves each consumer to
+compile `native_support.c` for itself, and leaves the "ELF-y" header staging --
+the thing that makes gate source compile against a foreign libc at all -- with
+nowhere to live, so every consumer reimplements it.  Give it a Makefile and put
+it in `SUBDIRS`, ahead of everything else in `BOOT_SUBDIRS`, so `ctf` and `sgs`
+can both rely on it.
+
+Each half is shaped after an existing precedent in this tree rather than
+invented:
+
+  * The header half follows `tools/sgs/include/Makefile` -- a headers-only
+    directory in `tools/` whose `all install:` gathers a hand-picked list out of
+    `$(SRC)/uts` with `$(INS.file)`, and which is itself in `SUBDIRS`.  As
+    there, the point is to keep the whole illumos header tree off the include
+    path, where `<sys/types.h>` and friends collide head-on with the host
+    libc's.
+
+  * The library half follows `tools/ctf/libctf/Makefile.com` -- build it once
+    and install under `$(ROOTONBLDLIBMACH)`, which `Makefile.tools` already
+    defines alongside `$(ROOTONBLDLIB)`.
+
+The gathered headers go in `include/`, NOT in `common/`, and that separation is
+load-bearing.  `common/sys/elf.h` is a shim forwarding to the *host's*
+`<elf.h>`, for the CTF tools, which link the host libelf; the gathered
+`include/sys/elf.h` is illumos' real one, for tools that want illumos' ELF
+types.  A consumer chooses by which directory it `-I`s first, and merging the
+two would make that choice unexpressible.  It is also why `.gitignore` gains
+`libcompat/include` and not `libcompat/common`: `common/` is source, `include/`
+is generated -- compare the existing `sgs/include/sys` entry.
+
+The header list carries a warning that is the real motivation here.  These
+headers depend on each other in ways the list does not show: staging
+`<sys/auxv.h>` without also staging `<sys/auxv_386.h>` breaks `elfextract`, and
+nothing about the list says so.  `tools/sgs/include/Makefile` names both
+together for exactly that reason.  A hand-maintained copy of this list
+elsewhere gets it wrong sooner or later -- one already did, and was backed out
+for it.  Having one list, in the tree that owns the headers, removes that class
+of bug by construction rather than by care.
+
+No consumer is switched over here.  `$(COMPAT_CPPFLAGS)` and
+`$(COMPAT_SUPPORT_SRC)` still work exactly as before, so `ctf` and `sgs` build
+unchanged; moving them to link `-lcompat` is a separate change.
+
+Assisted-By: Claude Opus 5 (claude-opus-5)
+---
+ usr/src/tools/.gitignore         |   1 +
+ usr/src/tools/Makefile           |   2 +
+ usr/src/tools/libcompat/Makefile | 148 +++++++++++++++++++++++++++++++
+ 3 files changed, 151 insertions(+)
+ create mode 100644 usr/src/tools/libcompat/Makefile
+
+diff --git a/usr/src/tools/.gitignore b/usr/src/tools/.gitignore
+index 2d5bffaeb4..2334bb48dd 100644
+--- a/usr/src/tools/.gitignore
++++ b/usr/src/tools/.gitignore
+@@ -20,6 +20,7 @@ install-*.out
+ __pycache__
+ 
+ sgs/include/sys
++libcompat/include
+ sgs/*/*.[chs]
+ !sgs/sgsmsg/sgsmsg.c
+ !libcompat/common/*.[chs]
+diff --git a/usr/src/tools/Makefile b/usr/src/tools/Makefile
+index 0007c61eb3..8f06bc4e04 100644
+--- a/usr/src/tools/Makefile
++++ b/usr/src/tools/Makefile
+@@ -42,6 +42,8 @@ include ../Makefile.master
+ # installation rules in their makefiles. This includes the Makefile for
+ # 'install.bin' itself.
+ BOOT_SUBDIRS=		\
++	libcompat	\
++	.WAIT		\
+ 	smatch		\
+ 	.WAIT		\
+ 	cw		\
+diff --git a/usr/src/tools/libcompat/Makefile b/usr/src/tools/libcompat/Makefile
+new file mode 100644
+index 0000000000..d228f92b2e
+--- /dev/null
++++ b/usr/src/tools/libcompat/Makefile
+@@ -0,0 +1,148 @@
++#
++# This file and its contents are supplied under the terms of the
++# Common Development and Distribution License ("CDDL"), version 1.0.
++# You may only use this file in accordance with the terms of version
++# 1.0 of the CDDL.
++#
++# A full copy of the text of the CDDL should have accompanied this
++# source.  A copy of the CDDL is also available via the Internet at
++# http://www.illumos.org/license/CDDL.
++#
++
++#
++# Copyright 2026 Oxide Computer Company
++#
++
++include ../Makefile.tools
++
++#
++# libcompat has two halves, and they are shaped after two different existing
++# things in this tree, because each half already has a precedent here:
++#
++#  * The header half follows tools/sgs/include/Makefile: a headers-only
++#    directory in tools/ whose `all install' target gathers a hand-picked list
++#    of "ELF-y" headers out of the workspace with $(INS.file), into a directory
++#    the build then searches with -I.  As there, the point is to avoid putting
++#    the whole illumos header tree on the include path, where <sys/types.h> and
++#    friends collide head-on with the host libc's.
++#
++#  * The library half follows tools/ctf/libctf/Makefile.com: build an object
++#    and install it under $(ROOTONBLDLIBMACH), so that consumers link it rather
++#    than each compiling the source again.  ($(ROOTONBLDLIB) and
++#    $(ROOTONBLDLIBMACH) are defined by Makefile.tools.)
++#
++# The two output directories are deliberately NOT the same, and this is the
++# subtle part.  common/ holds the checked-in shims, and include/ holds the
++# headers gathered out of the workspace.  They must stay apart because
++# common/sys/elf.h is a shim that forwards to the *host's* <elf.h> -- for the
++# CTF tools, which link the host libelf -- while the gathered include/sys/elf.h
++# is illumos' real one, for the tools that want illumos' ELF types.  A consumer
++# picks a side by which directory it -I's first.  Merging them would make that
++# choice unexpressible.
++#
++# That split is also why the .gitignore entry is `libcompat/include' and not
++# `libcompat/common': common/ is source, include/ is generated.  Compare
++# `sgs/include/sys', ignored for exactly this reason.
++#
++
++#
++# The gathered header list.  Judgement is required to extend it: prefer letting
++# the host libc win, and add a header only when the host genuinely has no
++# counterpart, or -- as with <sys/elf.h> -- when the host's counterpart refuses
++# to compile at all.
++#
++# A WARNING worth heeding, because it has already cost one backed-out change:
++# these headers have dependencies on each other that are not visible in the
++# list.  Staging <sys/auxv.h> without also staging <sys/auxv_386.h> breaks
++# elfextract, and nothing about the list says so.  tools/sgs/include/Makefile
++# names both together for precisely this reason.  Neither is needed here today;
++# if you add one, add the other.
++#
++SYSHDRS=	sys/elf.h \
++		sys/elftypes.h \
++		sys/elf_386.h \
++		sys/elf_amd64.h \
++		sys/elf_SPARC.h \
++		sys/elf_notes.h \
++		sys/isa_defs.h \
++		sys/feature_tests.h \
++		sys/ccompile.h \
++		sys/note.h \
++		sys/multiboot.h \
++		sys/multiboot2.h \
++		sys/queue.h \
++		sys/types32.h \
++		sys/containerof.h \
++		sys/stddef.h
++
++#
++# <sys/machtypes.h> is per-ISA; everything above is machine-independent.  The
++# ISA directory under uts/ is not spelled $(MACH) -- x86 is `intel' there,
++# while $(MACH) is `i386' -- so map it.
++#
++i386_UTSDIR=	intel
++sparc_UTSDIR=	sparc
++UTSDIR=		$($(MACH)_UTSDIR)
++
++MACHSYSHDRS=	sys/machtypes.h
++
++HDRS=		$(SYSHDRS:%=include/%) $(MACHSYSHDRS:%=include/%)
++
++LIBRARY=	libcompat.a
++OBJS=		native_support.o
++
++CPPFLAGS +=	$(COMPAT_CPPFLAGS)
++
++.KEEP_STATE:
++
++all: $(HDRS) $(LIBRARY)
++
++include/sys:
++	$(MKDIR) -p include/sys
++
++include/sys/%: include/sys $(SRC)/uts/common/sys/%
++	$(RM) $@; $(CP) $(SRC)/uts/common/sys/$(@F) $@; $(CHMOD) 644 $@
++
++include/sys/machtypes.h: include/sys $(SRC)/uts/$(UTSDIR)/sys/machtypes.h
++	$(RM) $@; $(CP) $(SRC)/uts/$(UTSDIR)/sys/machtypes.h $@; $(CHMOD) 644 $@
++
++#
++# <sys/types32.h> is nothing but the int32_t/uint32_t typedefs, but it reaches
++# them through illumos' <sys/int_types.h>, which redefines the whole intN_t
++# family and so collides with the host's <stdint.h>.  Point it at <stdint.h>;
++# the typedefs it defines are unchanged either way.
++#
++include/sys/types32.h: include/sys $(SRC)/uts/common/sys/types32.h
++	$(RM) $@
++	$(SED) -e 's|<sys/int_types\.h>|<stdint.h>|' \
++	    $(SRC)/uts/common/sys/types32.h > $@
++	$(CHMOD) 644 $@
++
++native_support.o: common/native_support.c
++	$(NATIVECC) $(NATIVE_CFLAGS) $(CPPFLAGS) -c -o $@ common/native_support.c
++
++#
++# $(AR) is deliberately the *build host's* ar, not the target's: libcompat is
++# linked into tools that run on the build machine.  Makefile.master defines
++# ARFLAGS; AR itself falls back to make's builtin `ar'.
++#
++$(LIBRARY): $(OBJS)
++	$(RM) $@; $(AR) $(ARFLAGS) $@ $(OBJS)
++
++install: all $(ROOTONBLDLIBMACH)/$(LIBRARY)
++
++$(ROOTONBLDLIBMACH):
++	$(MKDIR) -p $@
++
++$(ROOTONBLDLIBMACH)/$(LIBRARY): $(ROOTONBLDLIBMACH) $(LIBRARY)
++	$(RM) $@; $(CP) $(LIBRARY) $@; $(CHMOD) 644 $@
++
++clean:
++	$(RM) $(OBJS) $(LIBRARY)
++
++clobber: clean
++	$(RM) -r include
++
++FRC:
++
++include ../Makefile.targ
