@@ -1,3 +1,30 @@
+# The illumos package set.
+#
+# STANDING ORDER: package from `usr/src/cmd/` (and `usr/src/lib/`,
+# `usr/src/uts/`), NOT from `usr/src/tools/`.
+#
+# `usr/src/tools/` is illumos' own bootstrap-tools tree: the same programs
+# rebuilt with `-DNATIVE_BUILD` against a `native_compat.h` shim so they can run
+# on the machine doing the build. We do not need that. nixpkgs already
+# expresses "the same derivation, built for the build platform" -- that is what
+# the splicing below is for, and `buildPackages.illumos.foo` is how you ask for
+# it. Reaching into `tools/` instead means maintaining illumos' answer to a
+# problem nixpkgs has already solved, and keeping a second copy of a program
+# that can drift from the first.
+#
+# The only acceptable reason to use `tools/` is that the program EXISTS ONLY
+# THERE and cannot be obtained any other way. As of writing that is true of:
+#
+#   cw        illumos' compiler wrapper. No `cmd/cw`; it is a build tool by
+#             nature and has no target-side existence.
+#   ctfstabs  only `tools/ctf/stabs`; no `cmd/` counterpart.
+#
+# and it is NOT true of `ctfconvert`, `ctfmerge` or `ld`, all of which exist
+# under `cmd/` and should come from there for both platforms. If you find
+# yourself adding a `native = { path = "usr/src/tools/...` variant to a package
+# whose sources live under `cmd/`, that is the smell this order exists to
+# catch: build the `cmd/` sources for the build platform instead.
+#
 {
   lib,
   stdenvNoLibc,
