@@ -86,7 +86,10 @@ lib.init bootStages
             ) buildPackages.updateAutotoolsGnuConfigScriptsHook
             ++ lib.optional (
               hostPlatform.isCygwin && !buildPlatform.isCygwin
-            ) buildPackages.cygwin.cygwinDllLinkHook;
+            ) buildPackages.cygwin.cygwinDllLinkHook
+            ++ lib.optional hostPlatform.isSunOS (
+              buildPackages.callPackage ../../os-specific/illumos/dt-needed-order-hook { }
+            );
         })
       );
     in
