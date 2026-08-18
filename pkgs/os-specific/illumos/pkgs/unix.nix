@@ -531,6 +531,28 @@ let
     "intel/pckt"
     "intel/asy"
 
+    # `/dev/poll` (uts/common/io/devpoll.c, built from uts/intel/poll). This is
+    # illumos' scalable readiness interface, the local equivalent of epoll or
+    # kqueue, and any server that expects to hold many connections reaches for
+    # it before poll(2).
+    #
+    # nginx does exactly that: it selects the `/dev/poll` event method at
+    # configure time for this platform, and without the driver its worker dies
+    # immediately at startup with
+    #
+    #     [emerg] open(/dev/poll) failed (2: No such file or directory)
+    #     [alert] worker process ... exited with fatal code 2 and cannot be
+    #             respawned
+    #
+    # while the MASTER stays up holding the listen socket. So SMF reports the
+    # service `online`, `svcs -p` shows an nginx process, connections to port 80
+    # are accepted -- and every one of them returns nothing, because nobody is
+    # left to serve them. Nothing in the service log says why: nginx's
+    # `error_log stderr` output is the only place that message appears.
+    #
+    # Like ptm/pts/pckt above, nothing links against it; it is opened by name.
+    "intel/poll"
+
     # cons_build_upper_layer() (common/io/consconfig_dacf.c:836 onwards) opens
     # four pseudo devices by path and panics on each one it cannot find:
     # /pseudo/conskbd@0:conskbd, /pseudo/consms@0:mouse, /pseudo/wc@0:wscons
