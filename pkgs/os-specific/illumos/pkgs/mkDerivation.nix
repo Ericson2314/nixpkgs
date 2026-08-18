@@ -62,6 +62,106 @@ let
     "POST_PROCESS_SO=:"
   ];
 
+  # The build-host ("native") overlay, opted into with `illumosNativeBuild`.
+  #
+  # illumos' own answer to "build this program for the build machine" is
+  # usr/src/tools/*, and the thing to notice about those makefiles is what they
+  # actually are: `tools/sgs/libelf/Makefile` line 2 is
+  #
+  #     include $(SRC)/cmd/sgs/libelf/Makefile.com
+  #
+  # They *include the cmd/ makefile* and then override about forty variables.
+  # tools/sgs is not a second copy of the build; it is a variable overlay on
+  # the real one. So the overlay can be reproduced exactly -- as command-line
+  # macros, which outrank anything the gate makefiles set, and therefore need
+  # no include injected into each subdirectory's makefile chain.
+  #
+  # Assembled here rather than by including a gate makefile because no single
+  # gate file *is* this overlay: the settings are split between
+  # tools/Makefile.tools and tools/sgs/Makefile.com, and both also carry the
+  # onbld proto-area layout (24 ROOTONBLD* variables rooted at
+  # tools/proto/root_$(MACH)-nd/opt/onbld, plus their $(INS.file) rules). That
+  # layout is precisely what nix replaces with $out, and it is already fought
+  # once -- ld.nix has to override ROOTONBLD and ONBLD_TOOLS to reclaim its own
+  # output. Inheriting it everywhere would spread that fight to every package.
+  #
+  # Note this is one list, not a per-package recipe. The alternative was each
+  # build-host tool restating the overlay in its own `makeFlags`, which is how
+  # the hand-written buildPhases in mcs.nix and friends came about in the first
+  # place.
+  nativeBuildMakeFlags = [
+    # -msave-args is illumos-gcc only; host gcc fails outright with
+    #     gcc: error: unrecognized command-line option '-msave-args'
+    # This single macro is what stops a cmd/ makefile building on the host.
+    "SAVEARGS="
+
+    # Solaris link-editor options that GNU ld rejects. The gate passes these
+    # unconditionally; on the build host the host linker sees them.
+    "BDIRECT="
+    "BLOCAL="
+    "BREDUCE="
+    "ZDEFS="
+    "ZDIRECT="
+    "ZIGNORE="
+    "ZINTERPOSE="
+    "ZLAZYLOAD="
+    "ZLOADFLTR="
+    "ZNOLAZYLOAD="
+    "ZNOLDYNSYM="
+    "ZRECORD="
+    "ZREDLOCSYM="
+    "ZTEXT="
+    "ZVERBOSE="
+    "ZASSERTDEFLIB="
+    "ZGUIDANCE="
+    "ZFATALWARNINGS="
+    "ZASLR="
+    "LDCHECKS="
+    "VERSREF="
+    "NATIVE_LIBS="
+
+    # Mapfiles describe the Solaris runtime linker's view of a shared object.
+    # Nothing on the build host consumes them and GNU ld cannot read them.
+    "MAPFILE.NED="
+    "MAPFILE.PGA="
+    "MAPFILE.NES="
+    "MAPFILE.FLT="
+    "MAPFILE.NGB="
+    "MAPFILE.INT="
+    "MAPFILES="
+    "DYNFLAGS_MAPFILES="
+
+    # `:` is the no-op command, which is how the gate itself spells "skip this
+    # step" -- not an empty value, which would run the rule with no program.
+    # A build-host tool carries no illumos CTF and is never stripped by mcs.
+    "CTFCONVERT_POST=:"
+    "CTFMERGE_POST=:"
+    "POST_PROCESS_O=:"
+    "POST_PROCESS_S_O=:"
+    "POST_PROCESS_CC_O=:"
+    "POST_PROCESS_A=:"
+    "POST_PROCESS_SO=:"
+    "POST_PROCESS=:"
+    "PROCESS_CTF=:"
+    "STRIP_STABS=:"
+
+    # Plain GNU-ld rpath in place of the Solaris runpath handling. $$ORIGIN
+    # survives into the binary as $ORIGIN; the doubling is make's escape.
+    "DYNFLAGS=$(HSONAME) -Wl,-rpath,'$$ORIGIN'"
+
+    # From tools/Makefile.tools. The ROOTONBLD* half of that file is
+    # deliberately not reproduced; see the comment above.
+    "CPPFLAGS=-D_TS_ERRNO"
+    "ELFSIGN_O=$(TRUE)"
+    "GSHARED=-_gcc=-shared"
+
+    # STACKPROTECT is the gate's spelling of the same thing nixpkgs spells
+    # `hardeningDisable = [ "stackprotector" ]`. Only one of the two should
+    # fire; this is the gate-side half, and packages using this overlay should
+    # not also set the nixpkgs-side one.
+    "STACKPROTECT=none"
+  ];
+
   libMakeFlags = [
     # The libc_pic.a rule runs `mcs -d -n .SUNW_ctf` to drop the per-object CTF
     # from the archive, since only the shared library is meant to carry it. mcs
@@ -189,6 +289,11 @@ lib.makeOverridable (
     # and stays in the individual packages.
     isLib = attrs.illumosLib or false;
 
+    # Opt in to the build-host overlay above. Separate from `isLib` because the
+    # two are orthogonal: a build-host *library* (sgs-libconv, sgs-libelf) wants
+    # both, a build-host *program* (mcs, ctfconvert) wants only this one.
+    isNativeBuild = attrs.illumosNativeBuild or false;
+
     # Link through illumos' own link-editor. On by default for `illumosLib`;
     # a static-only library (libssp_ns) never links anything and turns it off.
     #
@@ -296,16 +401,23 @@ lib.makeOverridable (
       "illumosLd"
       "illumosCtf"
       "illumosOwnDebugOutput"
+      "illumosNativeBuild"
     ])
     # Last, so that these are *prepended* to whatever the package asked for
     # rather than replaced by it. Only set when opted in: unconditionally
     # defining `makeFlags` would add the (empty) variable to every illumos
     # derivation and change all their hashes.
-    // lib.optionalAttrs isLib {
+    #
+    # `nativeBuildMakeFlags` comes first so a package can still override any
+    # single macro by restating it in its own `makeFlags`.
+    // lib.optionalAttrs (isLib || isNativeBuild) {
       makeFlags =
-        libMakeFlags
-        ++ (if enableCtf then ctfMakeFlags else noCtfMakeFlags)
-        ++ lib.optional useLd "LD=${ld-wrapper}"
+        lib.optionals isNativeBuild nativeBuildMakeFlags
+        ++ lib.optionals isLib (
+          libMakeFlags
+          ++ (if enableCtf then ctfMakeFlags else noCtfMakeFlags)
+          ++ lib.optional useLd "LD=${ld-wrapper}"
+        )
         ++ attrs.makeFlags or [ ];
     }
   )
