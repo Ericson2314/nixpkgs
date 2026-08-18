@@ -286,6 +286,14 @@ stdenv.mkDerivation (finalAttrs: {
     # Submitted upstream, remove when included in a release:
     # https://lists.gnu.org/archive/html/qemu-devel/2026-07/msg08469.html
     ./fix-tls-tests-without-tasn1.patch
+
+    # Honour the multiboot header MULTIBOOT_PAGE_ALIGN flag against the module's
+    # physical address rather than its offset from the kernel load address.
+    # Needed to boot illumos via -kernel/-initrd: its `unix` loads at 0xbffea8,
+    # so every module landed 0xea8 past a page boundary and the ramdisk driver
+    # (which addresses the boot archive by page frame) read it shifted.
+    # Local carry; upstream-ready patch awaiting submission to qemu-devel.
+    ./multiboot-page-align-modules.patch
   ]
   ++ lib.optional nixosTestRunner ./force-uid0-on-9p.patch;
 

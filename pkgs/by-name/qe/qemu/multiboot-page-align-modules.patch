@@ -1,0 +1,98 @@
+From a577b940e3a7d59ff2cb2c4f9146a9172b7125f9 Mon Sep 17 00:00:00 2001
+From: John Ericson <subscribe@johnericson.me>
+Date: Mon, 17 Aug 2026 21:52:35 -0400
+Subject: [PATCH] hw/i386/multiboot: page-align modules against the physical
+ address
+
+The multiboot header's MULTIBOOT_PAGE_ALIGN flag (bit 0) means "align all
+boot modules on i386 page (4KB) boundaries".  The boundary in question is
+the module's *physical* address, which is what the kernel sees in the
+mod_start/mod_end fields of the module info structs.
+
+We build the kernel, the info structs and all the modules into one buffer
+(mb_buf) that is copied verbatim to mb_buf_phys, and we align each module's
+offset *within that buffer* with TARGET_PAGE_ALIGN().  That only produces
+page-aligned physical addresses when mb_buf_phys is itself page aligned.
+mb_buf_phys is the multiboot header's load_addr (or, for the ELF path, the
+lowest ELF load address), and neither is required to be page aligned.  The
+bug has gone unnoticed because in practice most kernels do load on a page
+boundary.
+
+illumos does not: its 64-bit `unix` sets load_addr to 0xbffea8, so that
+loading the whole ELF file at that address puts the first PT_LOAD at
+0xc00000, and every module then lands 0xea8 bytes past a page boundary.
+illumos' ramdisk driver addresses the boot archive by page frame number
+(`pfn = btop(phys + offset)`), the low bits are silently truncated, every
+read comes back shifted, and the kernel panics with "not a UFS magic number
+(0x0)".  GRUB honours the flag and boots the same kernel fine.
+
+Align the module offsets so that mb_buf_phys + offs lands on a page
+boundary when the kernel asks for it, zeroing the padding we introduce.
+
+Signed-off-by: John Ericson <subscribe@johnericson.me>
+---
+ hw/i386/multiboot.c | 27 +++++++++++++++++++++++++++
+ 1 file changed, 27 insertions(+)
+
+diff --git a/hw/i386/multiboot.c b/hw/i386/multiboot.c
+index 0e960a1..c5a4a5b 100644
+--- a/hw/i386/multiboot.c
++++ b/hw/i386/multiboot.c
+@@ -82,6 +82,9 @@ enum {
+     MULTIBOOT_FLAGS_BOOTLOADER  = 1 << 9,
+ };
+ 
++/* Multiboot header flags, as set by the guest kernel (not by us) */
++#define MULTIBOOT_HEADER_PAGE_ALIGN 0x00000001
++
+ typedef struct {
+     /* buffer holding kernel, cmdlines and mb_infos */
+     void *mb_buf;
+@@ -125,6 +128,17 @@ static uint32_t mb_add_bootloader(MultibootState *s, const char *bootloader)
+     return s->mb_buf_phys + p;
+ }
+ 
++/*
++ * Return the smallest offset >= @offs into mb_buf whose *physical* address is
++ * page aligned.  mb_buf is copied verbatim to mb_buf_phys, which comes from the
++ * multiboot header load_addr (or the lowest ELF load address) and is not
++ * necessarily page aligned itself, so aligning the offset alone is not enough.
++ */
++static uint32_t mb_page_align_offset(MultibootState *s, uint32_t offs)
++{
++    return TARGET_PAGE_ALIGN(s->mb_buf_phys + offs) - s->mb_buf_phys;
++}
++
+ static void mb_add_mod(MultibootState *s,
+                        hwaddr start, hwaddr end,
+                        hwaddr cmdline_phys)
+@@ -321,6 +335,9 @@ int load_multiboot(X86MachineState *x86ms,
+     if (mods) {
+         GList *tmpl = mods;
+         mbs.offset_mods = mbs.mb_buf_size;
++        if (flags & MULTIBOOT_HEADER_PAGE_ALIGN) {
++            mbs.offset_mods = mb_page_align_offset(&mbs, mbs.offset_mods);
++        }
+ 
+         while (tmpl) {
+             char *next_space;
+@@ -328,6 +345,16 @@ int load_multiboot(X86MachineState *x86ms,
+             uint32_t offs = mbs.mb_buf_size;
+             char *one_file = tmpl->data;
+ 
++            if (flags & MULTIBOOT_HEADER_PAGE_ALIGN) {
++                offs = mb_page_align_offset(&mbs, offs);
++                if (offs > mbs.mb_buf_size) {
++                    mbs.mb_buf = g_realloc(mbs.mb_buf, offs);
++                    memset((char *)mbs.mb_buf + mbs.mb_buf_size, 0,
++                           offs - mbs.mb_buf_size);
++                    mbs.mb_buf_size = offs;
++                }
++            }
++
+             /* if a space comes after the module filename, treat everything
+                after that as parameters */
+             hwaddr c = mb_add_cmdline(&mbs, one_file);
+-- 
+2.54.0
+
