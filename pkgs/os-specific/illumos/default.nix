@@ -19,23 +19,21 @@
 #             nature and has no target-side existence.
 #   ctfstabs  only `tools/ctf/stabs`; no `cmd/` counterpart.
 #
-# REFINEMENT, learned the hard way: the rule is about duplicated SOURCE, not
-# about the path a makefile happens to live under. `tools/ctf/ctfconvert` and
-# `tools/ctf/ctfmerge` are NOT second copies of those programs --
-# `tools/ctf/ctfconvert/Makefile.com` compiles `$(SRC)/cmd/ctfconvert/%.c`, the
-# same source, with no `NATIVE_BUILD` conditional anywhere. What lives under
-# `tools/` there is a MAKEFILE SHIM (`Makefile.ctf.native`), and it is shared
-# with `libctf` and `libdwarf` besides. Replacing it with a hand-written nix
-# recipe would ADD a source of truth rather than remove one, so those two stay.
+# and it is NOT true of `ctfconvert`, `ctfmerge` or `ld`, all of which exist
+# under `cmd/` and should come from there for both platforms.
 #
-# So: migrate when `tools/` holds a second COPY of the program. Leave it alone
-# when `tools/` merely holds a different way to build the same file.
+# "But `tools/ctf` is only a makefile, not a second copy of the source" is not
+# a reason to keep it -- it is the reason to drop it. `Makefile.ctf.native` is
+# illumos' answer to "build this for the machine doing the build", and
+# splicing is ours. Using theirs means the build-host variant of a package is
+# expressed in illumos' build system instead of in nixpkgs, where every other
+# package in the tree expresses it. That the duplication is a makefile rather
+# than a `.c` file makes it cheaper to delete, not more defensible to keep.
 #
-# It IS true of `ld`, whose `native` variant exists only to get a build-host
-# binary of sources that already build from `cmd/sgs/ld` for the target. If you find
-# yourself adding a `native = { path = "usr/src/tools/...` variant to a package
-# whose sources live under `cmd/`, that is the smell this order exists to
-# catch: build the `cmd/` sources for the build platform instead.
+# If you find yourself adding a `native = { path = "usr/src/tools/..."; }`
+# variant to a package whose sources live under `cmd/`, that is the smell this
+# order exists to catch: build the `cmd/` sources for the build platform
+# instead, with `buildPackages.illumos.<pkg>`.
 #
 {
   lib,
