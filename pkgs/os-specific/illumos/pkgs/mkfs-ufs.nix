@@ -3,11 +3,18 @@
   mkDerivation,
 
   compat,
-  buildPackages,
 }:
 
-# mkfs_ufs(8), built to run on the *build host* so that a UFS root filesystem
-# image can be made without an illumos machine to make it on.
+# mkfs_ufs(8), so that a UFS root filesystem image can be made without an
+# illumos machine to make it on.
+#
+# It is consumed for the *build host* -- but that is the consumer's business,
+# not this file's. Listing it in `nativeBuildInputs` gets the build-platform
+# instance out of the scope's splicing, exactly as for every other package
+# here, and that instance's plain `$CC` is the build compiler. This file used
+# to say so itself with `noCC` + `depsBuildBuild` + `$CC_FOR_BUILD`, which
+# hand-rolled machinery the scope already had -- and made `illumos.mkfs-ufs`
+# yield a build-host binary even when the cross instance was asked for.
 #
 # Why this rather than FreeBSD's makefs: illumos' UFS is not 4.4BSD FFS on
 # disk. `struct direct` here carries a 16-bit `d_namlen` where FFS puts a
@@ -30,7 +37,6 @@
 # ELF header subset the onbld tools use. See pkgs/compat/package.nix.
 mkDerivation {
   pname = "mkfs-ufs";
-  noCC = true;
 
   path = "usr/src/cmd/fs.d/ufs/mkfs";
   extraPaths = [
@@ -61,8 +67,6 @@ mkDerivation {
     "usr/src/uts/i86pc"
   ];
 
-  depsBuildBuild = [ buildPackages.stdenv.cc ];
-
   # The gate's makefile here drives dmake and the full illumos toolchain, and
   # would build a target binary. This is three translation units plus compat,
   # so compile them directly rather than teaching that makefile about a foreign
@@ -91,16 +95,16 @@ mkDerivation {
       "${compat.gateSource}"
     do
       echo "compiling (gate headers) $f"
-      $CC_FOR_BUILD -c -o "$(basename "$f" .c).o" -I${compat.srcDir} $gateFlags "$f"
+      $CC -c -o "$(basename "$f" .c).o" -I${compat.srcDir} $gateFlags "$f"
     done
 
     # The host half sees the *host's* headers only -- that is the whole reason
     # it is a separate translation unit -- so it gets none of the flags above.
     echo "compiling (host headers) ${compat.hostSource}"
-    $CC_FOR_BUILD -c -o compat_host.o -D_GNU_SOURCE -D_LARGEFILE64_SOURCE \
+    $CC -c -o compat_host.o -D_GNU_SOURCE -D_LARGEFILE64_SOURCE \
       -I${compat.srcDir} "${compat.hostSource}"
 
-    $CC_FOR_BUILD -o mkfs_ufs mkfs.o populate.o roll_log.o compat_gate.o \
+    $CC -o mkfs_ufs mkfs.o populate.o roll_log.o compat_gate.o \
       compat_host.o
 
     runHook postBuild
@@ -108,7 +112,11 @@ mkDerivation {
 
   installPhase = ''
     runHook preInstall
-    install -Dm755 mkfs_ufs $out/bin/mkfs_ufs
+    # Not `install -D`: illumos' own install(1) is on PATH here (mkDerivation
+    # puts it there for the gate makefiles) and does not take -D.
+    mkdir -p $out/bin
+    cp mkfs_ufs $out/bin/mkfs_ufs
+    chmod 755 $out/bin/mkfs_ufs
     runHook postInstall
   '';
 
