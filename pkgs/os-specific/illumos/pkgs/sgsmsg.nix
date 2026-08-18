@@ -71,13 +71,10 @@ mkDerivation {
 
   extraNativeBuildInputs = [ cw ];
 
-  # The onbld layout puts the tool under bin/$(MACH), and that is exactly where
-  # `$(SGSMSG)` -- $(ONBLD_TOOLS)/bin/$(MACH)/sgsmsg -- looks for it, so a
-  # consumer only has to say `ONBLD_TOOLS=${...}`. The plain name is for
-  # anything running it off $PATH.
-  postFixup = ''
-    ln -s i386/sgsmsg $out/bin/sgsmsg
-  '';
+  # `$(SGSMSG)` is $(ONBLD_TOOLS)/bin/$(MACH)/sgsmsg, so a consumer only has to
+  # say `ONBLD_TOOLS=${...}`. No symlink is needed for the plain name: the
+  # gate installs both $(ROOTONBLDMACHPROG) and $(ROOTONBLDPROG), so
+  # `bin/sgsmsg` already exists and `ln -s` onto it fails.
 
   meta.platforms = lib.platforms.unix;
 }

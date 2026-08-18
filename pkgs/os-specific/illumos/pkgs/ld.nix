@@ -125,16 +125,6 @@ mkDerivation (
             "usr/src/tools/Makefile.tools"
             "usr/src/tools/Makefile.targ"
 
-            # $(COMPAT_DIR), which Makefile.tools points at
-            # $(SRC)/tools/libcompat/common. It used to live inside
-            # usr/src/tools/sgs (as native/) and so came in with `path`; the
-            # merge of the two `native/` trees moved it out, and it has to be
-            # named explicitly now. A makeFlag override cannot stand in for
-            # this: tools/sgs/Makefile forwards only ROOTONBLD and ONBLD_TOOLS
-            # to its sub-makes, so COMPAT_DIR set on this make's command line
-            # never reaches sgsmsg or libconv.
-            "usr/src/tools/libcompat"
-
             # Only the pieces of cmd/sgs that the native link-editor needs; naming the
             # whole directory would drag in (and rebuild on) lorder, ar, elfdump, ...
             "usr/src/cmd/sgs/libconv"
@@ -144,11 +134,16 @@ mkDerivation (
             "usr/src/cmd/sgs/tools/libconv_mk_report_bufsize.pl"
           ]
       );
-  }
-  // lib.optionalAttrs forIllumos {
-    libcMinimal = true;
 
-    illumosLib = true;
+    nativeBuildInputs = [
+      illumosSetupHook
+      make
+      install
+      cw
+      perl
+      gnum4
+      sgsmsg
+    ];
 
     buildInputs = [
       headers
@@ -159,6 +154,11 @@ mkDerivation (
       sgs-liblddbg
       sgs-libld
     ];
+  }
+  // lib.optionalAttrs forIllumos {
+    libcMinimal = true;
+
+    illumosLib = true;
 
     env.NIX_CFLAGS_COMPILE = builtins.toString [
       "-B${crt}/lib"
@@ -184,16 +184,6 @@ mkDerivation (
     # target and silently build nothing. Naming `install` explicitly avoids
     # that.
     dontInstall = true;
-
-    nativeBuildInputs = [
-      illumosSetupHook
-      make
-      install
-      cw
-      perl
-      gnum4
-      sgsmsg
-    ];
 
     # The build installs as it goes, so the target directories have to exist
     # before it starts rather than in preInstall.
@@ -257,6 +247,16 @@ mkDerivation (
           # forwards both to the sub-makes.
           "ROOTONBLD=${builtins.placeholder "out"}"
           "ONBLD_TOOLS=${builtins.placeholder "out"}"
+
+          # libcompat, built, rather than compiled again out of the gate tree.
+          # Makefile.tools defaults COMPAT_DIR to $(SRC)/tools/libcompat/common,
+          # which is not in this package's filtered source -- and could not be:
+          # `filterSource` copies from the pristine upstream tarball, where that
+          # directory does not exist at all. It is created by a patch. `compat`
+          # is the built package expressing the same thing, and its `include/`
+          # holds native_compat.h under exactly the name COMPAT_CPPFLAGS
+          # force-includes.
+          "COMPAT_DIR=${compat}/include"
         ];
 
     meta = {

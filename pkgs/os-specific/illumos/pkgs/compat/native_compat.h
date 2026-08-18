@@ -130,6 +130,62 @@ extern long long strtonum(const char *, long long, long long, const char **);
 extern long long strtonumx(const char *, long long, long long, const char **,
     int);
 
+
+/*
+ * The remainder is ported verbatim from the gate's own
+ * usr/src/tools/libcompat/common/native_compat.h, which is the merged
+ * (sgs + ctf) shim.  This copy had only ever carried what the CTF tools
+ * needed, so building anything from cmd/sgs against it failed -- sgsmsg on
+ * NL_MSGMAX, and libconv would follow.  Keep the two in step: the gate's is
+ * the superset and the one to copy from.
+ */
+
+/*
+ * illumos' <sys/param.h> exposes the runtime page size as PAGESIZE.
+ */
+#ifndef	PAGESIZE
+#include <unistd.h>
+#define	PAGESIZE	((size_t)sysconf(_SC_PAGESIZE))
+#endif
+
+/*
+ * From illumos' <sys/time.h>.
+ */
+#ifndef	SEC
+#define	SEC		1
+#endif
+#ifndef	MILLISEC
+#define	MILLISEC	1000
+#endif
+#ifndef	MICROSEC
+#define	MICROSEC	1000000
+#endif
+#ifndef	NANOSEC
+#define	NANOSEC		1000000000
+#endif
+
+/*
+ * From illumos' <limits.h>; the host's has no notion of message catalogues.
+ */
+#ifndef	NL_MSGMAX
+#define	NL_MSGMAX	32767
+#endif
+#ifndef	NL_SETMAX
+#define	NL_SETMAX	255
+#endif
+#ifndef	NL_TEXTMAX
+#define	NL_TEXTMAX	2048
+#endif
+
+/*
+ * From illumos' <sys/sysmacros.h> and <sys/time.h>.
+ */
+#ifndef	P2NPHASE
+#define	P2NPHASE(x, align)	(-(x) & ((align) - 1))
+#endif
+#ifndef	ABS
+#define	ABS(a)		((a) < 0 ? -(a) : (a))
+#endif
 #ifdef	__cplusplus
 }
 #endif
