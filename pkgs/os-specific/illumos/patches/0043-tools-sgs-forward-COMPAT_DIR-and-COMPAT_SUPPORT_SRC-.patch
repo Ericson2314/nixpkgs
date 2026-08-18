@@ -1,0 +1,46 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Tue, 18 Aug 2026 01:41:41 -0400
+Subject: [PATCH] tools/sgs: forward `COMPAT_DIR` and `COMPAT_SUPPORT_SRC` to
+ the sub-makes
+
+`tools/sgs/Makefile` already forwards `ROOTONBLD` and `ONBLD_TOOLS` explicitly,
+because both have defaults and a value given on this make's command line
+therefore does not reach the sub-makes. `COMPAT_DIR` and `COMPAT_SUPPORT_SRC`
+are in exactly that position and were not forwarded, so they could not be
+overridden at all.
+
+That is not hypothetical. `Makefile.com` puts `$(COMPAT_CPPFLAGS)` -- which is
+spelled in terms of `$(COMPAT_DIR)` -- into every sub-directory's `CPPFLAGS`,
+and `libconv/Makefile` compiles `$(COMPAT_SUPPORT_SRC)` into
+`native_support.o`. Both default to `$(SRC)/tools/libcompat`, so a build that
+wants to supply libcompat from somewhere else -- already built, rather than
+compiled again inside this tree -- had no way to say so.
+
+Assisted-By: Claude Opus 5 (claude-opus-5)
+---
+ usr/src/tools/sgs/Makefile | 11 ++++++++++-
+ 1 file changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/usr/src/tools/sgs/Makefile b/usr/src/tools/sgs/Makefile
+index 0e30f96950..854308cca0 100644
+--- a/usr/src/tools/sgs/Makefile
++++ b/usr/src/tools/sgs/Makefile
+@@ -42,7 +42,16 @@ all install clean clobber: $(SUBDIRS)
+ # matters because libconv and friends run the sgsmsg built here, and find it
+ # under $(ONBLD_TOOLS)/bin/$(MACH).
+ #
++# COMPAT_DIR and COMPAT_SUPPORT_SRC (both set by Makefile.tools) are forwarded
++# for the same reason, and it is not hypothetical: Makefile.com puts
++# $(COMPAT_CPPFLAGS) in every sub-directory's CPPFLAGS, and libconv compiles
++# $(COMPAT_SUPPORT_SRC) into native_support.o.  Both name $(SRC)/tools/libcompat
++# by default, so a build that supplies libcompat from somewhere else -- already
++# built, rather than compiled again here -- has to be able to say so on this
++# make's command line and have it reach the sub-makes.
++#
+ $(SUBDIRS): FRC
+-	@cd $@; pwd; $(MAKE) $(TARGET) $(ROOTONBLD:%=ROOTONBLD=%) $(ONBLD_TOOLS:%=ONBLD_TOOLS=%)
++	@cd $@; pwd; $(MAKE) $(TARGET) $(ROOTONBLD:%=ROOTONBLD=%) $(ONBLD_TOOLS:%=ONBLD_TOOLS=%) \
++	    $(COMPAT_DIR:%=COMPAT_DIR=%) $(COMPAT_SUPPORT_SRC:%=COMPAT_SUPPORT_SRC=%)
+ 
+ FRC:
