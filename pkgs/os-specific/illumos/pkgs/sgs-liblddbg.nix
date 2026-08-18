@@ -1,4 +1,6 @@
 {
+  lib,
+  stdenv,
   buildPackages,
   mkDerivation,
 
@@ -7,6 +9,8 @@
   install,
   cw,
   ld,
+  libcompat,
+  sgsmsg,
 
   ld-wrapper,
   sgs-libconv,
@@ -21,9 +25,13 @@
 # Dbg_setup() and friends directly (rtld/common/debug.c), lazily loaded, so
 # this has to exist at link time even though `-z ignore` keeps it out of the
 # final NEEDED list.
+let
+  forIllumos = stdenv.hostPlatform.isIllumos;
+in
+
 mkDerivation {
-  libcMinimal = true;
-  path = "usr/src/cmd/sgs/liblddbg/amd64";
+  libcMinimal = forIllumos;
+  path = if forIllumos then "usr/src/cmd/sgs/liblddbg/amd64" else "usr/src/tools/sgs/liblddbg";
   pname = "sgs-liblddbg";
 
   extraPaths = [
@@ -48,6 +56,11 @@ mkDerivation {
     "usr/src/common/mapfiles"
 
     "usr/src/lib/libc/inc"
+  ]
+  ++ lib.optionals (!forIllumos) [
+    "usr/src/tools/Makefile.tools"
+    "usr/src/tools/Makefile.targ"
+    "usr/src/tools/sgs/Makefile.com"
   ];
 
   nativeBuildInputs = [
@@ -55,21 +68,20 @@ mkDerivation {
     make
     install
     cw
-    ld
     (buildPackages.writeShellScriptBin "arch" "echo i386")
     (buildPackages.writeShellScriptBin "mach" "echo i386")
-  ];
+  ]
+  ++ lib.optionals forIllumos [ ld ];
 
-  buildInputs = [
+  buildInputs = lib.optionals forIllumos [
     headers
     crt
     libcMinimal
   ];
 
-  env.NIX_CFLAGS_COMPILE = builtins.toString [
-    "-B${crt}/lib"
-    "-Wno-error"
-  ];
+  env.NIX_CFLAGS_COMPILE = builtins.toString (
+    lib.optional forIllumos "-B${crt}/lib" ++ [ "-Wno-error" ]
+  );
 
   buildFlags = [ "all" ];
 
@@ -78,16 +90,23 @@ mkDerivation {
     "POST_PROCESS_O=:"
     "POST_PROCESS_SO=:"
     "LDFLAGS.native="
-    "CPPFLAGS.first=-I${headers}/include"
-    "ONBLD_TOOLS=${buildPackages.illumos.ld}"
+    "SGSMSG=${sgsmsg}/bin/sgsmsg"
     "CONVLIBDIR=-L${sgs-libconv}/lib"
     "CONVLIBDIR64=-L${sgs-libconv}/lib"
+  ]
+  ++ lib.optionals forIllumos [
+    "CPPFLAGS.first=-I${headers}/include"
     "LD=${ld-wrapper}"
+  ]
+  ++ lib.optionals (!forIllumos) [
+    "ROOTONBLD=${builtins.placeholder "out"}"
+    "COMPAT_DIR=${libcompat}/include-native"
+    "COMPAT_INC=${libcompat}/include"
   ];
 
   # See sgs-libelf.nix: Makefile.lib's default BUILD.SO links through the
   # compiler driver, i.e. GNU ld, which cannot handle these flags or mapfiles.
-  preBuild = ''
+  preBuild = lib.optionalString forIllumos ''
     makeFlagsArray+=("BUILD.SO=\$(LD) -o \$@ \$(GSHARED) \$(DYNFLAGS) \$(PICS) \$(EXTPICS) -L${libcMinimal}/lib -L${libssp_ns}/lib \$(LDLIBS)")
   '';
 
@@ -100,4 +119,8 @@ mkDerivation {
 
     runHook postInstall
   '';
+
+  meta = {
+    platforms = lib.platforms.unix;
+  };
 }

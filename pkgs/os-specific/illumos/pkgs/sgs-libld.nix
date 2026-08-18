@@ -1,4 +1,6 @@
 {
+  lib,
+  stdenv,
   buildPackages,
   mkDerivation,
 
@@ -7,6 +9,8 @@
   install,
   cw,
   ld,
+  libcompat,
+  sgsmsg,
 
   ld-wrapper,
   sgs-libconv,
@@ -21,9 +25,13 @@
 
 # cmd/sgs/libld -> libld.so.4, built for the target. ld.so.1 links against it
 # for `ld.so.1 -e` configuration-file handling (rtld/common/config_elf.c).
+let
+  forIllumos = stdenv.hostPlatform.isIllumos;
+in
+
 mkDerivation {
-  libcMinimal = true;
-  path = "usr/src/cmd/sgs/libld/amd64";
+  libcMinimal = forIllumos;
+  path = if forIllumos then "usr/src/cmd/sgs/libld/amd64" else "usr/src/tools/sgs/libld";
   pname = "sgs-libld";
 
   extraPaths = [
@@ -59,6 +67,11 @@ mkDerivation {
     "usr/src/uts/sparc/sys"
 
     "usr/src/lib/libc/inc"
+  ]
+  ++ lib.optionals (!forIllumos) [
+    "usr/src/tools/Makefile.tools"
+    "usr/src/tools/Makefile.targ"
+    "usr/src/tools/sgs/Makefile.com"
   ];
 
   nativeBuildInputs = [
@@ -66,21 +79,20 @@ mkDerivation {
     make
     install
     cw
-    ld
     (buildPackages.writeShellScriptBin "arch" "echo i386")
     (buildPackages.writeShellScriptBin "mach" "echo i386")
-  ];
+  ]
+  ++ lib.optionals forIllumos [ ld ];
 
-  buildInputs = [
+  buildInputs = lib.optionals forIllumos [
     headers
     crt
     libcMinimal
   ];
 
-  env.NIX_CFLAGS_COMPILE = builtins.toString [
-    "-B${crt}/lib"
-    "-Wno-error"
-  ];
+  env.NIX_CFLAGS_COMPILE = builtins.toString (
+    lib.optional forIllumos "-B${crt}/lib" ++ [ "-Wno-error" ]
+  );
 
   buildFlags = [ "all" ];
 
@@ -89,19 +101,26 @@ mkDerivation {
     "POST_PROCESS_O=:"
     "POST_PROCESS_SO=:"
     "LDFLAGS.native="
-    "CPPFLAGS.first=-I${headers}/include"
-    "ONBLD_TOOLS=${buildPackages.illumos.ld}"
+    "SGSMSG=${sgsmsg}/bin/sgsmsg"
     "CONVLIBDIR=-L${sgs-libconv}/lib"
     "CONVLIBDIR64=-L${sgs-libconv}/lib"
     "ELFLIBDIR=-L${sgs-libelf}/lib"
     "ELFLIBDIR64=-L${sgs-libelf}/lib"
     "LDDBGLIBDIR=-L${sgs-liblddbg}/lib"
     "LDDBGLIBDIR64=-L${sgs-liblddbg}/lib"
+  ]
+  ++ lib.optionals forIllumos [
+    "CPPFLAGS.first=-I${headers}/include"
     "LD=${ld-wrapper}"
+  ]
+  ++ lib.optionals (!forIllumos) [
+    "ROOTONBLD=${builtins.placeholder "out"}"
+    "COMPAT_DIR=${libcompat}/include-native"
+    "COMPAT_INC=${libcompat}/include"
   ];
 
   # See sgs-libelf.nix.
-  preBuild = ''
+  preBuild = lib.optionalString forIllumos ''
     makeFlagsArray+=("BUILD.SO=\$(LD) -o \$@ \$(GSHARED) \$(DYNFLAGS) \$(PICS) \$(EXTPICS) -L${libcMinimal}/lib -L${libssp_ns}/lib \$(LDLIBS)")
   '';
 
@@ -114,4 +133,8 @@ mkDerivation {
 
     runHook postInstall
   '';
+
+  meta = {
+    platforms = lib.platforms.unix;
+  };
 }

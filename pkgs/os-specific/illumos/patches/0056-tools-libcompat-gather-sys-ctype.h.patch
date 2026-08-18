@@ -1,0 +1,26 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Tue, 18 Aug 2026 02:27:56 -0400
+Subject: [PATCH] tools/libcompat: gather <sys/ctype.h>
+
+cmd/sgs/libld/common/syms.c includes it.
+
+Assisted-By: Claude Opus 5 (claude-opus-5)
+---
+ usr/src/tools/libcompat/Makefile | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/usr/src/tools/libcompat/Makefile b/usr/src/tools/libcompat/Makefile
+index 53b8b060bd..0b2dba25f9 100644
+--- a/usr/src/tools/libcompat/Makefile
++++ b/usr/src/tools/libcompat/Makefile
+@@ -83,7 +83,8 @@ SYSHDRS=	sys/elf.h \
+ 		sys/machelf.h \
+ 		sys/secflags.h \
+ 		sys/procset.h \
+-		sys/debug.h
++		sys/debug.h \
++		sys/ctype.h
+ 
+ #
+ # <sys/machtypes.h> is per-ISA; everything above is machine-independent.  The

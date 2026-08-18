@@ -1,0 +1,71 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Tue, 18 Aug 2026 02:29:00 -0400
+Subject: [PATCH] tools/sgs: make the support library directories overridable
+ in libld and ld
+
+`liblddbg/Makefile` already spells its libconv path as an overridable
+`$(CONVLIBDIR)`. `libld` and `ld` hardcoded `-L../libconv` and
+`-L$(ROOTONBLDLIBMACH64)` instead, which bakes in the assumption that every
+support library is a sibling directory of the one being built -- true only for
+the single recursive make that builds the whole tree at once.
+
+Give them the same macros, with the sibling paths as defaults so a workspace
+build is unchanged. A build that supplies libconv, libelf and liblddbg from
+somewhere else -- built separately, one package each -- can now say where they
+are rather than being told where they must be.
+
+Assisted-By: Claude Opus 5 (claude-opus-5)
+---
+ usr/src/tools/sgs/ld/Makefile    | 13 +++++++++++--
+ usr/src/tools/sgs/libld/Makefile | 13 ++++++++++++-
+ 2 files changed, 23 insertions(+), 3 deletions(-)
+
+diff --git a/usr/src/tools/sgs/ld/Makefile b/usr/src/tools/sgs/ld/Makefile
+index 83274e0341..7f4c301a86 100644
+--- a/usr/src/tools/sgs/ld/Makefile
++++ b/usr/src/tools/sgs/ld/Makefile
+@@ -30,8 +30,17 @@ include		../Makefile.com
+ # -lumem is dropped: nothing under cmd/sgs calls a umem_* interface, it is
+ # linked purely as a faster malloc, and libumem is illumos'.
+ #
+-LDLIBS =	-L../libconv -L$(ROOTONBLDLIBMACH64) -lld -lelf -lconv \
+-		-L$(ROOTONBLDLIBMACH) -lcompat
++#
++# Overridable, as in libld/Makefile: the defaults are the in-tree siblings, but
++# a build that supplies these libraries from elsewhere can point at them.
++#
++CONVLIBDIR=	-L../libconv
++LDLIBDIR=	-L$(ROOTONBLDLIBMACH64)
++ELFLIBDIR=	-L$(ROOTONBLDLIBMACH64)
++COMPATLIBDIR=	-L$(ROOTONBLDLIBMACH)
++
++LDLIBS =	$(LDLIBDIR) -lld $(ELFLIBDIR) -lelf $(CONVLIBDIR) -lconv \
++		$(COMPATLIBDIR) -lcompat
+ NATIVE_LIBS +=	libc.so
+ 
+ #
+diff --git a/usr/src/tools/sgs/libld/Makefile b/usr/src/tools/sgs/libld/Makefile
+index 3367212b74..6c1ffe8033 100644
+--- a/usr/src/tools/sgs/libld/Makefile
++++ b/usr/src/tools/sgs/libld/Makefile
+@@ -37,7 +37,18 @@ include		../Makefile.com
+ # that and just make sure to find everything relative to the tools proto
+ # area.
+ #
+-LDLIBS =	-L../libconv -lconv -L$(ROOTONBLDLIBMACH64) -llddbg -lelf -lc
++#
++# Spelled as overridable macros, the way liblddbg/Makefile already spells
++# CONVLIBDIR. The defaults are the in-tree sibling directories a workspace
++# build uses; a build that gets these libraries from somewhere else -- built
++# separately, one package each -- can then say so on the command line instead
++# of being told where its siblings must live.
++#
++CONVLIBDIR=	-L../libconv
++LDDBGLIBDIR=	-L$(ROOTONBLDLIBMACH64)
++ELFLIBDIR=	-L$(ROOTONBLDLIBMACH64)
++
++LDLIBS =	$(CONVLIBDIR) -lconv $(LDDBGLIBDIR) -llddbg $(ELFLIBDIR) -lelf -lc
+ NATIVE_LIBS +=	libc.so
+ 
+ #
