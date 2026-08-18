@@ -62,8 +62,28 @@ mkDerivation {
     make
   ];
 
+  # `$out/bin/i386`, not just `$out/bin`. `tools/cw/Makefile` installs via
+  # `$(ROOTONBLDMACHPROG)` = `$(ROOTONBLD)/bin/$(MACH)/cw`, and it overrides
+  # `INS.file` to `$(RM) $@; $(CP) $< $(@D); $(CHMOD) $(FILEMODE) $@`. With the
+  # destination directory absent, `$(CP) $< $(@D)` does not fail -- it writes a
+  # regular FILE named `i386`. The `chmod` on the next line is then the thing
+  # that reports the failure, as
+  #
+  #     $out/bin/i386 -- "Not a directory"
+  #
+  # which reads like a MACH-substitution bug and is not one: MACH=i386 is
+  # correct throughout.
+  #
+  # Upstream never trips over this because `$(ROOTONBLDBINMACH)` is created by
+  # the `DOROOTDIRS` target in `tools/Makefile`, and we deliberately replace
+  # that whole proto-area layout with `$out` (see the comment on
+  # `nativeBuildMakeFlags` in mkDerivation.nix). Replacing the layout also
+  # means inheriting the job of creating its directories, per package.
+  #
+  # Any other package installing through `ROOTONBLDMACHPROG` or
+  # `ROOTONBLDMACHSHFILES` has the same hole.
   preInstall = ''
-    mkdir -p $out/bin $man/man/man1
+    mkdir -p $out/bin/i386 $man/man/man1
   '';
 
   meta.platforms = lib.platforms.unix;
