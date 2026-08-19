@@ -404,20 +404,49 @@ lib.makeOverridable (
     # ../default.nix), so the second bullet applies to the commands too and
     # their `debug` outputs would come out empty even where the link survived.
     #
-    # It does not merely come out empty. GCC 15 defaults to DWARF 5 and merges
-    # string constants; the gate compiles with `-gdwarf-4 -gstrict-dwarf`
-    # (Makefile.master:495, DEBUGFORMAT, whose comment says "Currently this is
-    # DWARFv4") precisely because its own tools cannot read anything newer, and
-    # a command built with the hook's plain `-ggdb` fails to link at all:
+    # It does not merely come out empty. A command built with the hook's plain
+    # `-ggdb` fails to link at all:
     #
     #   ld: fatal: relocation error: R_AMD64_64: file devfsadm.o section
     #       [11].debug_info: invalid offset symbol
     #       '.rodata.str1.1 (merged string section)': offset 0x3e91b
     #
+    # Read that as "illumos ld cannot relocate .debug_info into a SHF_MERGE
+    # section", not as "GCC 15 emits DWARF 5". The DWARF version is not the
+    # cause of any of this, and it is worth being explicit, because the error
+    # messages make it look like it is.
+    #
+    # Measured A/B against illumos ld, one translation unit at -O2, cross gcc
+    # 15.2.0: `-g`, `-ggdb` and `-g -gdwarf-4 -gstrict-dwarf` all link clean,
+    # while `-g -Wa,--compress-debug-sections` fails and
+    # `-g -gdwarf-4 -gstrict-dwarf -Wa,--compress-debug-sections` fails
+    # identically -- only the section named in the message changes, from
+    # `.debug_loclists` to `.debug_loc`, because the DWARF 5 section names are
+    # simply what GCC 15 emits by default. So the trigger is compression, the
+    # first bullet above, and a `-gdwarf-4` default would fix nothing. Note
+    # too that a bare `ld -G` reports these as *warnings* and exits 0; they
+    # are fatal only under `-zfatal-warnings`, which the gate links with and
+    # third-party source does not.
+    #
+    # The merged-string-section relocation quoted above is a separate failure
+    # and was not reproduced in that experiment, so its cause is not isolated.
+    # What is established is that plain `-ggdb` DWARF 5 is not sufficient to
+    # provoke it, so DWARF 5 is not the explanation there either.
+    #
+    # That the gate compiles with `-gdwarf-4 -gstrict-dwarf`
+    # (Makefile.master:500, DEBUGFORMAT, whose comment says "Currently this is
+    # DWARFv4") is true, and is about what its CTF tools can read. It is not
+    # why these links fail.
+    #
+    # ./illumos-ld.sh catalogues what breaks under illumos ld. If its
+    # DWARF bullet still blames DWARF 5 and suggests a platform-wide
+    # `-gdwarf-4`, it has not been corrected yet -- this paragraph is the
+    # measured account and supersedes it.
+    #
     # So: never, for now. The rest of the predicate is kept rather than deleted
     # -- it is the statement of what would have to become true again, an
-    # illumos ld that emits a build-ID note and relocates modern DWARF, for any
-    # of this to be worth turning back on.
+    # illumos ld that emits a build-ID note and relocates compressed and
+    # merged-section DWARF, for any of this to be worth turning back on.
     wantsDebugInfo =
       false
       && stdenv'.hostPlatform.isIllumos
