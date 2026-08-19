@@ -1,0 +1,93 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Tue, 18 Aug 2026 23:12:53 -0400
+Subject: [PATCH] svc.configd: `TX_SIZE()` sign-extends on an LP64 build,
+ crashing multi-value commits
+
+`svc.configd` dies of SIGSEGV committing any transaction that sets a property
+to more than one value.  One value is fine; two are fatal.  Via `svccfg
+import` that is any manifest holding, for instance, a `<dependency>` with two
+`<service_fmri>` children -- `cmd/svc/milestone/restarter.xml` is one -- and
+the import fails with
+
+    svccfg: Could not delete svc:/TEMP/system/svc/restarter
+	(repository connection broken).
+
+which is ECONNABORTED from the door call: configd took the signal, so its own
+error paths never ran.
+
+`TX_SIZE(x)` is `P2ROUNDUP((x), sizeof (uint32_t))`, and `P2ROUNDUP(x, align)`
+is `(-(-(x) & -(align)))` (`sys/sysmacros.h`).  Every operand it is handed is
+a `uint32_t`, so `-(x)` is evaluated in 32 bits and then *zero*-extended to 64
+before being masked against a 64-bit `-(align)`; the closing negation
+therefore lands in the upper word:
+
+    TX_SIZE((uint32_t)27) = 0xffffffff0000001c
+    TX_SIZE((size_t)27)   = 0x000000000000001c
+
+Six of the eight call sites assign the result back into a `uint32_t`, which
+truncates the damage away.  The two in `cmd/svc/configd/object.c` that add it
+to a pointer do not:
+
+  o	`tx_process_cmds()`, object.c:324, walking the values of a command:
+
+	    v = (uint32_t *)((caddr_t)str + TX_SIZE(*v));
+
+	`v` ends up exactly 2^32 below where it belongs and the next
+	iteration's `'%q'` argument faults in sqlite's `vxprintf()`:
+
+	    client_switcher -> tx_commit -> rc_tx_commit -> object_tx_commit
+	      -> tx_process_cmds -> backend_tx_run_update
+	      -> sqlite_exec_vprintf -> sqlite_vmprintf -> base_vprintf
+	      -> vxprintf
+
+  o	`tx_cmd_value()`, object.c:641, seeking to value `val_no`:
+
+	    bp += sizeof (uint32_t) + TX_SIZE(value_len);
+
+	the returned `*val` is 2^32 low, and `generate_value_list()`
+	(rc_node.c:3695) faults reading it while assembling the audit
+	record.  `rc_tx_commit()` calls that unconditionally on every
+	successful commit, so this one is reached even once the first is
+	fixed.
+
+Both loops advance only from their second value onwards, which is exactly why
+the number of values decides it.
+
+Not reachable as illumos ships today, because `cmd/svc/configd` is still built
+32-bit, where `size_t` is 32 bits and both halves agree.  It bites immediately
+on a 64-bit configd.
+
+Fixed in `TX_SIZE()` rather than at the two call sites, so that a third one
+cannot reintroduce it.  `P2ROUNDUP()` itself is arguably hazardous for any
+caller whose operand is narrower than `align`, but changing it reaches the
+whole tree, including the kernel; that is a separate and much larger
+conversation.
+
+Assisted-By: Claude Opus 5 (claude-opus-5)
+---
+ usr/src/common/svc/repcache_protocol.h | 11 ++++++++++-
+ 1 file changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/usr/src/common/svc/repcache_protocol.h b/usr/src/common/svc/repcache_protocol.h
+index a334cea34a..15e9bc14e5 100644
+--- a/usr/src/common/svc/repcache_protocol.h
++++ b/usr/src/common/svc/repcache_protocol.h
+@@ -762,7 +762,16 @@ struct rep_protocol_transaction_cmd {
+ #define	REP_PROTOCOL_TRANSACTION_CMD_MIN_SIZE \
+ 	    REP_PROTOCOL_TRANSACTION_CMD_SIZE(0)
+ 
+-#define	TX_SIZE(x)	P2ROUNDUP((x), sizeof (uint32_t))
++/*
++ * The (size_t) cast is load-bearing on an LP64 build.  P2ROUNDUP(x, align)
++ * is (-(-(x) & -(align))): with a uint32_t x, -(x) is evaluated in 32 bits
++ * and then ZERO-extended before being masked against a 64-bit -(align), so
++ * the closing negation lands in the upper word, and TX_SIZE((uint32_t)27)
++ * comes out as 0xffffffff0000001c rather than 0x1c.  Callers that assign the
++ * result back into a uint32_t truncate the damage away; the two in object.c
++ * that add it to a pointer do not.
++ */
++#define	TX_SIZE(x)	P2ROUNDUP((size_t)(x), sizeof (uint32_t))
+ 
+ struct rep_protocol_transaction_request {
+ 	enum rep_protocol_requestid rpr_request; /* SETUP, ABORT or TEARDOWN */
