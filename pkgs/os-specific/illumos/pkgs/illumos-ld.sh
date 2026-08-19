@@ -19,7 +19,12 @@
 # be the platform's linker for all of nixpkgs.  That was tried; ../default.nix
 # says where the decision now lives.  Building the nixbsd `illumos-full` VM with
 # `linker = "illumos"` set platform-wide broke six packages in four unrelated
-# ways, and they are worth writing down because each is a separate project:
+# ways.  One of those ways -- the last bullet -- has since been root-caused and
+# fixed, and gtest and boost build clean; the other three are unaffected by it
+# and still block any platform-wide move.  Re-measured against the fixed ld,
+# each package overridden onto a stdenv carrying this wrapper: gtest and boost
+# exit 0; libxslt, libxcrypt, ncurses, coreutils and openssl fail exactly as
+# described below.  Each remaining bullet is a separate project:
 #
 #  o	A GNU version script handed to `-M`.  The syntaxes look alike, so
 #	configure scripts that probe `ld --help` for "M mapfile" cheerfully pass
@@ -31,36 +36,53 @@
 #	'|', or '@'".  GNU ld has `--undefined-version` for exactly this and
 #	illumos ld has no equivalent.
 #
-#  o	DWARF 5.  GCC 15 emits it by default; illumos ld cannot relocate it, and
-#	says so as "invalid offset symbol '.debug_str (section)'" against
-#	sections like `.debug_loclists`, which exists only in DWARF 5.  coreutils
-#	and openssl both die this way.  The gate never trips it because
-#	Makefile.master:495 pins `-gdwarf-4 -gstrict-dwarf` with the comment
-#	"Currently this is DWARFv4".  A platform-wide `-gdwarf-4` would probably
-#	fix this whole class.
+#  o	Compressed debug sections.  illumos ld cannot relocate a compressed
+#	`.debug_info`, and says so as "relocation error: R_AMD64_32: ... invalid
+#	offset symbol '.debug_loclists (section)'".  coreutils and openssl both
+#	die this way.  The trigger is `-Wa,--compress-debug-sections`, which the
+#	stock `separateDebugInfo` hook puts in NIX_CFLAGS_COMPILE; see the same
+#	finding in ./mkDerivation.nix, where it is why that hook stays off
+#	libkstat and libmd.
+#
+#	This reads as a DWARF 5 bug and is not one.  GCC 15 defaults to DWARF 5,
+#	so the section the message names is `.debug_loclists`, which exists only
+#	in DWARF 5 -- and the gate never trips any of this, because
+#	Makefile.master:500 pins `-gdwarf-4 -gstrict-dwarf` with the comment
+#	"Currently this is DWARFv4".  Both facts are true and neither is the
+#	cause.  Measured A/B against this wrapper's own ld, one translation unit
+#	at -O2: uncompressed DWARF 5 links clean, and compressed
+#	`-gdwarf-4 -gstrict-dwarf` fails identically, the message merely naming
+#	`.debug_loc` and `.debug_ranges` instead.  A platform-wide `-gdwarf-4`
+#	fixes nothing here; do not reach for it.
+#
+#	Note also that these come out as *warnings*, exit 0, from a bare
+#	`ld -G`.  They are fatal only under `-zfatal-warnings`, which the gate
+#	links with and arbitrary third-party source does not -- so the same
+#	object can look fine in one link and stop the build in the next.
 #
 #  o	GNU-only options that desynchronise getopt(3) rather than being
 #	rejected; see the `--compress-debug-sections` case below for the shape of
 #	it.  ncurses hits another one and reports `unrecognized option` naming a
 #	path that was an *argument*.
 #
-#  o	A bug in ld itself, which no wrapper can paper over.  Link a large object
-#	-- googletest's `gtest-all.cc.o`, 826K, 553 sections -- into a shared
-#	object or an executable with any runpath at all, and relocations come out
-#	against a garbage address:
+#  o	A bug in ld itself, which no wrapper could paper over -- SINCE FIXED, and
+#	the only one of the four that is.  Linking an object whose last mergeable
+#	string section is a `.gnu.linkonce.*` one -- any C++ object GCC compiles
+#	will do; googletest's `gtest-all.cc.o` was the reduced case -- produced
 #
 #	    ld: fatal: relocation error: R_AMD64_PC32: file gtest-all.o:
 #	        symbol .LC3: value 0x652fe4a5136f does not fit
 #
-#	`-R /a` is enough; it is not length-dependent.  It is not the wrapper's
-#	translation, because illumos' own `-R` spelling fails identically.  The
-#	value differs on every run with the low bits stable, so it is
-#	uninitialised memory, not a layout decision.  Ruled out: `-z now`, `-z
-#	text`, `-fno-merge-constants`, `-fno-exceptions`, runpath length, section
-#	count (an 1811-section object links fine) and `--dynamic-linker`.  gtest
-#	and boost die this way.  This one predates the wrapper entirely -- the
-#	`ld` derivation is byte-identical with or without it -- and needs
-#	debugging in usr/src/cmd/sgs, not here.
+#	with a different, heap-shaped value on every run, or else silently
+#	dropped every merged string from the output.  `ld_strmerge_sec()` names
+#	the section it generates after the last input section it replaces;
+#	`ld_place_section()` then read COMDAT-ness off that inherited
+#	`.gnu.linkonce.r.*` name and `add_comdat()` discarded the generated
+#	section as a duplicate of the very section it was named after, so it
+#	never got an output `Dnode` and `_elf_getxoff()` read 72 bytes past a
+#	48-byte `Elf_Data`.  Fixed in ../patches by skipping the name-driven
+#	COMDAT identification when `FLG_IS_GNSTRMRG` is set.  gtest and boost
+#	both build clean now.
 
 set -eu -o pipefail
 

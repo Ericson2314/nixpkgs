@@ -86,10 +86,37 @@ makeScopeWithSplicing' {
       # `linker = "illumos"` would hand illumos ld to *every* package nixpkgs
       # builds for this target, and illumos ld is not a drop-in for GNU ld on
       # arbitrary third-party source: measured on the nixbsd `illumos-full` VM,
-      # that broke boost, coreutils, gtest, libxcrypt, ncurses and openssl, in
-      # four unrelated ways, one of which is a bug in ld itself (see
-      # ./pkgs/illumos-ld.sh). None of that buys the gate anything, because the
-      # gate is the only thing that needs this link-editor.
+      # that broke boost, coreutils, gtest, libxcrypt, libxslt, ncurses and
+      # openssl, in four unrelated ways (see ./pkgs/illumos-ld.sh). None of that
+      # buys the gate anything, because the gate is the only thing that needs
+      # this link-editor.
+      #
+      # One of those four ways -- the ld bug behind gtest and boost -- has since
+      # been root-caused and fixed (patch 0070 in ./patches). Re-measured with
+      # the fixed ld, gtest and boost build clean and the other five still fail
+      # exactly as before: GNU version scripts fed to `-M` (libxslt, libxcrypt),
+      # a GNU-only option desynchronising getopt(3) (ncurses), and compressed
+      # debug sections ld cannot relocate (coreutils, openssl). Three separate
+      # defects, none of them in ld's relocation engine, all of them still
+      # blocking. So the scoping stays.
+      #
+      # Two mechanical things also stand in the way, and are worth knowing
+      # before anyone tries again:
+      #
+      #  o	`bintools-unwrapped` in all-packages is not what the cross stdenv's
+      #	cc uses. illumos sets `useGccNG`, and `gcc/ng` takes `binutils` /
+      #	`binutilsNoLibc` -- always the GNU pair -- not the picker's
+      #	`bintools` / `bintoolsNoLibc`. Setting `linker = "illumos"` and adding
+      #	the branch to `bintools-unwrapped` evaluates fine and changes
+      #	`bintools`, while `stdenv.cc.bintools.bintools` stays GNU binutils.
+      #	Verified. Teaching `gcc/ng` to consult the picker is the real
+      #	prerequisite, and it is a change for every platform, not this one.
+      #
+      #  o	`./pkgs/bintools.nix` below takes `binutils-unwrapped` from
+      #	`stdenv.cc.bintools.bintools`. Under a picker that lands this very
+      #	derivation there, that is infinite recursion -- it is, verbatim, the
+      #	error you get. It would have to take the plain `binutils-unwrapped`
+      #	of the same stage instead.
       #
       # So: illumos ld for the gate, GNU ld for everyone else. The gate keeps
       # the mapfiles, `-Bdirect` and `.SUNW_*` sections it cannot build without,
