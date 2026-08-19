@@ -1,0 +1,105 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Tue, 18 Aug 2026 23:52:09 -0400
+Subject: [PATCH] ld: a link-editor generated merged string section is not a
+ COMDAT candidate
+
+Linking an object whose *last* mergeable string section is a
+`.gnu.linkonce.*` one -- any C++ object compiled by GCC will do; the reduced
+case here is googletest's `gtest-all.cc.o` -- either silently drops every
+merged string from the output, or fails outright:
+
+    ld: fatal: relocation error: R_AMD64_PC32: file gtest-all.cc.o:
+        symbol .LC3: value 0x555555ac1e0f does not fit
+
+The value differs on every run, and is a heap address.
+
+`ld_strmerge_sec()` replaces an output section's `SHF_MERGE|SHF_STRINGS`
+input sections with one section it builds itself, and names that section
+after the last of the sections it replaces (`sections.c`,
+`new_section_from_template()`: `isec->is_name = tmpl_isp->is_name`).  When
+that template is a `.gnu.linkonce.r.*` section, the generated section
+inherits its name -- and `ld_place_section()` derives COMDAT-ness from the
+name alone.  So the generated section is marked `FLG_IS_COMDAT`,
+`add_comdat()` finds the identically named section already kept in the
+output, and discards the generated one as a duplicate of the very section it
+was named after.
+
+Two things follow, and the quiet one is worse:
+
+  o	`add_comdat()` sets `is_osdesc` for the sloppy-relocation logic but
+	does not attach the section to `os_isdescs`, so `ld_create_outfile()`
+	never walks it.  Its data -- 4087 bytes of merged strings, in the
+	googletest case -- is simply never written.  Every `.LC*` symbol
+	redirected to it by `ld_strmerge_sec()` pass 3 then addresses a
+	string it does not own: `.LC3` should be `"(null)"` and resolves to
+	`"with a seed of %d ."`.  The link reports success.
+
+  o	Because `ld_create_outfile()` never reaches it, `is_indata` is still
+	the bare `Elf_Data` that `new_section_from_template()` allocated,
+	rather than the `Elf_Data` of a libelf `Dnode`.
+	`ld_update_osym()` then calls `_elf_getxoff()` on it
+	(`update.c:811`), and `_elf_getxoff()` reads `db_xoff` -- the last
+	member of libelf's private `Dnode`, at offset 120 -- from a 48-byte
+	`calloc()`.  That is the uninitialised heap the error message prints.
+	When those eight bytes happen to be zero, the link "succeeds" (with
+	the wrong string data); when they are not, `do_reloc_ld()` rejects
+	`S + A - P` and the link dies.
+
+A section the link-editor generated for itself is never a COMDAT candidate:
+there is nothing for it to be a duplicate of.  Skip the name-driven COMDAT
+identification for it.  `FLG_OF1_RLXREL` is skipped along with it, which
+changes nothing -- the real `.gnu.linkonce.*` input sections are placed
+during file processing, long before `ld_make_sections()` runs, and have set
+it already.
+
+Confirmed by instrumenting the shipped link-editor with an `LD_PRELOAD`
+that pads every 48-byte `calloc()` to 256 bytes and fills the tail with
+`0xAB`: unpatched, the exact command line from the failing build produces
+1329 relocation errors reporting `0xabababababb015ca` and friends, naming
+`.LC3`, `.LC5`, `.LC7`, `.LC9`, `.LC16`, ... in the same order as the
+original failure; `backtrace()` at the poisoned read names
+`ld_update_outfile`.  With this change the same command line produces no
+errors, `_elf_getxoff()` is never handed the padded allocation at all,
+`.rodata` grows by exactly the 0xff7 bytes of merged strings that used to be
+lost, and `.LC3` resolves to `"(null)"`.  An object with no `.gnu.linkonce`
+merge template (so no COMDAT collision) links to byte-identical output.
+
+Assisted-By: Claude Opus 5 (claude-opus-5)
+---
+ usr/src/cmd/sgs/libld/common/place.c | 21 ++++++++++++++++-----
+ 1 file changed, 16 insertions(+), 5 deletions(-)
+
+diff --git a/usr/src/cmd/sgs/libld/common/place.c b/usr/src/cmd/sgs/libld/common/place.c
+index 8eaf8a949f..9456c10a3c 100644
+--- a/usr/src/cmd/sgs/libld/common/place.c
++++ b/usr/src/cmd/sgs/libld/common/place.c
+@@ -1050,12 +1050,23 @@ ld_place_section(Ofl_desc *ofl, Is_desc *isp, Place_path_info *path_info,
+ 		 * Explicitly identify this section type as COMDAT.  Also,
+ 		 * enable relaxed relocation processing, as this is typically
+ 		 * a requirement with .gnu.linkonce sections.
++		 *
++		 * A section the link-editor generated for itself is never a
++		 * COMDAT candidate, whatever it is called.  ld_strmerge_sec()
++		 * names the merged string section it builds after one of the
++		 * input sections it replaces, and that name can be a
++		 * .gnu.linkonce one.  Marking it COMDAT makes add_comdat()
++		 * below discard it as a duplicate of the very section it was
++		 * named after -- silently dropping every merged string from
++		 * the output.
+ 		 */
+-		isp->is_flags |= FLG_IS_COMDAT;
+-		if ((ofl->ofl_flags1 & FLG_OF1_NRLXREL) == 0)
+-			ofl->ofl_flags1 |= FLG_OF1_RLXREL;
+-		DBG_CALL(Dbg_sec_gnu_comdat(ofl->ofl_lml, isp, TRUE,
+-		    (ofl->ofl_flags1 & FLG_OF1_RLXREL) != 0));
++		if ((isp->is_flags & FLG_IS_GNSTRMRG) == 0) {
++			isp->is_flags |= FLG_IS_COMDAT;
++			if ((ofl->ofl_flags1 & FLG_OF1_NRLXREL) == 0)
++				ofl->ofl_flags1 |= FLG_OF1_RLXREL;
++			DBG_CALL(Dbg_sec_gnu_comdat(ofl->ofl_lml, isp, TRUE,
++			    (ofl->ofl_flags1 & FLG_OF1_RLXREL) != 0));
++		}
+ 	}
+ 
+ 	/*
