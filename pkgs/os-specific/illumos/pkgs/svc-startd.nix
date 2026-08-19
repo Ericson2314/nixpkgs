@@ -120,6 +120,9 @@ mkDerivation {
     "usr/src/common/svc"
 
     "usr/src/common/mapfiles"
+
+    # `restarter.xml`; see `postInstall`.
+    "usr/src/cmd/svc/milestone/restarter.xml"
   ];
 
   extraNativeBuildInputs = [
@@ -175,6 +178,25 @@ mkDerivation {
 
   preInstall = ''
     mkdir -p $out/lib/svc/bin
+  '';
+
+  # svc.startd is the master restarter, but the *service* that represents it,
+  # `svc:/system/svc/restarter:default`, is a repository object like any other
+  # and has to be imported from a manifest. startd creates it implicitly on a
+  # writable root; on a read-only one it never appears, and then
+  # `svcadm disable -s` / `enable -s` fail with
+  # `Restarter for instance "..." is unavailable`, because the synchronous path
+  # resolves an instance's restarter through the repository.
+  #
+  # Upstream installs this from cmd/svc/milestone, whose makefile builds a
+  # great deal we do not, so take the single file. The build runs in the
+  # package's own directory, so the sibling is reached relatively; `install`
+  # here is illumos' own and has no `-D`.
+  postInstall = ''
+    mkdir -p $out/lib/svc/manifest/system/svc
+    cp ../milestone/restarter.xml \
+      $out/lib/svc/manifest/system/svc/restarter.xml
+    chmod 0444 $out/lib/svc/manifest/system/svc/restarter.xml
   '';
 
   meta.mainProgram = "svc.startd";
