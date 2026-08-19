@@ -44,6 +44,12 @@ mkDerivation {
     "usr/src/cmd/Makefile.cmd.64"
     "usr/src/cmd/Makefile.ctf"
     "usr/src/cmd/Makefile.targ"
+
+    # $(MAPFILE.NES), $(MAPFILE.PGA) and $(MAPFILE.NED) -- the non-executable
+    # stack/data and page-alignment mapfiles Makefile.cmd puts on every command
+    # through $(LDFLAGS.cmd). GNU ld read -M as "write a link map" and never
+    # opened them; illumos ld does, and stops if they are not there.
+    "usr/src/common/mapfiles"
   ];
 
   extraNativeBuildInputs = [ cw ];

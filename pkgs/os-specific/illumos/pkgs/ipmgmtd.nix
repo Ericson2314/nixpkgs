@@ -61,6 +61,12 @@ mkDerivation {
     "usr/src/cmd/Makefile.ctf"
     "usr/src/cmd/Makefile.targ"
 
+    # $(MAPFILE.NES), $(MAPFILE.PGA) and $(MAPFILE.NED) -- the non-executable
+    # stack/data and page-alignment mapfiles Makefile.cmd puts on every command
+    # through $(LDFLAGS.cmd). GNU ld read -M as "write a link map" and never
+    # opened them; illumos ld does, and stops if they are not there.
+    "usr/src/common/mapfiles"
+
     # The makefile includes ../../../../lib/Makefile.lib before anything else,
     # for ROOTFS_LIBDIR -- it installs to /lib/inet rather than to a bin
     # directory. Nothing is installed from here, but the include still has to

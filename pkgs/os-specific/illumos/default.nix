@@ -60,6 +60,7 @@
 #
 {
   lib,
+  stdenv,
   stdenvNoLibc,
   stdenvNoCC,
   elfutils,
@@ -77,6 +78,39 @@ makeScopeWithSplicing' {
   inherit otherSplices;
   f = (
     self:
+    let
+      # Give a stdenv the illumos link-editor in place of GNU ld.
+      #
+      # This is the whole of the scoping decision, and it is deliberate that it
+      # lives here rather than in `lib/systems/default.nix`. A platform-level
+      # `linker = "illumos"` would hand illumos ld to *every* package nixpkgs
+      # builds for this target, and illumos ld is not a drop-in for GNU ld on
+      # arbitrary third-party source: measured on the nixbsd `illumos-full` VM,
+      # that broke boost, coreutils, gtest, libxcrypt, ncurses and openssl, in
+      # four unrelated ways, one of which is a bug in ld itself (see
+      # ./pkgs/illumos-ld.sh). None of that buys the gate anything, because the
+      # gate is the only thing that needs this link-editor.
+      #
+      # So: illumos ld for the gate, GNU ld for everyone else. The gate keeps
+      # the mapfiles, `-Bdirect` and `.SUNW_*` sections it cannot build without,
+      # and the rest of nixpkgs keeps the linker it was written for.
+      #
+      # Only for illumos-hosted builds. `buildPackages.illumos.*` -- `cw`,
+      # `make`, `install`, `ld` itself -- are Linux binaries built from gate
+      # source to run the cross build; they link with the build platform's own
+      # toolchain, and overriding them here would be both wrong and circular,
+      # since `self.bintools` is built out of `buildIllumos.ld`.
+      withIllumosLd =
+        stdenv:
+        if !stdenvNoCC.hostPlatform.isIllumos then
+          stdenv
+        else
+          stdenv.override (old: {
+            cc = old.cc.override (ccOld: {
+              bintools = ccOld.bintools.override { bintools = self.bintools; };
+            });
+          });
+    in
     lib.packagesFromDirectoryRecursive {
       callPackage = self.callPackage;
       directory = ./pkgs;
@@ -217,7 +251,39 @@ makeScopeWithSplicing' {
       # fix this comment and the script default together.
       patchesRoot = ./patches;
 
-      stdenvLibcMinimal = stdenvNoLibc.override (old: {
+      # GNU binutils with illumos' link-editor substituted for GNU ld; see
+      # ./pkgs/bintools.nix. Both arguments have to be named explicitly, because
+      # the defaults `callPackage` would supply are wrong in opposite ways:
+      #
+      #  o	`binutils-unwrapped` must be the *cross* binutils this package set
+      #	already uses -- host is the build machine, target is illumos -- so
+      #	that its programs carry the `x86_64-unknown-solaris2.11-` prefix
+      #	bintools-wrapper looks for. That is the one inside the stdenv's own
+      #	wrapper, not the scope's or the top level's.
+      #
+      #  o	`ld` must be the link-editor that *runs on the build machine*.
+      #	`self.ld` in a cross set is an illumos-hosted binary, which cannot be
+      #	executed here; `buildIllumos.ld` is illumos' own tools/sgs bootstrap
+      #	build of the same sources. See ./pkgs/ld.nix on why one attribute
+      #	covers both.
+      bintools = self.callPackage ./pkgs/bintools.nix {
+        binutils-unwrapped = stdenv.cc.bintools.bintools;
+        ld = buildIllumos.ld;
+
+        # The `#!` of a script collect2 runs on the machine doing the build, so
+        # it is the build platform's shell. The scope's own `runtimeShell` is
+        # illumos' bash, which is built with the very stdenv this feeds -- and
+        # taking it would be a cycle, not merely an unrunnable interpreter.
+        runtimeShell = buildPackages.runtimeShell;
+      };
+
+      # The stdenvs every package in this scope gets, shadowing the top-level
+      # ones. `stdenvNoCC` is deliberately not among them: with no compiler
+      # there is nothing to link, so overriding it would only churn hashes.
+      stdenv = withIllumosLd stdenv;
+      stdenvNoLibc = withIllumosLd stdenvNoLibc;
+
+      stdenvLibcMinimal = self.stdenvNoLibc.override (old: {
         cc = old.cc.override {
           libc = self.libcMinimal;
           noLibc = false;

@@ -394,8 +394,33 @@ lib.makeOverridable (
     #    variable, which is not the same derivation as never mentioning it.
     #    Passing it explicitly changed the hash of every kernel object --
     #    exactly what the opt-out exists to prevent.
+    #
+    # ...and the last consideration, which currently subsumes all of the above.
+    #
+    # Both problems were stated as "anything the illumos link-editor links",
+    # and until ../bintools.nix that excluded the commands, because they alone
+    # reached GNU ld through the compiler driver. They no longer do: this
+    # package set now links with illumos ld throughout (see the scope in
+    # ../default.nix), so the second bullet applies to the commands too and
+    # their `debug` outputs would come out empty even where the link survived.
+    #
+    # It does not merely come out empty. GCC 15 defaults to DWARF 5 and merges
+    # string constants; the gate compiles with `-gdwarf-4 -gstrict-dwarf`
+    # (Makefile.master:495, DEBUGFORMAT, whose comment says "Currently this is
+    # DWARFv4") precisely because its own tools cannot read anything newer, and
+    # a command built with the hook's plain `-ggdb` fails to link at all:
+    #
+    #   ld: fatal: relocation error: R_AMD64_64: file devfsadm.o section
+    #       [11].debug_info: invalid offset symbol
+    #       '.rodata.str1.1 (merged string section)': offset 0x3e91b
+    #
+    # So: never, for now. The rest of the predicate is kept rather than deleted
+    # -- it is the statement of what would have to become true again, an
+    # illumos ld that emits a build-ID note and relocates modern DWARF, for any
+    # of this to be worth turning back on.
     wantsDebugInfo =
-      stdenv'.hostPlatform.isIllumos
+      false
+      && stdenv'.hostPlatform.isIllumos
       && lib.hasPrefix "usr/src/cmd/" (attrs.path or "")
       && !lib.hasPrefix "usr/src/cmd/sgs/" (attrs.path or "")
       && !useLd
@@ -465,9 +490,13 @@ lib.makeOverridable (
     # used to be in both; dropping the PATH entry was verified to leave
     # libc.so.1, libm.so.2, libpthread.so.1 and libc_pic.a bit-identical,
     # because `LD=` names the wrapper by absolute path and nothing here ever
-    # resolves a bare `ld` off PATH. Note the consequence: the only `ld` on
-    # PATH is the cross binutils one, so a makefile that did start calling
-    # `ld` unqualified would get GNU ld rather than illumos'.
+    # resolves a bare `ld` off PATH. That consequence used to be a hazard --
+    # the nearest `ld` was GNU ld -- and is no longer one: this scope's stdenv
+    # wraps ./bintools.nix (../default.nix), so the link-editor a makefile
+    # reaches by any route is the same one this macro names. The macro survives
+    # only because cc-wrapper installs it as `x86_64-unknown-solaris2.11-ld`
+    # while the gate's default for `$(LD)` is the absolute path /usr/bin/ld;
+    # neither spelling is a bare `ld` on PATH.
     #
     # Never on a build-host instance: there is no illumos link-editor in play
     # there, GNU ld is, and the overlay above has already emptied the macros it

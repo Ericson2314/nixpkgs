@@ -58,6 +58,12 @@ mkDerivation {
     "usr/src/cmd/Makefile.ctf"
     "usr/src/cmd/Makefile.targ"
 
+    # $(MAPFILE.NES), $(MAPFILE.PGA) and $(MAPFILE.NED) -- the non-executable
+    # stack/data and page-alignment mapfiles Makefile.cmd puts on every command
+    # through $(LDFLAGS.cmd). GNU ld read -M as "write a link map" and never
+    # opened them; illumos ld does, and stops if they are not there.
+    "usr/src/common/mapfiles"
+
     # `compat.o` is `COMMONOBJS`: it is compiled straight into the program out
     # of the shared cmd-inet directory rather than linked from a library, so
     # its source has to be present, along with the fragment that defines

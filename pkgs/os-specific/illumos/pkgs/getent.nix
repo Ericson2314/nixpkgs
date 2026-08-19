@@ -50,6 +50,12 @@ mkDerivation {
     "usr/src/cmd/Makefile.ctf"
     "usr/src/cmd/Makefile.targ"
 
+    # $(MAPFILE.NES), $(MAPFILE.PGA) and $(MAPFILE.NED) -- the non-executable
+    # stack/data and page-alignment mapfiles Makefile.cmd puts on every command
+    # through $(LDFLAGS.cmd). GNU ld read -M as "write a link map" and never
+    # opened them; illumos ld does, and stops if they are not there.
+    "usr/src/common/mapfiles"
+
     # `dogetnetmask.c` includes <libsocket_priv.h> for `getnetmaskbyaddr`.
     # It is installed into /usr/include by the *top* lib/libsocket/Makefile
     # (HDRS, line 27), which the libsocket package does not run -- it builds

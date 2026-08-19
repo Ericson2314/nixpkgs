@@ -57,6 +57,12 @@ mkDerivation {
     "usr/src/cmd/Makefile.ctf"
     "usr/src/cmd/Makefile.targ"
 
+    # $(MAPFILE.NES), $(MAPFILE.PGA) and $(MAPFILE.NED) -- the non-executable
+    # stack/data and page-alignment mapfiles Makefile.cmd puts on every command
+    # through $(LDFLAGS.cmd). GNU ld read -M as "write a link map" and never
+    # opened them; illumos ld does, and stops if they are not there.
+    "usr/src/common/mapfiles"
+
     # The common half of the command: Makefile.com, all the *_link.c link
     # modules, devfsadm.c itself, the mapfile and devlink.tab.sh.
     "usr/src/cmd/devfsadm"
@@ -221,23 +227,26 @@ mkDerivation {
     # Solaris link-editor syntax that GNU ld rejects; see getent.nix for why
     # none of it is load-bearing for a command.
     #
-    # `--export-dynamic` is not part of that clearing-out -- it has to be put
-    # back, and it is load-bearing. The relationship between devfsadm and its
-    # link modules runs both ways: devfsadm dlopen()s them, and they call back
-    # into it, referencing symbols such as `devfsadm_rm_all` and
-    # `system_labeled` that are defined in the *executable* rather than in any
-    # library. Solaris' link-editor puts an executable's globals in .dynsym so
-    # that resolves; GNU ld does not unless asked, so at run time every module
-    # failed to load:
+    # There used to be a `LDFLAGS.cmd=-Wl,--export-dynamic` here as well, and it
+    # was load-bearing. The relationship between devfsadm and its link modules
+    # runs both ways: devfsadm dlopen()s them, and they call back into it,
+    # referencing symbols such as `devfsadm_rm_all` and `system_labeled` that
+    # are defined in the *executable* rather than in any library. Solaris' link-
+    # editor puts an executable's globals in .dynsym so that resolves; GNU ld
+    # does not unless asked, so with GNU ld every module failed to load at run
+    # time:
     #
     #   devfsadm: dlopen failed: .../SUNW_disk_link.so: ld.so.1: devfsadm:
     #     fatal: relocation error: ... symbol system_labeled:
     #     referenced symbol not found
     #
     # and devfsadm still exited 0, having only logged each failure -- so /dev
-    # stayed empty with nothing to say why. Confirmed by inspection: without
-    # this both symbols are GLOBAL in .symtab and absent from .dynsym.
-    "LDFLAGS.cmd=-Wl,--export-dynamic"
+    # stayed empty with nothing to say why.
+    #
+    # The link-editor is now illumos' own (../bintools.nix), which needs no
+    # asking, and has no `--export-dynamic` to ask with: the flag is a GNU-ism
+    # it rejects outright. So the workaround goes, and the behaviour it was
+    # buying comes back for free.
     "LDCHECKS="
 
     # The same problem one level over, for the shared objects. Makefile.lib's

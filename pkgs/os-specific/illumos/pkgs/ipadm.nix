@@ -83,6 +83,12 @@ mkDerivation {
     "usr/src/cmd/Makefile.cmd.64"
     "usr/src/cmd/Makefile.targ"
 
+    # $(MAPFILE.NES), $(MAPFILE.PGA) and $(MAPFILE.NED) -- the non-executable
+    # stack/data and page-alignment mapfiles Makefile.cmd puts on every command
+    # through $(LDFLAGS.cmd). GNU ld read -M as "write a link map" and never
+    # opened them; illumos ld does, and stops if they are not there.
+    "usr/src/common/mapfiles"
+
     # `include ../../Makefile.cmd-inet`, which defines $(CMDINETCOMMONDIR) --
     # on $(CPPFLAGS) here -- and the pattern rule for $(COMMONOBJS). ipadm's
     # $(COMMONOBJS) is empty, but the include and the -I are unconditional.
