@@ -26,6 +26,11 @@
   patches = [
     # multiple header dirs, see above
     ./sys-headers-incsdir.patch
+
+    # `ld: bootxx_ffsv1.sym: error: PHDR segment not covered by LOAD segment`.
+    # Upstream fixed this for `efiboot`; the other i386 booters share
+    # `Makefile.booters`, which never got the same flags.
+    ./booters-no-dynamic-linker.patch
   ];
 
   postPatch = ''

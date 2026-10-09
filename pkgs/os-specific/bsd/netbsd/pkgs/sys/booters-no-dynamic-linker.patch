@@ -1,0 +1,35 @@
+From 8eda7e2ac3e0515adbd693ee18f2d96f02c7dd38 Mon Sep 17 00:00:00 2001
+From: John Ericson <John.Ericson@Obsidian.Systems>
+Date: Tue, 13 Oct 2026 15:12:40 -0400
+Subject: [PATCH] Let the i386 booters link with a PHDR segment present.
+
+Building the standalone boot programs fails at link:
+
+    ld: bootxx_ffsv1.sym: error: PHDR segment not covered by LOAD segment
+
+These are freestanding images linked with `-nostdlib` at a fixed text address,
+so a program header segment has no business being there, but the linker emits
+one anyway and then refuses its own output.
+
+NetBSD hit the same thing in `efiboot` and fixed it there by adding
+`--no-dynamic-linker --noinhibit-exec`; `Makefile.booters` covers the rest of
+the i386 boot programs and never got the same treatment. Apply it here, so
+`bootxx` and its siblings link too.
+
+Assisted-by: Claude Code (Claude Opus 5.5)
+---
+ sys/arch/i386/stand/Makefile.booters | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/sys/arch/i386/stand/Makefile.booters b/sys/arch/i386/stand/Makefile.booters
+index a50427de6530..54a7769cffaf 100644
+--- a/sys/arch/i386/stand/Makefile.booters
++++ b/sys/arch/i386/stand/Makefile.booters
+@@ -67,6 +67,7 @@ cleandir distclean: .WAIT cleanlibdir
+ cleanlibdir:
+ 	-rm -rf lib
+ 
++LDFLAGS+=-Wl,--no-dynamic-linker -Wl,--noinhibit-exec
+ LDFLAGS+=-Wl,-z,noseparate-code -Wl,-M -Wl,-e,start 	# -N does not work properly.
+ 
+ LIBLIST=${LIBI386} ${LIBSA} ${LIBZ} ${LIBSA} ${LIBKERN} ${LIBI386} ${LIBSA}
