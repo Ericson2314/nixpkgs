@@ -204,6 +204,12 @@ stdenv.mkDerivation (finalAttrs: {
         hash = "sha256-Cn7rvg1FI7H/26GzSe4pv5VW/gvwbwGqivAqEeawkwk=";
       })
       (getVersionFile "libgcc/force-regular-dirs.patch")
+
+      # This package runs `gcc/configure` itself, below, and *that* run produces
+      # the answers `unwind-dw2-fde-dip.c` is compiled against. The patch has to
+      # be here as well as on the compiler, or the probe comes back "unknown"
+      # in the one place it decides anything.
+      (getVersionFile "gcc/netbsd-dl-iterate-phdr.diff")
     ];
 
   autoreconfFlags = "--install --force --verbose . libgcc";

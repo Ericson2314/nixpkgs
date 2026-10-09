@@ -14,6 +14,15 @@
     }
   ];
 
+  # GCC 16's `configure` has the same gap, and the context is unchanged, so the
+  # one copy serves both.
+  "gcc/netbsd-dl-iterate-phdr.diff" = [
+    {
+      after = "15";
+      path = ../15;
+    }
+  ];
+
   # Only present under `../16`, so a `gitRelease` build -- whose version
   # directory is `../git` -- has to be pointed here too.
   "libatomic/no-gcc-objdir-install.patch" = [
