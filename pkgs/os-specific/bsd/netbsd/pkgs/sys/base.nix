@@ -66,6 +66,10 @@
   env.NIX_CFLAGS_COMPILE = toString [
     "-Wno-error=array-parameter"
     "-Wno-error=array-bounds"
+    # `bitoff` in `common/lib/libc/gen/ptree.c` is only ever assigned and
+    # incremented, never read. GCC 16 counts `+=` as a set rather than a use, so
+    # it now warns, and `prekern` builds with `-Werror`.
+    "-Wno-error=unused-but-set-variable"
     "-Wa,--no-warn"
   ];
 
